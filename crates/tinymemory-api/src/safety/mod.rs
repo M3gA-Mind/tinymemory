@@ -14,24 +14,30 @@
 //!
 //! ## Recall over precision
 //! A missed flag means sensitive data leaves the machine unnoticed, so the
-//! detector is tuned to over-flag rather than under-flag. See [`crate::safety::scan`]
+//! detector is tuned to over-flag rather than under-flag. See `scan` (feature `local-safety`)
 //! for the scoring model.
 //!
 //! ```
+//! # #[cfg(feature = "local-safety")]
+//! # {
 //! use tinymemory_api::safety::{scan, PiiCategory, RiskLevel};
 //!
 //! let result = scan("patient John was diagnosed; SSN 123-45-6789");
 //! assert_eq!(result.level, RiskLevel::High);
 //! assert!(result.has_category(PiiCategory::NationalId));
+//! # }
 //! ```
 
+#[cfg(feature = "local-safety")]
 mod detector;
+#[cfg(feature = "local-safety")]
 mod rules;
 mod types;
 
+#[cfg(feature = "local-safety")]
 pub use detector::{REDACTED_IDENTIFIER, redact_identifiers, scan};
 pub use types::{CategoryHit, PiiCategory, PiiScanResult, RiskLevel};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "local-safety"))]
 #[path = "mod_tests.rs"]
 mod tests;

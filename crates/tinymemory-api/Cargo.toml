@@ -31,18 +31,24 @@ sha2 = "0.11"
 # The crate-wide `Error`.
 thiserror = "2"
 # Pure local identification-risk matching; no runtime or engine dependency.
-regex = "1"
-log = "0.4"
+regex = { version = "1", optional = true }
+log = { version = "0.4", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
 
 [features]
 default = []
+# Opt-in local classification/redaction; the default engine contract stays regex-free.
+local-safety = ["dep:regex", "dep:log"]
 # `conformance::run`, the behavioural suite every engine must pass, and
 # `conformance::ReferenceEngine`, an in-memory engine that passes it. Adds no
 # dependency: both are written against the contract alone.
 conformance = []
+
+[[test]]
+name = "safety_contract"
+required-features = ["local-safety"]
 
 [[test]]
 name = "conformance_reference"

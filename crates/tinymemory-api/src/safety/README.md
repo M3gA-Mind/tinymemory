@@ -14,3 +14,6 @@ This helper preserves the OpenHuman detector behavior and is independent of
 `tinymemory-integrations::safety`, which owns storage-item scrubbing. It does
 not install a write pipeline or enforce a privacy policy. Regex and log are
 pure dependencies; diagnostics contain categories and scores only.
+
+Risk vocabulary is available by default. Enable `local-safety` for regex-based
+classification and redaction; the default engine contract stays regex-free.

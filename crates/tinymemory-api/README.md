@@ -91,3 +91,6 @@ Architecture documents live in
 The [`safety`](src/safety/README.md) module supplies pure local identification-risk
 classification and structured redaction without linking an engine or runtime.
 Hosts retain privacy policy and all I/O.
+
+Risk vocabulary is available by default. Enable `local-safety` for regex-based
+classification and redaction; the default engine contract stays regex-free.
