@@ -35,7 +35,7 @@ fn level_from_score(score: u32) -> RiskLevel {
 /// any context (sync or async, on or off a Tokio runtime).
 ///
 /// ## Scoring
-/// * Each distinct category contributes its its fixed category weight once.
+/// * Each distinct category contributes its fixed category weight once.
 /// * Each additional co-occurring category adds the fixed co-occurrence bonus.
 /// * A "strong identifier" (SSN, card, passport, bank account) forces
 ///   [`RiskLevel::High`] regardless of the numeric score.
@@ -56,7 +56,6 @@ pub fn scan(content: &str) -> PiiScanResult {
     }
 
     if counts.is_empty() {
-        log::trace!("[security][pii] scan clean (no categories matched)");
         return PiiScanResult::default();
     }
 
@@ -77,14 +76,6 @@ pub fn scan(content: &str) -> PiiScanResult {
         .iter()
         .map(|(&category, &count)| CategoryHit { category, count })
         .collect();
-
-    // Log level/score/categories only — never the matched content itself.
-    log::debug!(
-        "[security][pii] scan level={} score={} categories={:?}",
-        level.as_str(),
-        score,
-        categories.iter().map(|c| c.as_str()).collect::<Vec<_>>()
-    );
 
     PiiScanResult {
         level,

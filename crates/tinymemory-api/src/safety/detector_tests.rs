@@ -1,3 +1,5 @@
+//! Classification entry-point and risk-threshold regressions.
+
 use super::*;
 
 #[test]
