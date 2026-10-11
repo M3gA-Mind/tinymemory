@@ -3,8 +3,8 @@
 use super::*;
 
 #[test]
-fn openhuman_pre_turn_deadline_is_five_seconds() {
-    assert_eq!(PRE_TURN_TIMEOUT, StdDuration::from_secs(5));
+fn openhuman_pre_turn_deadline_is_ten_seconds() {
+    assert_eq!(PRE_TURN_TIMEOUT, StdDuration::from_secs(10));
 }
 use std::sync::Arc;
 use tinymemory_api::conformance::ReferenceEngine;

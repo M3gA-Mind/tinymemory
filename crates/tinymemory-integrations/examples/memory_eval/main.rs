@@ -45,7 +45,7 @@
 //! - `--llm`: also have a model answer every probe from its pack (see
 //!   `llm`).
 //! - `--host openhuman`: run scripted turns through OpenHuman's dated
-//!   pre-turn hook with its 5000 ms deadline, policy and logged tool results.
+//!   pre-turn hook with its 10000 ms deadline, policy and logged tool results.
 //! - `--layout v3`: use CortexDB's per-person scope tree and pooled chats.
 //! - `--team-limit <n>`: override the host's team-conversation budget.
 //! - `--brain-limit <n>`: override the number of ranked brain documents in a
