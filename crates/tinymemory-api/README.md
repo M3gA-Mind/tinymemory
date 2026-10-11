@@ -18,6 +18,7 @@ and `context.md` compiler live in [`tinymemory-tools`](../tinymemory-tools).
 | `Namespace`, `Segment`, `Reach` | The memory tree: where an item lives and how far a reader reaches |
 | `RecallRequest`, `FetchRequest`, `ListRequest`, `ForgetTarget`, ... | Requests and responses, each with a `validate` engines call first |
 | `Facet`, `ExploreRequest`, `GetRequest` | Browsing: counts per metadata facet, and reading items by id |
+| `ProvenancePolicy`, `wrap_untrusted_for_agent` | Host-configured trust classification and escaped untrusted-source markers for recalled prompt context |
 | `Error`, `Result` | The one error every engine returns |
 
 `store_many`, `explore` and `get` have default implementations (one `store` at
@@ -94,3 +95,6 @@ Hosts retain privacy policy and all I/O.
 
 Risk vocabulary is available by default. Enable `local-safety` for regex-based
 classification and redaction; the default engine contract stays regex-free.
+The [provenance module](src/provenance/README.md) describes safe prompt markers
+and host-supplied connector prefixes; its accepted contract is
+[Provenance markers](../../docs/specs/provenance-markers.md).
