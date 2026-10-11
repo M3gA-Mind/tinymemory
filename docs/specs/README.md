@@ -11,6 +11,9 @@
   core, a company brain) recalled as its own sections, set per agent or per
   call, written by the host. Accepted; builds on the agent memory lifecycle.
 
+- [Provenance markers](provenance-markers.md) — host-configured classification
+  and escaped untrusted-source markers for recalled prompt context. Accepted.
+
 Specifications define what the system must do before implementation details
 take over. Create one for behavior that changes a public API, crosses module
 boundaries, introduces a durable data format, or has meaningful operational
