@@ -1,3 +1,5 @@
+//! Public local safety contract regression.
+
 use tinymemory_api::safety::{PiiCategory, RiskLevel, redact_identifiers, scan};
 
 #[test]

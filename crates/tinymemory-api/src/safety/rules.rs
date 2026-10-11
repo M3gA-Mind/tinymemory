@@ -27,6 +27,18 @@ pub(crate) struct Rule {
     pub validator: Option<fn(&str) -> bool>,
 }
 
+/// Compile a built-in rule, all of which are exercised by safety fixtures.
+///
+/// # Panics
+/// Panics on a malformed built-in pattern, which is a developer error.
+#[allow(
+    clippy::expect_used,
+    reason = "only built-in patterns are passed and the safety fixtures compile every rule"
+)]
+fn compile_builtin(pattern: &str) -> Regex {
+    Regex::new(pattern).expect("a built-in identification-risk rule is a valid regex")
+}
+
 /// Build a keyword rule: a case-insensitive, word-boundaried alternation over
 /// `terms`, all attributed to `category`.
 fn keyword_rule(category: PiiCategory, terms: &[&str]) -> Rule {
@@ -34,7 +46,7 @@ fn keyword_rule(category: PiiCategory, terms: &[&str]) -> Rule {
     let pattern = format!(r"(?i)\b(?:{alternation})\b");
     Rule {
         category,
-        regex: Regex::new(&pattern).expect("keyword rule regex is well-formed"),
+        regex: compile_builtin(&pattern),
         validator: None,
     }
 }
@@ -43,7 +55,7 @@ fn keyword_rule(category: PiiCategory, terms: &[&str]) -> Rule {
 fn pattern_rule(category: PiiCategory, pattern: &str, validator: Option<fn(&str) -> bool>) -> Rule {
     Rule {
         category,
-        regex: Regex::new(pattern).expect("pattern rule regex is well-formed"),
+        regex: compile_builtin(pattern),
         validator,
     }
 }

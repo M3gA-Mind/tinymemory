@@ -46,10 +46,10 @@ pub fn scan(content: &str) -> PiiScanResult {
 
     for rule in rules() {
         for m in rule.regex.find_iter(content) {
-            if let Some(validator) = rule.validator {
-                if !validator(m.as_str()) {
-                    continue;
-                }
+            if let Some(validator) = rule.validator
+                && !validator(m.as_str())
+            {
+                continue;
             }
             *counts.entry(rule.category).or_default() += 1;
         }
