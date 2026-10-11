@@ -57,6 +57,7 @@ pub mod explore;
 pub mod item;
 pub mod meta;
 pub mod namespace;
+pub mod provenance;
 pub mod query;
 pub mod write;
 
@@ -75,6 +76,7 @@ pub use meta::{
     MemoryMeta, MetaFilter, ObservedActor, SourceKind, SourceRef, ToolCallRef, TurnRange,
 };
 pub use namespace::{Namespace, Reach, Segment, SegmentKind};
+pub use provenance::{ProvenancePolicy, wrap_untrusted_for_agent};
 pub use query::{
     Citation, EraseReport, EraseRequest, ExportPage, Exported, FetchMode, FetchPage, FetchRequest,
     ForgetReport, ForgetTarget, Hit, ListPage, ListRequest, RecallAnswer, RecallRequest, TimeHint,
