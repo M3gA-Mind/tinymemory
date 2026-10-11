@@ -35,8 +35,8 @@ fn level_from_score(score: u32) -> RiskLevel {
 /// any context (sync or async, on or off a Tokio runtime).
 ///
 /// ## Scoring
-/// * Each distinct category contributes its [`PiiCategory::weight`] once.
-/// * Each additional co-occurring category adds [`CO_OCCURRENCE_BONUS`].
+/// * Each distinct category contributes its its fixed category weight once.
+/// * Each additional co-occurring category adds the fixed co-occurrence bonus.
 /// * A "strong identifier" (SSN, card, passport, bank account) forces
 ///   [`RiskLevel::High`] regardless of the numeric score.
 pub fn scan(content: &str) -> PiiScanResult {

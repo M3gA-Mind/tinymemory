@@ -14,7 +14,7 @@
 //!
 //! ## Recall over precision
 //! A missed flag means sensitive data leaves the machine unnoticed, so the
-//! detector is tuned to over-flag rather than under-flag. See [`detector::scan`]
+//! detector is tuned to over-flag rather than under-flag. See [`crate::safety::scan`]
 //! for the scoring model.
 //!
 //! ```

@@ -126,7 +126,7 @@ impl PiiCategory {
 
     /// Scoring weight contributed when this category is present. Higher =
     /// stronger identification signal. Tuned toward recall — see
-    /// [`super::detector`] for how weights combine.
+    /// [`crate::safety::scan`] for how weights combine.
     pub(crate) fn weight(self) -> u32 {
         match self {
             // High-confidence direct identifiers — enough to flag on their own.
@@ -151,7 +151,7 @@ impl PiiCategory {
 
     /// Whether this category is a concrete identifying value (an address, a
     /// number) rather than topical context. These are what
-    /// [`crate::security::pii::redact_identifiers`] replaces.
+    /// [`crate::safety::redact_identifiers`] replaces.
     pub fn is_structured_identifier(self) -> bool {
         matches!(
             self,
