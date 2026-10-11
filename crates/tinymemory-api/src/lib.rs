@@ -63,6 +63,8 @@ pub mod meta;
 pub mod namespace;
 pub mod provenance;
 pub mod query;
+/// Pure, local identification-risk vocabulary, classification and redaction.
+pub mod safety;
 pub mod write;
 
 pub use consolidate::{

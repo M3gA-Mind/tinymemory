@@ -30,16 +30,30 @@ serde_json = "1"
 sha2 = "0.11"
 # The crate-wide `Error`.
 thiserror = "2"
+# Pure local identification-risk matching; no runtime or engine dependency.
+regex = { version = "1", optional = true }
 
 [dev-dependencies]
+# Regression proving pure safety helpers do not invoke a host-installed logger.
+log = "0.4"
 tokio = { version = "1", features = ["macros", "rt"] }
 
 [features]
 default = []
+# Opt-in local classification/redaction; the default engine contract stays regex-free.
+local-safety = ["dep:regex"]
 # `conformance::run`, the behavioural suite every engine must pass, and
 # `conformance::ReferenceEngine`, an in-memory engine that passes it. Adds no
 # dependency: both are written against the contract alone.
 conformance = []
+
+[[test]]
+name = "local_safety_no_logger"
+required-features = ["local-safety"]
+
+[[test]]
+name = "safety_contract"
+required-features = ["local-safety"]
 
 [[test]]
 name = "conformance_reference"

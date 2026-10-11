@@ -50,7 +50,8 @@ alone, so the contract is the only coupling point.
 
 | Crate | Feature | Enables |
 | --- | --- | --- |
-| `tinymemory-api` | `conformance` | `conformance::run`, `conformance::ReferenceEngine`. No extra dependency. |
+| `tinymemory-api` | `local-safety` | Pure identification-risk matching/redaction; no logger callbacks. Adds regex only when enabled. |
+| | `conformance` | `conformance::run`, `conformance::ReferenceEngine`. No extra dependency. |
 | `tinymemory-tools` | (none) | Every module (`tools`, `context`, `recall`, `layout`, `brain`, `lifecycle`, `background`) is always built. |
 | `tinymemory-integrations` | `cortex` (default) | `cortex::CortexEngine` (both wires), `registry` (`list_engines`, `build_engine`), `config` (`MemoryConfig`) |
 | | `documents` | Format sniffing and conversion to markdown |
@@ -139,5 +140,6 @@ the role of the scope.
 | Choosing and building an engine | `tinymemory-integrations::{registry, config}` |
 | The CortexDB engine | `tinymemory-integrations::cortex` |
 | Turning files and feeds into items | `tinymemory-integrations::{documents, sources}` |
-| Secrets and PII | `tinymemory-integrations::safety` |
+| Pure risk vocabulary/classification | `tinymemory-api::safety` (matching/redaction opt-in via `local-safety`); hosts own policy and diagnostics |
+| Storage-item secrets and PII | `tinymemory-integrations::safety` |
 | v1 migration | `tinymemory-integrations::import` |

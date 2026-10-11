@@ -89,6 +89,12 @@ Architecture documents live in
 [namespaces](../../docs/architecture/namespaces.md). The accepted behaviour is
 [`docs/specs/memory-v2.md`](../../docs/specs/memory-v2.md).
 
+The [`safety`](src/safety/README.md) module supplies pure local identification-risk
+classification and structured redaction without linking an engine or runtime.
+Hosts retain privacy policy and all I/O.
+
+Risk vocabulary is available by default. Enable `local-safety` for regex-based
+classification and redaction; the default engine contract stays regex-free.
 The [provenance module](src/provenance/README.md) describes safe prompt markers
 and host-supplied connector prefixes; its accepted contract is
 [Provenance markers](../../docs/specs/provenance-markers.md).
