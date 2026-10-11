@@ -3,14 +3,12 @@
 //! Hosts supply their own connector-prefix catalogue. This module does not
 //! read memory, migrate metadata, or infer that a marker makes content safe.
 
-use serde::{Deserialize, Serialize};
-
 /// Conservative legacy provenance rules with a host-supplied connector list.
 ///
 /// Unknown namespaces are untrusted. Known connector prefixes override a
 /// locally authored namespace; an absent namespace and unmatched key retain
 /// the legacy locally authored interpretation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProvenancePolicy {
     connector_prefixes: Vec<String>,
 }
