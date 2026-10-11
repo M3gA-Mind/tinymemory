@@ -29,10 +29,9 @@ mod detector;
 mod rules;
 mod types;
 
-pub use detector::{redact_identifiers, scan, REDACTED_IDENTIFIER};
+pub use detector::{REDACTED_IDENTIFIER, redact_identifiers, scan};
 pub use types::{CategoryHit, PiiCategory, PiiScanResult, RiskLevel};
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
-

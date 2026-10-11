@@ -1,4 +1,3 @@
-use super::*;
 //! Fixture + boundary tests for the local PII detector.
 //!
 //! Coverage intent:
@@ -11,6 +10,7 @@ use super::*;
 //! * category identifiers serialize to stable snake_case strings.
 
 use super::rules::{is_ipv4, is_luhn_valid};
+use super::*;
 
 // ---------------------------------------------------------------------------
 // Per-category detection (recall / true positives)
