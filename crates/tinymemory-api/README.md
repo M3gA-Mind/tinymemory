@@ -87,3 +87,7 @@ Architecture documents live in
 [operation semantics](../../docs/architecture/operations.md) and
 [namespaces](../../docs/architecture/namespaces.md). The accepted behaviour is
 [`docs/specs/memory-v2.md`](../../docs/specs/memory-v2.md).
+
+The [`safety`](src/safety/README.md) module supplies pure local identification-risk
+classification and structured redaction without linking an engine or runtime.
+Hosts retain privacy policy and all I/O.
