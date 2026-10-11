@@ -141,7 +141,8 @@ fn build_rules() -> Vec<Rule> {
             r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b",
             None,
         ),
-        // International E.164-ish phone number (leading + and 7–15 digits).
+        // Legacy international phone-like pattern. Its repetition counts
+        // separators too; normalized digit bounds remain follow-up #263.
         pattern_rule(PiiCategory::PhoneNumber, r"\+\d(?:[\d\s\-]{6,16}\d)", None),
         // IPv4 address (octet-validated).
         pattern_rule(

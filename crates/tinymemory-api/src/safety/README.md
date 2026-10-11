@@ -17,3 +17,14 @@ consumers own diagnostics and must consider the sensitivity of derived categorie
 
 Risk vocabulary is available by default. Enable `local-safety` for regex-based
 classification and redaction; the default engine contract stays regex-free.
+
+
+Known inherited limitations remain unchanged by this ownership move: grouped
+IBANs can be missed ([260](https://github.com/tinyhumansai/tinymemory/issues/260)),
+overlapping phone rules can count one number twice
+([261](https://github.com/tinyhumansai/tinymemory/issues/261)), and card boundaries
+or an adjacent CVV can produce incomplete matching
+([262](https://github.com/tinyhumansai/tinymemory/issues/262)). The international
+phone repetition counts separators rather than normalized digits, so seven-digit
+numbers can be missed and longer or separator-heavy strings accepted
+([263](https://github.com/tinyhumansai/tinymemory/issues/263)).
