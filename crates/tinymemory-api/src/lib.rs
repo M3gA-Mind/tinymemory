@@ -26,6 +26,10 @@
 //! [`EngineDescriptor`]; a fetch mode it does not list fails with
 //! [`Error::Unsupported`].
 //!
+//! [`ProvenancePolicy`] classifies recalled external text using host-supplied
+//! connector prefixes; [`wrap_untrusted_for_agent`] renders escaped provenance
+//! markers for prompt composition ([`provenance`]).
+//!
 //! This crate performs no I/O. Engines live in `tinymemory-integrations`
 //! (the CortexDB engine, and the registry that builds one from
 //! configuration).

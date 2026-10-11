@@ -18,6 +18,7 @@ and `context.md` compiler live in [`tinymemory-tools`](../tinymemory-tools).
 | `Namespace`, `Segment`, `Reach` | The memory tree: where an item lives and how far a reader reaches |
 | `RecallRequest`, `FetchRequest`, `ListRequest`, `ForgetTarget`, ... | Requests and responses, each with a `validate` engines call first |
 | `Facet`, `ExploreRequest`, `GetRequest` | Browsing: counts per metadata facet, and reading items by id |
+| `ProvenancePolicy`, `wrap_untrusted_for_agent` | Host-configured trust classification and escaped untrusted-source markers for recalled prompt context |
 | `Error`, `Result` | The one error every engine returns |
 
 `store_many`, `explore` and `get` have default implementations (one `store` at
@@ -87,3 +88,7 @@ Architecture documents live in
 [operation semantics](../../docs/architecture/operations.md) and
 [namespaces](../../docs/architecture/namespaces.md). The accepted behaviour is
 [`docs/specs/memory-v2.md`](../../docs/specs/memory-v2.md).
+
+The [provenance module](src/provenance/README.md) describes safe prompt markers
+and host-supplied connector prefixes; its accepted contract is
+[Provenance markers](../../docs/specs/provenance-markers.md).
