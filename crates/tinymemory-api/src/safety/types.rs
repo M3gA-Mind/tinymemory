@@ -127,6 +127,7 @@ impl PiiCategory {
     /// Scoring weight contributed when this category is present. Higher =
     /// stronger identification signal. Tuned toward recall — see
     /// `scan` (feature `local-safety`) for how weights combine.
+    #[cfg(feature = "local-safety")]
     pub(crate) fn weight(self) -> u32 {
         match self {
             // High-confidence direct identifiers — enough to flag on their own.
