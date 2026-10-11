@@ -47,6 +47,10 @@ local-safety = ["dep:regex", "dep:log"]
 conformance = []
 
 [[test]]
+name = "local_safety_no_logger"
+required-features = ["local-safety"]
+
+[[test]]
 name = "safety_contract"
 required-features = ["local-safety"]
 
