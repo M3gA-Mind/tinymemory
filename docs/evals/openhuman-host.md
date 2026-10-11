@@ -40,7 +40,7 @@ difference is noise at this sample size.
 
 The source references below use OpenHuman commit `cf16716f4f` for the hook
 behavior, [OpenHuman PR #7346](https://github.com/tinyhumansai/openhuman/pull/7346)
-for the 5000 ms deadline, and
+for the former 5000 ms deadline, and
 [OpenHuman PR #7352](https://github.com/tinyhumansai/openhuman/pull/7352)
 for the proposed three-turn team default. Update them when the host's
 defaults or hook behavior changes.
@@ -48,7 +48,7 @@ defaults or hook behavior changes.
 | Behavior | Eval mirror | OpenHuman source |
 | --- | --- | --- |
 | 1200-token budget, 8 learnings, 6 brain, 6 history, 3 team, beliefs every 10 turns | `main.rs`, OpenHuman policy with `--team-limit 3` | `crates/openhuman-core/src/config/schema/memory.rs:278-336` |
-| Plain `pre_turn` by default, resumed hook after compaction, optional dated path with `--date-hint`, empty pack after 5000 ms | `agent.rs`, `HostHook` | `crates/openhuman-core/src/config/schema/memory.rs` and `crates/openhuman-core/src/memory/lifecycle/hooks.rs` |
+| Plain `pre_turn` by default, resumed hook after compaction, optional dated path with `--date-hint`, empty pack after 10000 ms | `agent.rs`, `HostHook` | `crates/openhuman-core/src/config/schema/memory.rs` and `crates/openhuman-core/src/memory/lifecycle/hooks.rs` |
 | Timed-out task continues in the background and can still log the turn | `agent.rs`, `ScriptedAgent::flush` | `crates/openhuman-core/src/memory/lifecycle/hooks.rs:190-225` |
 | Identical pending belief builds run once | `main.rs`, `coalesce_builds` | `crates/openhuman-core/src/memory/lifecycle/jobs.rs`, `enqueue` |
 | User and reply indices `2n` and `2n+1` | `agent.rs`, `ScriptedAgent::user` | `crates/openhuman-core/src/memory/lifecycle/hooks.rs:245-255,414-435` |
@@ -109,7 +109,7 @@ one `OUT_DIR`; the runner tracks the key's cumulative usage and reserves
 ## Measured runs, 2026-10-10
 
 The tables below were collected with OpenHuman's former 1500 ms default.
-The current host and this mirror use 5000 ms; fresh runs must be compared
+The ten-second host change and this mirror use 10000 ms; fresh runs must be compared
 with their recorded deadline rather than treating old timeout rates as current.
 
 | Run | Scope | Recall / synthesis pack hit | Synthesis model answer | Pre-turn p95 | Timeout rate | CortexDB cost |
@@ -299,3 +299,25 @@ keyword-based model doubles, so its pack misses do not estimate live semantic
 retrieval. These are small fresh runs, not a statistical confidence interval.
 The prompt changes the eval answerer only; it does not change TinyMemory's
 stored memory or OpenHuman's production answer instructions.
+
+## Ten-second host deadline and 1,000-document probe
+
+A fresh CortexDB v0.10.4/OpenRouter baseline run used 1,000 documents, the
+middle needle (seed 251), v3 layout, three team turns, six brain documents,
+and the proposed 10000 ms OpenHuman deadline. The lexical owner question
+found Mira Solis first in 1.769 s. The semantic paraphrase missed in 1.767 s.
+Neither timed out, so the larger deadline changes neither answer in this
+case; the paraphrase remains a ranking problem. CortexDB accounted for
+$0.016 of model calls over ingestion, readiness and both probes.
+
+Direct `diagnostics: "full"` recalls against the retained corpus compared
+freshly phrased lexical questions at different event limits. Asking for 12,
+24, and 100 events took 1.48, 1.49, and 1.43 s, respectively. The 100-event
+request returned 79 events; the needle ranked first in all three. On a
+separate fresh simple question, CortexDB attributed 1.067 s of a 1.101 s
+response to `recall.embed_batch`, 16 ms to `recall.vector_search`, and
+effectively zero to pack assembly. The exact question already warmed by the
+host probe returned in 25 ms, so that cached call is excluded from the
+size comparison. These observations point to the external query-embedding
+call, not the number of returned documents, as the dominant baseline cost
+at this corpus size. Extra LLM retrieval stages can add several seconds.
