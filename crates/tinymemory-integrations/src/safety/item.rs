@@ -10,7 +10,7 @@
 
 use tinymemory_api::{DocumentBody, StoreItem};
 
-use crate::safety::{Policy, SanitizationReport, Sanitized, sanitize_text_with};
+use tinyredact::{Policy, SanitizationReport, Sanitized, sanitize_text_with};
 
 /// Scrubs every text `item` carries under the default (strictest) [`Policy`].
 #[must_use]
@@ -58,5 +58,5 @@ pub fn scrub_item_with(mut item: StoreItem, policy: Policy) -> Sanitized<StoreIt
 }
 
 #[cfg(test)]
-#[path = "mod_tests.rs"]
+#[path = "item_tests.rs"]
 mod tests;

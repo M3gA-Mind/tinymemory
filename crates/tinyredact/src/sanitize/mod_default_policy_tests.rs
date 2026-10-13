@@ -4,11 +4,11 @@
 use super::*;
 use serde_json::json;
 
-use crate::safety::pii::{
+use crate::pii::{
     PII_AADHAAR, PII_CC, PII_CNPJ, PII_CPF, PII_CUIT, PII_DNI, PII_IBAN, PII_MYNUM, PII_NINO,
     PII_PAN_IN, PII_PHONE, PII_RFC, PII_RRN, PII_SSN, redact_pii, scan_candidates,
 };
-use crate::safety::{BareCardGate, has_likely_email, has_likely_pii};
+use crate::{BareCardGate, has_likely_email, has_likely_pii};
 
 /// Assembled rather than written out so a repository secret scanner does
 /// not read the fixture as a real key block.
@@ -49,12 +49,12 @@ fn bare_card_gate_is_the_only_policy_difference() {
         "default policy must redact: {strict:?}"
     );
     assert_eq!(
-        crate::safety::pii::redact_pii_with(&json, Policy::default()).value,
+        crate::pii::redact_pii_with(&json, Policy::default()).value,
         strict.value
     );
     assert_eq!(Policy::default().bare_card, BareCardGate::LuhnOnly);
 
-    let corroborated = crate::safety::pii::redact_pii_with(&json, Policy::corroborated());
+    let corroborated = crate::pii::redact_pii_with(&json, Policy::corroborated());
     assert_eq!(
         corroborated.value, json,
         "corroborated policy keeps timestamps"
@@ -64,7 +64,7 @@ fn bare_card_gate_is_the_only_policy_difference() {
     let visa = "4111111111111111";
     assert!(redact_pii(visa).value.contains(PII_CC));
     assert!(
-        crate::safety::pii::redact_pii_with(visa, Policy::corroborated())
+        crate::pii::redact_pii_with(visa, Policy::corroborated())
             .value
             .contains(PII_CC)
     );

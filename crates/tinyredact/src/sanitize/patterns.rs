@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::safety::pattern::literal;
+use crate::pattern::literal;
 
 /// Private-key blocks (PEM, OpenSSH, PGP), replaced in full.
 pub(super) static BLOCK_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
