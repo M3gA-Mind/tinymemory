@@ -66,6 +66,7 @@
 //! ```
 
 pub mod background;
+pub mod backfill;
 pub mod brain;
 pub mod context;
 pub mod deletion;
