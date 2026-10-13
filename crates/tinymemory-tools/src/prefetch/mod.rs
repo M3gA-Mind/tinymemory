@@ -368,11 +368,9 @@ where
         if let Some(entry) = state
             .entries
             .get_mut(key)
-            .filter(|entry| entry.ticket == ticket)
+            .filter(|entry| entry.ticket == ticket && entry.revision == revision)
         {
-            if entry.revision == revision {
-                entry.pack = pack.map(|pack| (Instant::now(), pack));
-            }
+            entry.pack = pack.map(|pack| (Instant::now(), pack));
         }
     }
 }

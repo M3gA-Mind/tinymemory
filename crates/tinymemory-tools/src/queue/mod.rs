@@ -137,6 +137,10 @@ impl<S: QueueStore> JobQueue<S> {
     /// that fails is kept with its error and retried on a later run, up to
     /// [`MAX_ATTEMPTS`]; an account-wide refusal does not count as one. The
     /// run that gives up says so in its reason.
+    ///
+    /// # Errors
+    /// [`QueueError::NoSuchJob`] when [`Selection::One`] names a job that is
+    /// not queued; the queue is left as it was.
     pub async fn run(
         &self,
         engine: Arc<dyn MemoryEngine>,
