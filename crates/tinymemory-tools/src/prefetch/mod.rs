@@ -151,7 +151,7 @@ impl<K, V> Clone for Prefetcher<K, V> {
 
 impl<K, V> Prefetcher<K, V>
 where
-    K: Clone + Hash + Eq + Send + 'static,
+    K: Clone + Hash + Eq + Send + Sync + 'static,
     V: Clone + Send + 'static,
 {
     /// A prefetcher with default [`Limits`], its own worker pool and no
@@ -322,7 +322,7 @@ where
 
 async fn drain<K, V>(inner: &Arc<Inner<K, V>>, key: &K, ticket: u64, cleanup: &mut Worker<K, V>)
 where
-    K: Clone + Hash + Eq + Send + 'static,
+    K: Clone + Hash + Eq + Send + Sync + 'static,
     V: Clone + Send + 'static,
 {
     loop {
