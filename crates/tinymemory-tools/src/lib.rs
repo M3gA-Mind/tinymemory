@@ -65,8 +65,8 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-pub mod background;
 pub mod backfill;
+pub mod background;
 pub mod brain;
 pub mod context;
 pub mod deletion;
