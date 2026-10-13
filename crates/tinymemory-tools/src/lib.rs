@@ -71,6 +71,8 @@ pub mod context;
 pub mod layout;
 pub mod layout_migration;
 pub mod lifecycle;
+pub mod prefetch;
+pub mod queue;
 pub mod recall;
 pub mod tools;
 

@@ -26,10 +26,13 @@ log = "0.4"
 thiserror = "2"
 # A holistic recall reads its sections concurrently (`join_all`). Runtime
 # agnostic, so the crate still links no executor.
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
+futures = { version = "0.3", default-features = false, features = ["alloc", "std"] }
 
 # `LayoutHost` is an async port.
 async-trait = "0.1"
+
+# A queued job's id is a digest of the job and its root.
+sha2 = "0.10"
 
 [dev-dependencies]
 # Every tool and the context compiler run against the reference engine.

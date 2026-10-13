@@ -31,7 +31,7 @@ pub mod service;
 pub mod state;
 
 #[cfg(test)]
-mod test_host;
+pub(crate) mod test_host;
 
 pub use cleanup::cleanup;
 pub use copy::{Engines, PAGE, copy, legacy_present};
