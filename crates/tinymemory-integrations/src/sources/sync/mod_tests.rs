@@ -106,11 +106,17 @@ fn due_follows_the_schedule_and_never_picks_a_syncing_source() {
         status: SyncStatus::Idle,
         last_sync_at: Some(now - Duration::minutes(ago)),
     };
-    assert!(!is_due(None, None, now), "no schedule syncs on request only");
+    assert!(
+        !is_due(None, None, now),
+        "no schedule syncs on request only"
+    );
     assert!(is_due(Some(60), None, now), "never ran");
     assert!(!is_due(Some(60), Some(&idle(30)), now));
     assert!(is_due(Some(60), Some(&idle(61)), now));
-    assert!(!is_due(Some(1), Some(&idle(10)), now), "floor of 15 minutes");
+    assert!(
+        !is_due(Some(1), Some(&idle(10)), now),
+        "floor of 15 minutes"
+    );
     assert!(is_due(Some(1), Some(&idle(16)), now));
     let syncing = SyncState {
         status: SyncStatus::Syncing,
@@ -136,7 +142,10 @@ fn entries_carry_the_target_and_the_per_kind_caps() {
     let mut github = source("g", SourceKind::GithubRepo, None);
     github.target = "https://github.com/acme/widgets".into();
     let entry = entry_for(&github).unwrap();
-    assert_eq!(entry.url.as_deref(), Some("https://github.com/acme/widgets"));
+    assert_eq!(
+        entry.url.as_deref(),
+        Some("https://github.com/acme/widgets")
+    );
     assert_eq!(
         (entry.max_prs, entry.max_issues, entry.max_commits),
         (Some(10), Some(10), Some(50))
@@ -159,7 +168,9 @@ fn account_wide_failures_are_told_from_item_failures() {
     let wide = |error| SyncError::Engine(error).is_account_wide();
     assert!(wide(Error::Unauthorized("x".into())));
     assert!(wide(Error::Unavailable("x".into())));
-    assert!(wide(Error::Engine("[USER_INSUFFICIENT_CREDITS] top up".into())));
+    assert!(wide(Error::Engine(
+        "[USER_INSUFFICIENT_CREDITS] top up".into()
+    )));
     assert!(!wide(Error::Engine("[OTHER] nope".into())));
     assert!(!wide(Error::InvalidRequest("x".into())));
     assert!(!SyncError::Read("x".into()).is_account_wide());
@@ -188,7 +199,8 @@ impl Scripted {
     }
 
     fn bad(&self, item: &StoreItem) -> bool {
-        self.bad_text.is_some_and(|text| format!("{item:?}").contains(text))
+        self.bad_text
+            .is_some_and(|text| format!("{item:?}").contains(text))
     }
 }
 

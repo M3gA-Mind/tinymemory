@@ -150,18 +150,15 @@ pub trait SourceRegistry: Send + Sync {
 /// A syncing source is never due; one that never ran is; otherwise the
 /// schedule (at least [`MIN_SCHEDULE_MINS`]) must have elapsed.
 #[must_use]
-pub fn is_due(
-    schedule_mins: Option<u32>,
-    state: Option<&SyncState>,
-    now: DateTime<Utc>,
-) -> bool {
+pub fn is_due(schedule_mins: Option<u32>, state: Option<&SyncState>, now: DateTime<Utc>) -> bool {
     let Some(mins) = schedule_mins else {
         return false;
     };
     match state {
         Some(state) if state.status == SyncStatus::Syncing => false,
         Some(state) => state.last_sync_at.is_none_or(|at| {
-            now.signed_duration_since(at) >= Duration::minutes(i64::from(mins.max(MIN_SCHEDULE_MINS)))
+            now.signed_duration_since(at)
+                >= Duration::minutes(i64::from(mins.max(MIN_SCHEDULE_MINS)))
         }),
         None => true,
     }
