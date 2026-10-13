@@ -7,15 +7,26 @@
 //! readable where they now live, and a crash or a pause repeats at most one
 //! page: storing an item the tree already holds is a replay.
 
-use std::path::Path;
 use std::sync::Arc;
 
-use tinymemory_api::{GetRequest, ItemId, ListRequest, MemoryEngine, MetaFilter, StoreItem};
+
 
 use super::map::Placement;
-use super::state::{self, Failure, MigrationState, Phase};
+use super::state::{Failure, MigrationState, MigrationStateStore, Phase};
 use super::error::{Error, Result};
-use crate::memory::import::skips_item;
+
+/// Whether the engine refused this item on its own (the item is skipped and
+/// recorded) rather than the whole account (the copy pauses). Skipping an
+/// account-wide refusal would advance the cursor past items never stored.
+fn skips_item(error: &EngineError) -> bool {
+    matches!(
+        error,
+        EngineError::InvalidRequest(_)
+            | EngineError::Unsupported(_)
+            | EngineError::NotFound(_)
+            | EngineError::Conflict(_)
+    )
+}
 
 /// Items one page exports and stores.
 pub const PAGE: usize = 50;
@@ -51,7 +62,7 @@ pub async fn legacy_present(legacy: &dyn MemoryEngine) -> Result<bool> {
 /// When the state cannot be saved, or the legacy tree cannot be read for a
 /// reason that is not account-wide.
 pub async fn copy<P>(
-    workspace_dir: &Path,
+    store: &dyn MigrationStateStore,
     engines: &Engines,
     placement: &Placement,
     state: &mut MigrationState,
@@ -70,11 +81,11 @@ where
         state.failures.clear();
         state.incomplete.clear();
     }
-    state::save(workspace_dir, state)?;
+    store.save(state)?;
     loop {
         if paused().await {
             return pause(
-                workspace_dir,
+                store,
                 state,
                 "background work is paused".to_string(),
             );
@@ -86,7 +97,7 @@ where
             Err(error) => {
                 let error = Error::from(error);
                 if error.is_account_wide() {
-                    return pause(workspace_dir, state, error.to_string());
+                    return pause(store, state, error.to_string());
                 }
                 return Err(error);
             }
@@ -104,21 +115,21 @@ where
             }
         }
         if let Err(error) = store_and_check(engines.tree.as_ref(), placed, state).await {
-            return pause(workspace_dir, state, error.to_string());
+            return pause(store, state, error.to_string());
         }
         state.cursor = page.next_cursor;
         if state.cursor.is_none() {
             state.phase = Phase::Copied;
-            state::save(workspace_dir, state)?;
-            tracing::info!(
-                copied = state.copied,
-                failures = state.failures.len(),
-                incomplete = state.incomplete.len(),
-                "[memory:layout_migration] legacy tree copied"
+            store.save(state)?;
+            log::info!(
+                "[memory:layout_migration] legacy tree copied copied={} failures={} incomplete={}",
+                state.copied,
+                state.failures.len(),
+                state.incomplete.len()
             );
             return Ok(());
         }
-        state::save(workspace_dir, state)?;
+        store.save(state)?;
     }
 }
 
@@ -133,11 +144,11 @@ fn note_failure(state: &mut MigrationState, id: String, reason: &str) {
     }
 }
 
-fn pause(workspace_dir: &Path, state: &mut MigrationState, why: String) -> Result<()> {
-    tracing::info!(%why, copied = state.copied, "[memory:layout_migration] paused");
+fn pause(store: &dyn MigrationStateStore, state: &mut MigrationState, why: String) -> Result<()> {
+    log::info!("[memory:layout_migration] paused copied={} why={why}", state.copied);
     state.phase = Phase::Paused;
     state.error = Some(why);
-    state::save(workspace_dir, state)
+    store.save(state)
 }
 
 /// Stores `placed` in the per-user tree and reads every item back by id.

@@ -16,7 +16,6 @@
 //! is written only if nothing left there has a twin.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use tinymemory_api::{
     EraseRequest, ForgetTarget, GetRequest, ItemId, ItemKind, ListRequest, MetaFilter, Namespace,
@@ -25,7 +24,7 @@ use tinymemory_api::{
 
 use super::copy::Engines;
 use super::map::Placement;
-use super::state::{self, MigrationState, Phase};
+use super::state::{MigrationState, MigrationStateStore, Phase};
 use super::error::{Error, Result};
 
 /// The legacy items of one kind at one node: their ids, and whether every
@@ -107,10 +106,11 @@ async fn survey(engines: &Engines, placement: &Placement) -> Result<Survey> {
 /// When the state cannot be saved, or the legacy tree cannot be read or
 /// changed for a reason that is not account-wide.
 pub async fn cleanup<P>(
-    workspace_dir: &Path,
+    store: &dyn MigrationStateStore,
     engines: &Engines,
     placement: &Placement,
     shared: bool,
+    unconfirmed: bool,
     state: &mut MigrationState,
     paused: impl Fn() -> P,
 ) -> Result<()>
@@ -120,19 +120,18 @@ where
     state.phase = Phase::Cleaning;
     state.cleaning = true;
     state.error = None;
-    state::save(workspace_dir, state)?;
+    store.save(state)?;
     // An import that finished without its last batch confirmed listed may
     // hold items the survey cannot see yet: never erase a scope whole then,
     // forget by verified id as for a shared tree.
-    let unconfirmed = crate::memory::import::listed_unconfirmed(workspace_dir);
     if unconfirmed {
-        tracing::info!("[memory:layout_migration] import not confirmed listed; forgetting by id");
+        log::info!("[memory:layout_migration] import not confirmed listed; forgetting by id");
     }
     match remove_moved(engines, placement, shared || unconfirmed, &paused).await {
         Ok(true) => {}
-        Ok(false) => return pause(workspace_dir, state, "background work is paused".into()),
+        Ok(false) => return pause(store, state, "background work is paused".into()),
         Err(error) if error.is_account_wide() => {
-            return pause(workspace_dir, state, error.to_string())
+            return pause(store, state, error.to_string())
         }
         Err(error) => return Err(error),
     }
@@ -146,10 +145,10 @@ where
         );
     }
     state.phase = Phase::Cleaned;
-    state::save(workspace_dir, state)?;
-    tracing::info!(
-        left = left.groups.len(),
-        "[memory:layout_migration] legacy tree cleaned"
+    store.save(state)?;
+    log::info!(
+        "[memory:layout_migration] legacy tree cleaned left={}",
+        left.groups.len()
     );
     Ok(())
 }
@@ -187,17 +186,17 @@ where
                 .legacy
                 .forget(ForgetTarget::Ids(batch.to_vec()))
                 .await
-                .map_err(Error::from)?;
+                ?;
         }
     }
     Ok(true)
 }
 
-fn pause(workspace_dir: &Path, state: &mut MigrationState, why: String) -> Result<()> {
-    tracing::info!(%why, "[memory:layout_migration] cleanup paused");
+fn pause(store: &dyn MigrationStateStore, state: &mut MigrationState, why: String) -> Result<()> {
+    log::info!("[memory:layout_migration] cleanup paused why={why}");
     state.phase = Phase::Paused;
     state.error = Some(why);
-    state::save(workspace_dir, state)
+    store.save(state)
 }
 
 #[cfg(test)]
