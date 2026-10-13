@@ -150,6 +150,7 @@ async fn everything_moved_is_erased_from_the_legacy_tree() {
         &engines,
         &placement(),
         false,
+        false,
         &mut state,
         || async { false },
     )
@@ -186,6 +187,7 @@ async fn an_item_without_its_twin_is_never_removed() {
         &engines,
         &placement(),
         false,
+        false,
         &mut state,
         || async { false },
     )
@@ -220,6 +222,7 @@ async fn an_engine_that_cannot_erase_forgets_by_id() {
         &engines,
         &placement(),
         false,
+        false,
         &mut state,
         || async { false },
     )
@@ -241,6 +244,7 @@ async fn a_paused_cleanup_says_it_was_cleaning() {
         &store,
         &engines,
         &placement(),
+        false,
         false,
         &mut state,
         || async { true },
@@ -277,6 +281,7 @@ async fn a_shared_legacy_tree_is_forgotten_by_id_never_erased() {
         &engines,
         &placement(),
         true,
+        false,
         &mut state,
         || async { false },
     )
@@ -314,6 +319,7 @@ async fn after_an_unconfirmed_import_moved_items_are_forgotten_by_id_never_erase
         &engines,
         &placement(),
         false,
+        true,
         &mut state,
         || async { false },
     )
