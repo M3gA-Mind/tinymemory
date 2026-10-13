@@ -31,7 +31,10 @@ impl ImportCounts {
 ///
 /// As [`LegacyWorkspace::open`].
 pub fn open_legacy(dir: &Path) -> Result<LegacyWorkspace, Error> {
-    log::debug!("[memory:import] skipping connector syncs at {}", dir.display());
+    log::debug!(
+        "[memory:import] skipping connector syncs at {}",
+        dir.display()
+    );
     LegacyWorkspace::open(dir).map(|workspace| workspace.skip_connector_syncs(true))
 }
 

@@ -168,6 +168,10 @@ name = "legacy_import"
 required-features = ["legacy-import"]
 
 [[test]]
+name = "legacy_importer"
+required-features = ["legacy-import"]
+
+[[test]]
 name = "reader_dispatch"
 required-features = ["sources"]
 

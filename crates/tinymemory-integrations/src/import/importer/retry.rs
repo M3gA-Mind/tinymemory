@@ -108,10 +108,7 @@ impl Importer {
                         return;
                     }
                     let id = legacy_id(&item);
-                    match self
-                        .with_retries(|| self.engine.store(item.clone()))
-                        .await
-                    {
+                    match self.with_retries(|| self.engine.store(item.clone())).await {
                         Ok(_) => {
                             file.failed.retain(|failed| failed.id != id);
                             file.state.imported += 1;

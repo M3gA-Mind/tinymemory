@@ -211,7 +211,9 @@ impl Importer {
                 }
                 Err(error) => {
                     log::debug!("[memory:import] item skipped: {error}");
-                    outcome.failed.push(self.failed_item(&imported.item, &error));
+                    outcome
+                        .failed
+                        .push(self.failed_item(&imported.item, &error));
                 }
             }
             outcome.checkpoint = Some(imported.checkpoint);
@@ -275,7 +277,9 @@ impl Importer {
                 // Every item the importer yields has a legacy id; one without
                 // could never be found again to retry, so it is not listed.
                 if failed.id.is_empty() {
-                    log::warn!("[memory:import] a refused item has no legacy id; not kept for retry");
+                    log::warn!(
+                        "[memory:import] a refused item has no legacy id; not kept for retry"
+                    );
                     continue;
                 }
                 match file.failed.iter_mut().find(|known| known.id == failed.id) {
@@ -337,12 +341,18 @@ impl Importer {
             }
             Some(error) => {
                 file.paused_for_credits = credits;
-                log::warn!("[memory:import] import stopped, imported={}", file.state.imported);
+                log::warn!(
+                    "[memory:import] import stopped, imported={}",
+                    file.state.imported
+                );
                 file.state.phase = ImportPhase::Error;
                 file.state.error = Some(error);
             }
             None => {
-                log::info!("[memory:import] import finished, imported={}", file.state.imported);
+                log::info!(
+                    "[memory:import] import finished, imported={}",
+                    file.state.imported
+                );
                 file.state.phase = ImportPhase::Done;
                 file.state.error = None;
             }
