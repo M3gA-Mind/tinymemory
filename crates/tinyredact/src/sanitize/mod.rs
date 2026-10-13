@@ -2,16 +2,16 @@
 //!
 //! [`sanitize_text_with`] runs, in order: private-key blocks
 //! ([`patterns::BLOCK_PATTERNS`], replaced in full), credential markers
-//! ([`crate::safety::redact_credential_markers`]), credential shapes
+//! ([`crate::redact_credential_markers`]), credential shapes
 //! ([`patterns::REDACTION_PATTERNS`]) and finally the PII pass
-//! ([`crate::safety::pii`]). [`sanitize_json_with`] walks a JSON value,
+//! ([`crate::pii`]). [`sanitize_json_with`] walks a JSON value,
 //! replacing the value under a sensitive-looking key wholesale and running
 //! every other string through [`sanitize_text_with`].
 
 use serde_json::Value;
 
-use crate::safety::policy::{Policy, SanitizationReport, Sanitized};
-use crate::safety::{markers, pii};
+use crate::policy::{Policy, SanitizationReport, Sanitized};
+use crate::{markers, pii};
 
 mod patterns;
 

@@ -30,8 +30,8 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-use crate::safety::pattern::literal;
-use crate::safety::policy::{BareCardGate, Policy, SanitizationReport, Sanitized};
+use crate::pattern::literal;
+use crate::policy::{BareCardGate, Policy, SanitizationReport, Sanitized};
 
 mod checks;
 mod normalize;
