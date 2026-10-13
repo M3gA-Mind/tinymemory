@@ -20,6 +20,9 @@
 //!   ([`Brain`]), and [`background`] runs the slow work both hand back
 //!   ([`BackgroundJob`]).
 //!
+//! - [`layout_migration`] moves a legacy tree into the per-user layout,
+//!   page by page, resumably, over two engines and two host ports.
+//!
 //! Everything is written against [`tinymemory_api::MemoryEngine`] alone, so a
 //! host moves between engines by changing the one it constructs.
 //!
@@ -66,6 +69,7 @@ pub mod background;
 pub mod brain;
 pub mod context;
 pub mod layout;
+pub mod layout_migration;
 pub mod lifecycle;
 pub mod recall;
 pub mod tools;

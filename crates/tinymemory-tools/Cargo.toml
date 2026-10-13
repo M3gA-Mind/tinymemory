@@ -28,10 +28,12 @@ thiserror = "2"
 # agnostic, so the crate still links no executor.
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 
+# `LayoutHost` is an async port.
+async-trait = "0.1"
+
 [dev-dependencies]
 # Every tool and the context compiler run against the reference engine.
 tinymemory-api = { path = "../tinymemory-api", features = ["conformance"] }
-async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt"] }
 
 [lints]
