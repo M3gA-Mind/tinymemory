@@ -6,11 +6,10 @@ use tinymemory_api::{
     ForgetReport, Hit, LearningKind, ListPage, MemoryEngine, MemoryMeta, RecallAnswer,
     RecallRequest, Result, StoreItem, StoreReceipt,
 };
-use tinymemory_tools::MemoryLayout;
+use crate::layout::MemoryLayout;
 
 use super::*;
-use crate::memory::layout_migration::copy::copy;
-use crate::memory::layout_migration::map::FlowPlacement;
+use super::super::copy::copy;
 
 fn placement() -> Placement {
     Placement {
@@ -57,7 +56,7 @@ async fn texts(engine: &dyn MemoryEngine) -> Vec<String> {
     texts
 }
 
-async fn copied(tmp: &Path, engines: &Engines) -> MigrationState {
+async fn copied(tmp: &dyn MigrationStateStore, engines: &Engines) -> MigrationState {
     let mut state = MigrationState::default();
     copy(tmp, engines, &placement(), &mut state, || async { false })
         .await
@@ -138,16 +137,16 @@ impl MemoryEngine for NoErase {
 
 #[tokio::test]
 async fn everything_moved_is_erased_from_the_legacy_tree() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = seeded(10).await;
     let tree = Arc::new(ReferenceEngine::new());
     let engines = Engines {
         legacy: legacy.clone(),
         tree: tree.clone(),
     };
-    let mut state = copied(tmp.path(), &engines).await;
+    let mut state = copied(&store, &engines).await;
     cleanup(
-        tmp.path(),
+        &store,
         &engines,
         &placement(),
         false,
@@ -163,14 +162,14 @@ async fn everything_moved_is_erased_from_the_legacy_tree() {
 
 #[tokio::test]
 async fn an_item_without_its_twin_is_never_removed() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = seeded(10).await;
     let tree = Arc::new(ReferenceEngine::new());
     let engines = Engines {
         legacy: legacy.clone(),
         tree: tree.clone(),
     };
-    let mut state = copied(tmp.path(), &engines).await;
+    let mut state = copied(&store, &engines).await;
     // The per-user copy of "fact 3" is lost after the copy.
     let lost = tree
         .list(ListRequest::new(MetaFilter::default(), 100))
@@ -183,7 +182,7 @@ async fn an_item_without_its_twin_is_never_removed() {
     tree.forget(ForgetTarget::Ids(vec![lost.id])).await.unwrap();
 
     cleanup(
-        tmp.path(),
+        &store,
         &engines,
         &placement(),
         false,
@@ -198,7 +197,7 @@ async fn an_item_without_its_twin_is_never_removed() {
 
 #[tokio::test]
 async fn an_engine_that_cannot_erase_forgets_by_id() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = Arc::new(NoErase(ReferenceEngine::new()));
     for i in 0..5 {
         legacy
@@ -215,9 +214,9 @@ async fn an_engine_that_cannot_erase_forgets_by_id() {
         legacy: legacy.clone(),
         tree: Arc::new(ReferenceEngine::new()),
     };
-    let mut state = copied(tmp.path(), &engines).await;
+    let mut state = copied(&store, &engines).await;
     cleanup(
-        tmp.path(),
+        &store,
         &engines,
         &placement(),
         false,
@@ -232,14 +231,14 @@ async fn an_engine_that_cannot_erase_forgets_by_id() {
 
 #[tokio::test]
 async fn a_paused_cleanup_says_it_was_cleaning() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let engines = Engines {
         legacy: seeded(4).await,
         tree: Arc::new(ReferenceEngine::new()),
     };
-    let mut state = copied(tmp.path(), &engines).await;
+    let mut state = copied(&store, &engines).await;
     cleanup(
-        tmp.path(),
+        &store,
         &engines,
         &placement(),
         false,
@@ -255,7 +254,7 @@ async fn a_paused_cleanup_says_it_was_cleaning() {
 
 #[tokio::test]
 async fn a_shared_legacy_tree_is_forgotten_by_id_never_erased() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = Arc::new(NeverErase(ReferenceEngine::new()));
     for i in 0..5 {
         legacy
@@ -272,9 +271,9 @@ async fn a_shared_legacy_tree_is_forgotten_by_id_never_erased() {
         legacy: legacy.clone(),
         tree: Arc::new(ReferenceEngine::new()),
     };
-    let mut state = copied(tmp.path(), &engines).await;
+    let mut state = copied(&store, &engines).await;
     cleanup(
-        tmp.path(),
+        &store,
         &engines,
         &placement(),
         true,
@@ -292,14 +291,7 @@ async fn a_shared_legacy_tree_is_forgotten_by_id_never_erased() {
 /// forgets only the moved items by id (an erase would panic here).
 #[tokio::test]
 async fn after_an_unconfirmed_import_moved_items_are_forgotten_by_id_never_erased() {
-    let tmp = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(tmp.path().join("memory")).unwrap();
-    std::fs::write(
-        tmp.path().join("memory").join("import_state.json"),
-        r#"{"listed_unconfirmed": true}"#,
-    )
-    .unwrap();
-    assert!(crate::memory::import::listed_unconfirmed(tmp.path()));
+    let store = MemoryStateStore::default();
     let legacy = Arc::new(NeverErase(ReferenceEngine::new()));
     for i in 0..5 {
         legacy
@@ -316,9 +308,9 @@ async fn after_an_unconfirmed_import_moved_items_are_forgotten_by_id_never_erase
         legacy: legacy.clone(),
         tree: Arc::new(ReferenceEngine::new()),
     };
-    let mut state = copied(tmp.path(), &engines).await;
+    let mut state = copied(&store, &engines).await;
     cleanup(
-        tmp.path(),
+        &store,
         &engines,
         &placement(),
         false,

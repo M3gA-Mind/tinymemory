@@ -2,11 +2,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{LearningKind, MemoryMeta, Namespace, SourceKind, SourceRef};
-use tinymemory_tools::MemoryLayout;
+use crate::layout::MemoryLayout;
 
 use super::*;
-use crate::memory::layout_migration::map::FlowPlacement;
-use crate::memory::test_fixtures::RefusingEngine;
+use super::super::test_host::RefusingEngine;
 
 fn placement() -> Placement {
     Placement {
@@ -71,7 +70,7 @@ async fn an_empty_legacy_tree_has_nothing_to_move() {
 
 #[tokio::test]
 async fn every_item_is_copied_placed_and_read_back() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = legacy_tree(120).await;
     let tree = Arc::new(ReferenceEngine::new());
     let engines = Engines {
@@ -79,7 +78,7 @@ async fn every_item_is_copied_placed_and_read_back() {
         tree: tree.clone(),
     };
     let mut state = MigrationState::default();
-    copy(tmp.path(), &engines, &placement(), &mut state, || async {
+    copy(&store, &engines, &placement(), &mut state, || async {
         false
     })
     .await
@@ -104,12 +103,12 @@ async fn every_item_is_copied_placed_and_read_back() {
         .await
         .unwrap();
     assert_eq!(files.items[0].meta.namespace.to_string(), "source:files");
-    assert_eq!(state::load(tmp.path()).unwrap(), state, "saved as it ended");
+    assert_eq!(store.load().unwrap(), state, "saved as it ended");
 }
 
 #[tokio::test]
 async fn a_paused_copy_resumes_where_it_stopped_without_duplicates() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = legacy_tree(120).await;
     let tree = Arc::new(ReferenceEngine::new());
     let engines = Engines {
@@ -118,7 +117,7 @@ async fn a_paused_copy_resumes_where_it_stopped_without_duplicates() {
     };
     let pages = AtomicUsize::new(0);
     let mut state = MigrationState::default();
-    copy(tmp.path(), &engines, &placement(), &mut state, || {
+    copy(&store, &engines, &placement(), &mut state, || {
         let stop = pages.fetch_add(1, Ordering::SeqCst) >= 1;
         async move { stop }
     })
@@ -129,8 +128,8 @@ async fn a_paused_copy_resumes_where_it_stopped_without_duplicates() {
     assert!(state.cursor.is_some());
 
     // A crash here: resume from what was saved, not from memory.
-    let mut resumed = state::load(tmp.path()).unwrap();
-    copy(tmp.path(), &engines, &placement(), &mut resumed, || async {
+    let mut resumed = store.load().unwrap();
+    copy(&store, &engines, &placement(), &mut resumed, || async {
         false
     })
     .await
@@ -142,7 +141,7 @@ async fn a_paused_copy_resumes_where_it_stopped_without_duplicates() {
 
 #[tokio::test]
 async fn a_repeated_page_is_a_replay() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = legacy_tree(3).await;
     let tree = Arc::new(ReferenceEngine::new());
     let engines = Engines {
@@ -150,13 +149,13 @@ async fn a_repeated_page_is_a_replay() {
         tree: tree.clone(),
     };
     let mut first = MigrationState::default();
-    copy(tmp.path(), &engines, &placement(), &mut first, || async {
+    copy(&store, &engines, &placement(), &mut first, || async {
         false
     })
     .await
     .unwrap();
     let mut again = MigrationState::default();
-    copy(tmp.path(), &engines, &placement(), &mut again, || async {
+    copy(&store, &engines, &placement(), &mut again, || async {
         false
     })
     .await
@@ -168,7 +167,7 @@ async fn a_repeated_page_is_a_replay() {
 
 #[tokio::test]
 async fn the_catch_up_pass_counts_each_item_once() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let engines = Engines {
         legacy: legacy_tree(3).await,
         tree: Arc::new(ReferenceEngine::new()),
@@ -176,7 +175,7 @@ async fn the_catch_up_pass_counts_each_item_once() {
     let mut state = MigrationState::default();
     for _ in 0..2 {
         // The first pass, then the catch-up pass on the same state.
-        copy(tmp.path(), &engines, &placement(), &mut state, || async {
+        copy(&store, &engines, &placement(), &mut state, || async {
             false
         })
         .await
@@ -188,13 +187,13 @@ async fn the_catch_up_pass_counts_each_item_once() {
 
 #[tokio::test]
 async fn an_account_that_cannot_write_pauses_without_advancing() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let engines = Engines {
         legacy: legacy_tree(3).await,
         tree: Arc::new(RefusingEngine::out_of_credits()),
     };
     let mut state = MigrationState::default();
-    copy(tmp.path(), &engines, &placement(), &mut state, || async {
+    copy(&store, &engines, &placement(), &mut state, || async {
         false
     })
     .await
@@ -211,7 +210,7 @@ async fn an_account_that_cannot_write_pauses_without_advancing() {
 
 #[tokio::test]
 async fn a_legacy_tree_that_cannot_be_read_pauses() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let engines = Engines {
         legacy: Arc::new(RefusingEngine::with(tinymemory_api::Error::Unavailable(
             "down".into(),
@@ -219,7 +218,7 @@ async fn a_legacy_tree_that_cannot_be_read_pauses() {
         tree: Arc::new(ReferenceEngine::new()),
     };
     let mut state = MigrationState::default();
-    copy(tmp.path(), &engines, &placement(), &mut state, || async {
+    copy(&store, &engines, &placement(), &mut state, || async {
         false
     })
     .await
@@ -229,7 +228,7 @@ async fn a_legacy_tree_that_cannot_be_read_pauses() {
 
 #[tokio::test]
 async fn old_brain_nodes_are_refiled_by_connector() {
-    let tmp = tempfile::tempdir().unwrap();
+    let store = MemoryStateStore::default();
     let legacy = Arc::new(ReferenceEngine::new());
     let doc = |text: &str, node: &str, kind: SourceKind, path: Option<&str>| {
         StoreItem::document(
@@ -268,7 +267,7 @@ async fn old_brain_nodes_are_refiled_by_connector() {
         tree: tree.clone(),
     };
     let mut state = MigrationState::default();
-    copy(tmp.path(), &engines, &placement(), &mut state, || async {
+    copy(&store, &engines, &placement(), &mut state, || async {
         false
     })
     .await

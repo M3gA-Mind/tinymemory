@@ -152,3 +152,81 @@ impl LayoutHost for FakeHost {
         }
     }
 }
+
+/// An engine that refuses every operation with one error, the way the hosted
+/// engine refuses a whole account (no credits, a rejected key, an outage).
+/// It describes itself as the reference engine.
+pub(crate) struct RefusingEngine {
+    inner: ReferenceEngine,
+    error: tinymemory_api::Error,
+}
+
+impl RefusingEngine {
+    /// The hosted engine's refusal for an exhausted credit balance (HTTP 402).
+    pub(crate) fn out_of_credits() -> Self {
+        Self::with(tinymemory_api::Error::Engine(
+            "[USER_INSUFFICIENT_CREDITS] memory API fetch on api.example: the account has \
+             insufficient credits (HTTP 402)"
+                .into(),
+        ))
+    }
+
+    /// Refuses every operation with `error`.
+    pub(crate) fn with(error: tinymemory_api::Error) -> Self {
+        Self {
+            inner: ReferenceEngine::new(),
+            error,
+        }
+    }
+
+    async fn health(&self) -> tinymemory_api::EngineHealth {
+        self.inner.health().await
+    }
+
+    async fn recall(
+        &self,
+        _req: tinymemory_api::RecallRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::RecallAnswer> {
+        Err(self.error.clone())
+    }
+
+    async fn fetch(
+        &self,
+        _req: tinymemory_api::FetchRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::FetchPage> {
+        Err(self.error.clone())
+    }
+
+    async fn store(
+        &self,
+        _item: tinymemory_api::StoreItem,
+    ) -> tinymemory_api::Result<tinymemory_api::StoreReceipt> {
+        Err(self.error.clone())
+    }
+
+    async fn forget(
+        &self,
+        _target: tinymemory_api::ForgetTarget,
+    ) -> tinymemory_api::Result<tinymemory_api::ForgetReport> {
+        Err(self.error.clone())
+    }
+
+    async fn list(&self, _req: ListRequest) -> tinymemory_api::Result<tinymemory_api::ListPage> {
+        Err(self.error.clone())
+    }
+
+    async fn export(
+        &self,
+        _req: ListRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::ExportPage> {
+        Err(self.error.clone())
+    }
+
+    async fn consolidate(
+        &self,
+        _req: tinymemory_api::ConsolidateRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::ConsolidateReceipt> {
+        Err(self.error.clone())
+    }
+}
+
