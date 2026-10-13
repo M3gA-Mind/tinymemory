@@ -21,31 +21,14 @@ mod types;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use async_trait::async_trait;
 use futures::lock::Mutex as AsyncMutex;
 use sha2::{Digest, Sha256};
 
 use crate::list_store::{ListStore, StoreError};
 
 pub use types::{
-    Ack, Binding, Entry, Epoch, Limits, PendingError, WriteExecutor, WriteGate, WriteOperation,
+    Ack, Binding, Entry, Epoch, FenceToken, Limits, PendingError, WriteExecutor, WriteGate, WriteOperation,
 };
-
-/// Runs one queued write against the engine.
-///
-/// `Err` is a stable error code (never an engine message); it becomes the
-/// entry's status and stops the drain.
-#[async_trait]
-impl<F> WriteExecutor for F
-where
-    F: for<'a> Fn(&'a WriteOperation) -> futures::future::BoxFuture<'a, Result<(), String>>
-        + Send
-        + Sync,
-{
-    async fn run(&self, operation: &WriteOperation) -> Result<(), String> {
-        self(operation).await
-    }
-}
 
 static TICKETS: AtomicU64 = AtomicU64::new(0);
 

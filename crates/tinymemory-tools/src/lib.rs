@@ -68,9 +68,12 @@
 pub mod background;
 pub mod brain;
 pub mod context;
+pub mod deletion;
 pub mod layout;
 pub mod layout_migration;
 pub mod lifecycle;
+pub mod list_store;
+pub mod pending;
 pub mod prefetch;
 pub mod queue;
 pub mod recall;

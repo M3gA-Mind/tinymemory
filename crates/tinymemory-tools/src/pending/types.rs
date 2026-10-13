@@ -150,7 +150,6 @@ pub struct WriteGate {
     admission: Mutex<()>,
     generation: AtomicU64,
     fences: AtomicU64,
-    sequence: AtomicU64,
 }
 
 /// Held while an erasure fences the owner; dropping it lifts the fence.
@@ -170,7 +169,6 @@ impl WriteGate {
             admission: Mutex::new(()),
             generation: AtomicU64::new(0),
             fences: AtomicU64::new(0),
-            sequence: AtomicU64::new(0),
         }
     }
 
@@ -204,8 +202,7 @@ impl WriteGate {
     pub fn begin_fence(&self) -> FenceToken<'_> {
         let _admission = self.admission.lock().unwrap_or_else(|e| e.into_inner());
         self.fences.fetch_add(1, Ordering::SeqCst);
-        let next = self.sequence.fetch_add(1, Ordering::SeqCst) + 1;
-        let generation = self.generation.load(Ordering::SeqCst).max(next - 1) + 1;
+        let generation = self.generation.load(Ordering::SeqCst) + 1;
         self.generation.store(generation, Ordering::SeqCst);
         FenceToken {
             gate: self,
