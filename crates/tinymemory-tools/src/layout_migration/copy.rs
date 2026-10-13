@@ -17,6 +17,12 @@ use super::error::{Error, Result};
 use super::map::Placement;
 use super::state::{Failure, MigrationState, MigrationStateStore, Phase};
 
+impl std::fmt::Debug for Engines {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Engines").finish_non_exhaustive()
+    }
+}
+
 /// Whether the engine refused this item on its own (the item is skipped and
 /// recorded) rather than the whole account (the copy pauses). Skipping an
 /// account-wide refusal would advance the cursor past items never stored.
@@ -35,6 +41,7 @@ pub const PAGE: usize = 50;
 
 /// The two engines a migration works between, on one endpoint and
 /// credential: the legacy tree it reads, and the per-user tree it writes.
+#[derive(Clone)]
 pub struct Engines {
     /// The legacy layout (`app:tinymemory/…`).
     pub legacy: Arc<dyn MemoryEngine>,
@@ -86,11 +93,7 @@ where
     store.save(state)?;
     loop {
         if paused().await {
-            return pause(
-                store,
-                state,
-                "background work is paused".to_string(),
-            );
+            return pause(store, state, "background work is paused".to_string());
         }
         let mut request = ListRequest::new(MetaFilter::default(), PAGE);
         request.cursor = state.cursor.clone();
@@ -147,7 +150,10 @@ fn note_failure(state: &mut MigrationState, id: String, reason: &str) {
 }
 
 fn pause(store: &dyn MigrationStateStore, state: &mut MigrationState, why: String) -> Result<()> {
-    log::info!("[memory:layout_migration] paused copied={} why={why}", state.copied);
+    log::info!(
+        "[memory:layout_migration] paused copied={} why={why}",
+        state.copied
+    );
     state.phase = Phase::Paused;
     state.error = Some(why);
     store.save(state)

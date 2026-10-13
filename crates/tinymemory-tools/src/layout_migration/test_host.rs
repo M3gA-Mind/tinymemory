@@ -7,13 +7,13 @@ use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     LearningKind, ListRequest, MemoryEngine, MemoryMeta, MetaFilter, Namespace, StoreItem,
 };
-use crate::layout::MemoryLayout;
 
 use super::copy::Engines;
 use super::error::Result;
 use super::job::{LayoutHost, LegacyClaim};
 use super::map::{FlowPlacement, Placement};
 use super::state::{MemoryStateStore, MigrationStateStore};
+use crate::layout::MemoryLayout;
 
 /// A shared-tree claim kept in memory: `other` is whether another account
 /// holds it, `taken` whether this one took it.
@@ -178,6 +178,13 @@ impl RefusingEngine {
             error,
         }
     }
+}
+
+#[async_trait::async_trait]
+impl MemoryEngine for RefusingEngine {
+    fn descriptor(&self) -> &tinymemory_api::EngineDescriptor {
+        self.inner.descriptor()
+    }
 
     async fn health(&self) -> tinymemory_api::EngineHealth {
         self.inner.health().await
@@ -229,4 +236,3 @@ impl RefusingEngine {
         Err(self.error.clone())
     }
 }
-

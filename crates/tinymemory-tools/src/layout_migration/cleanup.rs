@@ -18,8 +18,8 @@
 use std::collections::BTreeMap;
 
 use tinymemory_api::{
-    EraseRequest, ForgetTarget, GetRequest, ItemId, ItemKind, ListRequest, MetaFilter, Namespace,
-    Reach, MAX_GET_IDS,
+    EraseRequest, ForgetTarget, GetRequest, ItemId, ItemKind, ListRequest, MAX_GET_IDS, MetaFilter,
+    Namespace, Reach,
 };
 
 use super::copy::Engines;
@@ -130,9 +130,7 @@ where
     match remove_moved(engines, placement, shared || unconfirmed, &paused).await {
         Ok(true) => {}
         Ok(false) => return pause(store, state, "background work is paused".into()),
-        Err(error) if error.is_account_wide() => {
-            return pause(store, state, error.to_string())
-        }
+        Err(error) if error.is_account_wide() => return pause(store, state, error.to_string()),
         Err(error) => return Err(error),
     }
     let left = survey(engines, placement).await?;
@@ -185,8 +183,7 @@ where
             engines
                 .legacy
                 .forget(ForgetTarget::Ids(batch.to_vec()))
-                .await
-                ?;
+                .await?;
         }
     }
     Ok(true)

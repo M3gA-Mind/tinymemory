@@ -35,6 +35,7 @@ pub enum FlowPlacement {
 }
 
 /// Where items go in the per-user tree.
+#[derive(Debug)]
 pub struct Placement {
     /// The layout new items are written with.
     pub layout: MemoryLayout,
@@ -45,6 +46,15 @@ pub struct Placement {
     /// `[memory] split_github_by_repo`: GitHub documents go one collection
     /// per repository, as a sync files them now.
     pub split_github_by_repo: bool,
+}
+
+impl std::fmt::Debug for FlowPlacement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WithRoot => f.write_str("WithRoot"),
+            Self::InNode(_) => f.write_str("InNode(..)"),
+        }
+    }
 }
 
 /// The brain source of local files and uploads, of any format.
@@ -140,10 +150,11 @@ pub fn brain_node_with(
     source: &BrainSource,
     item: &StoreItem,
 ) -> Result<Namespace> {
-    if split_github_by_repo && *source == BrainSource::Github {
-        if let Some(repo) = github_collection(item) {
-            return Ok(layout.brain_collection(source, &repo)?);
-        }
+    if split_github_by_repo
+        && *source == BrainSource::Github
+        && let Some(repo) = github_collection(item)
+    {
+        return Ok(layout.brain_collection(source, &repo)?);
     }
     Ok(layout.brain(source)?)
 }

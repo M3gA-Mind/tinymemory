@@ -114,7 +114,11 @@ pub struct MemoryStateStore(Mutex<MigrationState>);
 
 impl MigrationStateStore for MemoryStateStore {
     fn load(&self) -> Result<MigrationState> {
-        Ok(self.0.lock().unwrap_or_else(PoisonError::into_inner).clone())
+        Ok(self
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone())
     }
 
     fn save(&self, state: &MigrationState) -> Result<()> {

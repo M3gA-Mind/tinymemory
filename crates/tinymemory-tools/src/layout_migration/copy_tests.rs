@@ -1,13 +1,13 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::layout::MemoryLayout;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{LearningKind, MemoryMeta, Namespace, SourceKind, SourceRef};
-use crate::layout::MemoryLayout;
 
 use super::super::map::FlowPlacement;
 use super::super::state::MemoryStateStore;
-use super::*;
 use super::super::test_host::RefusingEngine;
+use super::*;
 
 fn placement() -> Placement {
     Placement {
@@ -203,11 +203,13 @@ async fn an_account_that_cannot_write_pauses_without_advancing() {
     assert_eq!(state.phase, Phase::Paused);
     assert_eq!(state.cursor, None, "the page is sent again on resume");
     assert_eq!(state.copied, 0);
-    assert!(state
-        .error
-        .as_deref()
-        .unwrap_or_default()
-        .contains("credits"));
+    assert!(
+        state
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("credits")
+    );
 }
 
 #[tokio::test]

@@ -186,3 +186,29 @@ fn a_hosts_root_is_kept_below_the_wire_root() {
         "a node outside the host's root is not its brain"
     );
 }
+
+#[test]
+fn legacy_nodes_map_to_todays_sources() {
+    let file = document("source:web", SourceKind::File, None);
+    assert_eq!(legacy_brain_node("pdf", &file), files_source());
+    assert_eq!(legacy_brain_node("web", &file), files_source());
+    let link = document("source:web", SourceKind::Link, None);
+    assert_eq!(legacy_brain_node("web", &link), BrainSource::Web);
+    assert_eq!(legacy_brain_node("notion", &link), BrainSource::Notion);
+    assert_eq!(
+        legacy_brain_node("google_drive", &link),
+        BrainSource::Other("googledrive".into())
+    );
+}
+
+#[test]
+fn a_github_collection_is_the_lowercase_owner_and_repo() {
+    let mut item = document("source:github", SourceKind::Import, None);
+    item.meta_mut().repo = Some("Acme/Widgets".into());
+    assert_eq!(github_collection(&item).as_deref(), Some("acme--widgets"));
+    item.meta_mut().repo = None;
+    item.meta_mut().url = Some("https://github.com/foo-bar/repo.git?tab=1".into());
+    assert_eq!(github_collection(&item).as_deref(), Some("foo-bar--repo"));
+    item.meta_mut().url = Some("https://example.com".into());
+    assert_eq!(github_collection(&item), None);
+}

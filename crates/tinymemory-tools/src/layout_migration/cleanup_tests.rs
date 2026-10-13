@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
+use crate::layout::MemoryLayout;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
-    async_trait, EngineDescriptor, EngineHealth, EraseReport, ExportPage, FetchPage, FetchRequest,
-    ForgetReport, Hit, LearningKind, ListPage, MemoryEngine, MemoryMeta, RecallAnswer,
-    RecallRequest, Result, StoreItem, StoreReceipt,
+    EngineDescriptor, EngineHealth, EraseReport, ExportPage, FetchPage, FetchRequest, ForgetReport,
+    Hit, LearningKind, ListPage, MemoryEngine, MemoryMeta, RecallAnswer, RecallRequest, Result,
+    StoreItem, StoreReceipt, async_trait,
 };
-use crate::layout::MemoryLayout;
 
+use super::super::copy::copy;
 use super::super::map::FlowPlacement;
 use super::super::state::MemoryStateStore;
 use super::*;
-use super::super::copy::copy;
 
 fn placement() -> Placement {
     Placement {

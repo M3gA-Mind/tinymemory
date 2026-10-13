@@ -40,5 +40,8 @@ fn the_state_round_trips_through_json_and_omits_empty_fields() {
     assert!(json.get("cursor").is_none());
     assert!(json.get("failures").is_none());
     assert!(json.get("rechecks").is_none());
-    assert_eq!(serde_json::from_value::<MigrationState>(json).unwrap(), state);
+    assert_eq!(
+        serde_json::from_value::<MigrationState>(json).unwrap(),
+        state
+    );
 }

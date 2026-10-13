@@ -21,7 +21,7 @@
 use async_trait::async_trait;
 
 use super::cleanup::cleanup;
-use super::copy::{copy, legacy_present, Engines};
+use super::copy::{Engines, copy, legacy_present};
 use super::error::Result;
 use super::map::Placement;
 use super::state::{MigrationState, MigrationStateStore, Phase};
@@ -164,9 +164,7 @@ where
     let mut state = store.load()?;
     // Cleaned with the import still unconfirmed (a stop between cleanup and
     // the re-check below) goes round once more rather than counting as done.
-    if state.phase == Phase::Cleaned
-        && (state.rechecked || !host.listed_unconfirmed())
-    {
+    if state.phase == Phase::Cleaned && (state.rechecked || !host.listed_unconfirmed()) {
         return Ok(Outcome::Done);
     }
     let engines = host.engines()?;
@@ -234,10 +232,7 @@ where
     // pass still moves something new, at most MAX_RECHECKS times. A late item
     // is never erased meanwhile (`cleanup`). Each recheck is saved before its
     // wait, so a stop or a restart resumes it.
-    while state.phase == Phase::Cleaned
-        && !state.rechecked
-        && host.listed_unconfirmed()
-    {
+    while state.phase == Phase::Cleaned && !state.rechecked && host.listed_unconfirmed() {
         let new = state.copied > state.replayed;
         if !((state.rechecks == 0 || new) && state.rechecks < MAX_RECHECKS) {
             // Done re-checking. The import's flag stays: nothing here proves
@@ -286,18 +281,12 @@ where
 /// Another account took the shared legacy tree: this one has nothing to
 /// move, and goes on in its own per-user tree like an account that never had
 /// legacy memory, rather than in the tree the other account emptied.
-async fn claimed_elsewhere(
-    host: &dyn LayoutHost,
-    state: &mut MigrationState,
-) -> Result<Outcome> {
+async fn claimed_elsewhere(host: &dyn LayoutHost, state: &mut MigrationState) -> Result<Outcome> {
     nothing_to_move(host, state).await?;
     Ok(Outcome::ClaimedElsewhere)
 }
 
-async fn nothing_to_move(
-    host: &dyn LayoutHost,
-    state: &mut MigrationState,
-) -> Result<Outcome> {
+async fn nothing_to_move(host: &dyn LayoutHost, state: &mut MigrationState) -> Result<Outcome> {
     if !host.is_switched() {
         host.switch().await?;
     }

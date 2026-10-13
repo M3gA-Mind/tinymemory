@@ -59,7 +59,10 @@ async fn a_cleaned_migration_with_an_unconfirmed_import_is_not_finished() {
     let mut state = host.store.load().unwrap();
     state.rechecked = false;
     host.store.save(&state).unwrap();
-    assert!(!is_finished(&host).unwrap(), "the import still has to be re-checked");
+    assert!(
+        !is_finished(&host).unwrap(),
+        "the import still has to be re-checked"
+    );
 }
 
 #[tokio::test]
@@ -72,9 +75,11 @@ async fn retry_puts_a_lost_copy_back_in_line() {
     host.legacy.store(fact("late")).await.unwrap();
     let state = retry(&host, false).unwrap();
     assert!(!state.caught_up && !state.cleaning);
-    run(&host, Trigger::Manual { takeover: false }, || async { false })
-        .await
-        .unwrap();
+    run(&host, Trigger::Manual { takeover: false }, || async {
+        false
+    })
+    .await
+    .unwrap();
     assert_eq!(count(host.tree.as_ref()).await, 5);
     assert_eq!(count(host.legacy.as_ref()).await, 0);
 }
