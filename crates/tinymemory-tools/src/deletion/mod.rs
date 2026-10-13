@@ -141,7 +141,9 @@ impl<S: ListStore<PendingDeletion>> DeletionQueue<S> {
     }
 
     fn locked(&self) -> std::sync::MutexGuard<'_, ()> {
-        self.lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn read(&self) -> Vec<PendingDeletion> {

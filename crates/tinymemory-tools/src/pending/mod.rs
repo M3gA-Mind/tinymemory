@@ -27,7 +27,8 @@ use sha2::{Digest, Sha256};
 use crate::list_store::{ListStore, StoreError};
 
 pub use types::{
-    Ack, Binding, Entry, Epoch, FenceToken, Limits, PendingError, WriteExecutor, WriteGate, WriteOperation,
+    Ack, Binding, Entry, Epoch, FenceToken, Limits, PendingError, WriteExecutor, WriteGate,
+    WriteOperation,
 };
 
 static TICKETS: AtomicU64 = AtomicU64::new(0);
@@ -81,7 +82,9 @@ impl<S: ListStore<Entry>> PendingWrites<S> {
     }
 
     fn locked(&self) -> std::sync::MutexGuard<'_, ()> {
-        self.lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn read(&self) -> Result<Vec<Entry>, PendingError> {
@@ -158,7 +161,9 @@ impl<S: ListStore<Entry>> PendingWrites<S> {
     /// Whether anything is queued. An unreadable store counts as empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.entries().map(|entries| entries.is_empty()).unwrap_or(true)
+        self.entries()
+            .map(|entries| entries.is_empty())
+            .unwrap_or(true)
     }
 
     /// Drops every write admitted before `generation` of `process` (or with
@@ -226,7 +231,9 @@ impl<S: ListStore<Entry>> PendingWrites<S> {
             }
             let head = {
                 let _guard = self.locked();
-                self.read().ok().and_then(|entries| entries.into_iter().next())
+                self.read()
+                    .ok()
+                    .and_then(|entries| entries.into_iter().next())
             };
             let Some(entry) = head else { break };
             if gate.generation() != generation || !accepts(&entry) {

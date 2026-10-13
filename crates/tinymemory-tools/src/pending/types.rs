@@ -40,6 +40,7 @@ pub enum PendingError {
 /// One write an agent tool asked for.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)] // one short-lived value per queued write; boxing would only add noise
 pub enum WriteOperation {
     /// Store a learning.
     Learn {
@@ -60,7 +61,9 @@ impl WriteOperation {
     #[must_use]
     pub fn coalesces(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Learn { item: a }, Self::Learn { item: b }) => a.fingerprint() == b.fingerprint(),
+            (Self::Learn { item: a }, Self::Learn { item: b }) => {
+                a.fingerprint() == b.fingerprint()
+            }
             (Self::Forget { ids: a, reach: ar }, Self::Forget { ids: b, reach: br }) => {
                 a == b && ar == br
             }
@@ -227,7 +230,11 @@ impl FenceToken<'_> {
 
 impl Drop for FenceToken<'_> {
     fn drop(&mut self) {
-        let _admission = self.gate.admission.lock().unwrap_or_else(|e| e.into_inner());
+        let _admission = self
+            .gate
+            .admission
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         self.gate.fences.fetch_sub(1, Ordering::SeqCst);
     }
 }
