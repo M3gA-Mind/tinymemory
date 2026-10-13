@@ -20,7 +20,6 @@ use tinymemory_api::{ItemKind, Namespace, SegmentKind, StoreItem};
 use tinymemory_tools::MemoryLayout;
 
 use crate::memory::brain::{brain_node_with, file_into, legacy_brain_node};
-use crate::memory::error::Result;
 
 /// The tag every workflow item carries. Legacy items carry it whatever
 /// features the host build has, so placing them must not depend on them.
