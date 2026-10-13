@@ -16,10 +16,10 @@
 //!   each flow's own node, once flow memory is read from there.
 //! - Everything else keeps its namespace; only the wire root changes.
 
-use tinymemory_api::{ItemKind, Namespace, SegmentKind, StoreItem};
-use tinymemory_tools::MemoryLayout;
+use tinymemory_api::{ItemKind, Namespace, SegmentKind, SourceKind, StoreItem};
 
-use crate::memory::brain::{brain_node_with, file_into, legacy_brain_node};
+use super::error::Result;
+use crate::layout::{BrainSource, MemoryLayout};
 
 /// The tag every workflow item carries. Legacy items carry it whatever
 /// features the host build has, so placing them must not depend on them.
