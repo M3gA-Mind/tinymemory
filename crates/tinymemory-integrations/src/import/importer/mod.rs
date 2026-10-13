@@ -184,3 +184,12 @@ impl Importer {
         self
     }
 }
+
+impl std::fmt::Debug for Importer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Importer")
+            .field("workspace_dir", &self.workspace_dir)
+            .field("policy", &self.policy)
+            .finish_non_exhaustive()
+    }
+}
