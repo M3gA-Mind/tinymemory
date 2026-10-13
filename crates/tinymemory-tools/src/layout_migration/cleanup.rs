@@ -5,7 +5,7 @@
 //! read back by id. Only items whose twin is there are removed.
 //!
 //! - **A legacy scope whose every item has its twin**, with no partial item
-//!   anywhere, is erased whole ([`MemoryEngine::erase`]), which releases the
+//!   anywhere, is erased whole (`MemoryEngine::erase`), which releases the
 //!   write keys.
 //! - **Otherwise**, on an engine that cannot erase (the hosted one), and on
 //!   a legacy tree other accounts share (whose writes can land between the
