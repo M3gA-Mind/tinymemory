@@ -39,7 +39,11 @@ async fn duplicates_merge_and_the_queue_survives_a_reload() {
     let team: Namespace = "team:acme".parse().unwrap();
     queue.enqueue(&team, vec![build("a")]).await;
 
-    assert_eq!(queue.snapshot().await.pending.len(), 3, "one per (root, job)");
+    assert_eq!(
+        queue.snapshot().await.pending.len(),
+        3,
+        "one per (root, job)"
+    );
     let reloaded = JobQueue::new(Shared(store));
     assert_eq!(reloaded.snapshot().await.pending.len(), 3);
     assert!(reloaded.has_pending());
