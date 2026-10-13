@@ -3,7 +3,7 @@
 //!
 //! Memory written before the per-user layout lives under one legacy root;
 //! the per-user layout keeps each person's memory below their own root.
-//! Items are moved by being stored again ([`copy`]) rather than by copying
+//! Items are moved by being stored again ([`copy()`]) rather than by copying
 //! events, because an item's namespace is part of its identity and its
 //! placement changes ([`map`]). Progress is saved after every page
 //! ([`state`]), so the move resumes where it stopped and repeats at most one
