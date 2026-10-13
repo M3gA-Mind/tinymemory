@@ -148,13 +148,14 @@ async fn pending_work_and_workers_are_bounded() {
             Some("0".to_string())
         }),
     );
-    // Waits behind the running one; the third is over the bound and skipped.
+    // The bound counts the first work until its worker pops it, so the
+    // second fits and the rest are skipped.
     cache.enqueue("k", done("1"));
     cache.enqueue("k", done("2"));
     cache.enqueue("k", done("3"));
     release.notify_one();
     settle(&cache, "k").await;
-    assert_eq!(cache.completed(&"k").unwrap(), "2");
+    assert_eq!(cache.completed(&"k").unwrap(), "1");
 
     let pool = WorkerPool::new(1);
     let busy = cache.clone();
