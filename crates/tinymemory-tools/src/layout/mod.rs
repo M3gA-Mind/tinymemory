@@ -56,6 +56,7 @@
 //! # Ok::<(), tinymemory_api::Error>(())
 //! ```
 
+pub mod placement;
 mod source;
 mod types;
 
