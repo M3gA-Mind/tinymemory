@@ -60,31 +60,53 @@ pub enum Outcome {
     Done,
 }
 
-/// What the migration needs from the host, behind one trait so the job is
-/// tested without a TinyHumans session or a CortexDB server.
+/// The claim on a legacy tree other accounts on this machine may share (a
+/// self-hosted engine): only one account may take it, and taking it needs
+/// the user's consent.
+pub trait LegacyClaim: Send + Sync {
+    /// Whether another account already took the tree.
+    ///
+    /// # Errors
+    ///
+    /// When the claim cannot be read.
+    fn held_by_other(&self) -> Result<bool>;
+
+    /// Takes the tree; `false` when another account got there first.
+    ///
+    /// # Errors
+    ///
+    /// When the claim cannot be written.
+    fn take(&self) -> Result<bool>;
+}
+
+/// What the migration needs from the host, behind one trait so the job runs
+/// without a TinyHumans session or a CortexDB server. The host binds one
+/// account: every method answers for it.
 ///
-/// The real host (the engine binding and the layout setting) implements it
-/// over `memory::engine` and `memory::scope`; tests implement it over two
-/// in-memory engines.
+/// The real host implements it over its engine binding and layout setting;
+/// tests implement it over two in-memory engines.
 #[async_trait]
 pub trait LayoutHost: Send + Sync {
-    /// The legacy-layout engine and the per-user engine for `config`'s
-    /// account, on one endpoint and credential.
+    /// Where the migration's progress is saved.
+    fn store(&self) -> &dyn MigrationStateStore;
+
+    /// The legacy-layout engine and the per-user engine for the account, on
+    /// one endpoint and credential.
     ///
     /// # Errors
     ///
     /// When memory is off or the account has no per-user root.
-    fn engines(&self, config: &Config) -> Result<Engines>;
+    fn engines(&self) -> Result<Engines>;
 
     /// Where items go in the per-user tree.
     ///
     /// # Errors
     ///
     /// When the layout cannot be built.
-    fn placement(&self, config: &Config) -> Result<Placement>;
+    fn placement(&self) -> Result<Placement>;
 
     /// Whether reads and writes already use the per-user tree.
-    fn is_switched(&self, config: &Config) -> bool;
+    fn is_switched(&self) -> bool;
 
     /// Moves reads and writes to the per-user tree: persists the layout
     /// setting and drops the cached engines. The real host loads the migrated
@@ -95,33 +117,37 @@ pub trait LayoutHost: Send + Sync {
     /// # Errors
     ///
     /// When the setting cannot be saved.
-    async fn switch(&self, config: &Config) -> Result<()>;
+    async fn switch(&self) -> Result<()>;
 
     /// Whether moving memory costs the user nothing right now (always, off
     /// the hosted engine).
-    async fn free_now(&self, config: &Config) -> bool;
+    async fn free_now(&self) -> bool;
 
     /// The claim on the legacy tree when other accounts on this machine may
-    /// share it (a self-hosted engine), so taking it needs the user's
-    /// consent and only one account may; `None` when it is the account's own.
+    /// share it, so taking it needs the user's consent and only one account
+    /// may; `None` when it is the account's own.
     ///
     /// # Errors
     ///
     /// When memory is off or the account has no per-user root.
-    fn legacy_claim(&self, config: &Config) -> Result<Option<ClaimKey>>;
+    fn legacy_claim(&self) -> Result<Option<Box<dyn LegacyClaim>>>;
+
+    /// Whether the last import of old local memory ended with its last batch
+    /// not confirmed listed. The migration then forgets by id, never erasing
+    /// scopes whole, and copies again before it finishes.
+    fn listed_unconfirmed(&self) -> bool;
+
+    /// Waits for the engine's listing to catch up with a finished import,
+    /// before a re-check copies again. The module runs no executor: the host
+    /// sleeps (tests return at once).
+    async fn wait_for_listing(&self);
 }
 
 /// The most extra catch-up passes after an import that ended with its last
 /// batch not confirmed listed.
 const MAX_RECHECKS: u32 = 3;
 
-/// How long a recheck lets the listing catch up before copying again.
-#[cfg(not(test))]
-const RECHECK_DELAY: std::time::Duration = std::time::Duration::from_secs(45);
-#[cfg(test)]
-const RECHECK_DELAY: std::time::Duration = std::time::Duration::from_millis(300);
-
-/// Runs (or resumes) the migration of `config`'s account. `paused` is the
+/// Runs (or resumes) the migration of the host's account. `paused` is the
 /// scheduler's own pause (background work held), asked before every page.
 ///
 /// # Errors
@@ -129,7 +155,6 @@ const RECHECK_DELAY: std::time::Duration = std::time::Duration::from_millis(300)
 /// When the state cannot be read or saved, the engines cannot be bound, or
 /// the legacy tree cannot be read for a reason that is not account-wide.
 pub async fn run<P>(
-    config: &Config,
     host: &dyn LayoutHost,
     trigger: Trigger,
     paused: impl Fn() -> P,
@@ -137,69 +162,70 @@ pub async fn run<P>(
 where
     P: std::future::Future<Output = bool>,
 {
-    let dir = config.workspace_dir.as_path();
-    let mut state = state::load(dir)?;
+    let store = host.store();
+    let mut state = store.load()?;
     // Cleaned with the import still unconfirmed (a stop between cleanup and
     // the re-check below) goes round once more rather than counting as done.
     if state.phase == Phase::Cleaned
-        && (state.rechecked || !crate::memory::import::listed_unconfirmed(dir))
+        && (state.rechecked || !host.listed_unconfirmed())
     {
         return Ok(Outcome::Done);
     }
-    let engines = host.engines(config)?;
+    let engines = host.engines()?;
     if state.phase == Phase::Idle && !state.switched && !legacy_present(&*engines.legacy).await? {
-        return nothing_to_move(config, host, &mut state).await;
+        return nothing_to_move(host, &mut state).await;
     }
     if let Trigger::Manual { takeover: true } = trigger {
         state.takeover = true;
-        state::save(dir, &state)?;
+        store.save(&state)?;
     }
-    let shared = host.legacy_claim(config)?;
-    if let Some(key) = &shared {
-        if claim::held_by_other(key)? {
-            return claimed_elsewhere(config, host, &mut state).await;
+    let shared = host.legacy_claim()?;
+    if let Some(claim) = &shared {
+        if claim.held_by_other()? {
+            return claimed_elsewhere(host, &mut state).await;
         }
         if !state.takeover {
             return Ok(Outcome::NeedsTakeover);
         }
-        if !claim::take(key)? {
-            return claimed_elsewhere(config, host, &mut state).await;
+        if !claim.take()? {
+            return claimed_elsewhere(host, &mut state).await;
         }
     }
     let auto = trigger == Trigger::Auto;
-    if auto && !host.free_now(config).await {
+    if auto && !host.free_now().await {
         return Ok(Outcome::NotFree);
     }
     let paused = &paused;
-    let stop = move || async move { paused().await || (auto && !host.free_now(config).await) };
-    let placement = host.placement(config)?;
+    let stop = move || async move { paused().await || (auto && !host.free_now().await) };
+    let placement = host.placement()?;
 
     if !state.switched && !state.cleaning {
-        copy(dir, &engines, &placement, &mut state, stop).await?;
+        copy(store, &engines, &placement, &mut state, stop).await?;
         if state.phase != Phase::Copied {
             return Ok(Outcome::Paused);
         }
-        if !host.is_switched(config) {
-            host.switch(config).await?;
+        if !host.is_switched() {
+            host.switch().await?;
         }
         state.switched = true;
         state.cursor = None;
-        state::save(dir, &state)?;
-        tracing::info!("[memory:layout_migration] switched to the per-user tree");
+        store.save(&state)?;
+        log::info!("[memory:layout_migration] switched to the per-user tree");
     }
     if !state.caught_up && !state.cleaning {
-        copy(dir, &engines, &placement, &mut state, stop).await?;
+        copy(store, &engines, &placement, &mut state, stop).await?;
         if state.phase != Phase::Copied {
             return Ok(Outcome::Paused);
         }
         state.caught_up = true;
-        state::save(dir, &state)?;
+        store.save(&state)?;
     }
     cleanup(
-        dir,
+        store,
         &engines,
         &placement,
         shared.is_some(),
+        host.listed_unconfirmed(),
         &mut state,
         stop,
     )
@@ -212,14 +238,14 @@ where
     // wait, so a stop or a restart resumes it.
     while state.phase == Phase::Cleaned
         && !state.rechecked
-        && crate::memory::import::listed_unconfirmed(dir)
+        && host.listed_unconfirmed()
     {
         let new = state.copied > state.replayed;
         if !((state.rechecks == 0 || new) && state.rechecks < MAX_RECHECKS) {
             // Done re-checking. The import's flag stays: nothing here proves
             // its last batch is listed, so cleanup keeps forgetting by id.
             state.rechecked = true;
-            state::save(dir, &state)?;
+            store.save(&state)?;
             break;
         }
         state.rechecks += 1;
@@ -229,23 +255,24 @@ where
         // Parked as paused, not copied: a scan must not offer a fresh move.
         state.phase = Phase::Paused;
         state.error = Some("copying again for items the import may list late".to_string());
-        state::save(dir, &state)?;
-        tracing::info!(
-            rechecks = state.rechecks,
-            "[memory:layout_migration] import not confirmed listed; copying again"
+        store.save(&state)?;
+        log::info!(
+            "[memory:layout_migration] import not confirmed listed; copying again rechecks={}",
+            state.rechecks
         );
-        tokio::time::sleep(RECHECK_DELAY).await;
-        copy(dir, &engines, &placement, &mut state, stop).await?;
+        host.wait_for_listing().await;
+        copy(store, &engines, &placement, &mut state, stop).await?;
         if state.phase != Phase::Copied {
             return Ok(Outcome::Paused);
         }
         state.caught_up = true;
-        state::save(dir, &state)?;
+        store.save(&state)?;
         cleanup(
-            dir,
+            store,
             &engines,
             &placement,
             shared.is_some(),
+            host.listed_unconfirmed(),
             &mut state,
             stop,
         )
@@ -262,27 +289,25 @@ where
 /// move, and goes on in its own per-user tree like an account that never had
 /// legacy memory, rather than in the tree the other account emptied.
 async fn claimed_elsewhere(
-    config: &Config,
     host: &dyn LayoutHost,
     state: &mut MigrationState,
 ) -> Result<Outcome> {
-    nothing_to_move(config, host, state).await?;
+    nothing_to_move(host, state).await?;
     Ok(Outcome::ClaimedElsewhere)
 }
 
 async fn nothing_to_move(
-    config: &Config,
     host: &dyn LayoutHost,
     state: &mut MigrationState,
 ) -> Result<Outcome> {
-    if !host.is_switched(config) {
-        host.switch(config).await?;
+    if !host.is_switched() {
+        host.switch().await?;
     }
     state.switched = true;
     state.caught_up = true;
     state.phase = Phase::Cleaned;
-    state::save(&config.workspace_dir, state)?;
-    tracing::info!("[memory:layout_migration] no legacy memory; per-user tree in use");
+    host.store().save(state)?;
+    log::info!("[memory:layout_migration] no legacy memory; per-user tree in use");
     Ok(Outcome::NothingToMove)
 }
 

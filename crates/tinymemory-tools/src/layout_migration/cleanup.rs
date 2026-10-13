@@ -139,7 +139,7 @@ where
     let still_moved: usize = left.groups.values().map(|(_, g)| g.moved.len()).sum();
     if still_moved > 0 {
         return pause(
-            workspace_dir,
+            store,
             state,
             format!("{still_moved} moved items are still in the legacy tree"),
         );
