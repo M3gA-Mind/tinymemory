@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use tinymemory_api::MemoryEngine;
 
 use super::super::job::{Trigger, run};
+use super::super::state::MigrationStateStore;
 use super::super::test_host::{FakeHost, count, fact};
 use super::*;
 

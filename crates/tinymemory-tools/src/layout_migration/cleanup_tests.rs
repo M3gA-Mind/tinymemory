@@ -8,6 +8,8 @@ use tinymemory_api::{
 };
 use crate::layout::MemoryLayout;
 
+use super::super::map::FlowPlacement;
+use super::super::state::MemoryStateStore;
 use super::*;
 use super::super::copy::copy;
 

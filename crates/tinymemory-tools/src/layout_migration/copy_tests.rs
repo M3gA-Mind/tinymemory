@@ -4,6 +4,8 @@ use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{LearningKind, MemoryMeta, Namespace, SourceKind, SourceRef};
 use crate::layout::MemoryLayout;
 
+use super::super::map::FlowPlacement;
+use super::super::state::MemoryStateStore;
 use super::*;
 use super::super::test_host::RefusingEngine;
 

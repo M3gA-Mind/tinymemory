@@ -23,7 +23,7 @@ use tinymemory_api::{
 };
 
 use super::copy::Engines;
-use super::error::{Error, Result};
+use super::error::Result;
 use super::map::Placement;
 use super::state::{MigrationState, MigrationStateStore, Phase};
 

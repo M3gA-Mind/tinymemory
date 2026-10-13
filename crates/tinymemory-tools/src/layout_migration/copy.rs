@@ -9,7 +9,9 @@
 
 use std::sync::Arc;
 
-
+use tinymemory_api::{
+    Error as EngineError, GetRequest, ItemId, ListRequest, MemoryEngine, MetaFilter, StoreItem,
+};
 
 use super::error::{Error, Result};
 use super::map::Placement;
@@ -159,7 +161,7 @@ async fn store_and_check(
     tree: &dyn MemoryEngine,
     placed: Vec<(String, StoreItem)>,
     state: &mut MigrationState,
-) -> Result<(), Error> {
+) -> std::result::Result<(), Error> {
     if placed.is_empty() {
         return Ok(());
     }
