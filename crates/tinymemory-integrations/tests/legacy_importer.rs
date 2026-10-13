@@ -2,7 +2,7 @@
 //! pausing and the failure classes, over a reference engine that can be told
 //! to misbehave.
 
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::unwrap_used, dead_code)]
 
 mod support;
 
