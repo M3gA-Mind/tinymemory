@@ -112,9 +112,9 @@ pub fn brain_node_with(
         && *source == BrainSource::Github
         && let Some(repo) = github_collection(item)
     {
-        return Ok(layout.brain_collection(source, &repo)?);
+        return layout.brain_collection(source, &repo);
     }
-    Ok(layout.brain(source)?)
+    layout.brain(source)
 }
 
 /// `item` placed in the brain at `node`, with no agent id (the brain
