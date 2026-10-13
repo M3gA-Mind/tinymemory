@@ -66,6 +66,7 @@ pub mod error;
 pub mod fetch;
 pub mod items;
 pub mod readers;
+pub mod sync;
 pub mod types;
 
 /// Largest file a folder or file source will read.
