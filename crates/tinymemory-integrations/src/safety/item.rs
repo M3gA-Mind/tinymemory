@@ -58,5 +58,5 @@ pub fn scrub_item_with(mut item: StoreItem, policy: Policy) -> Sanitized<StoreIt
 }
 
 #[cfg(test)]
-#[path = "mod_tests.rs"]
+#[path = "item_tests.rs"]
 mod tests;
