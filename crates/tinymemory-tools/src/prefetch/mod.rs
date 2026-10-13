@@ -141,6 +141,12 @@ pub struct Prefetcher<K, V> {
     inner: Arc<Inner<K, V>>,
 }
 
+impl<K, V> std::fmt::Debug for Prefetcher<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Prefetcher").finish_non_exhaustive()
+    }
+}
+
 impl<K, V> Clone for Prefetcher<K, V> {
     fn clone(&self) -> Self {
         Self {

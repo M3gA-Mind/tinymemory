@@ -70,6 +70,12 @@ fn queued(root: &str, job: BackgroundJob) -> QueuedJob {
     }
 }
 
+impl<S: QueueStore> std::fmt::Debug for JobQueue<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JobQueue").finish_non_exhaustive()
+    }
+}
+
 impl<S: QueueStore> JobQueue<S> {
     /// A queue persisted in `store`.
     pub fn new(store: S) -> Self {
@@ -147,10 +153,10 @@ impl<S: QueueStore> JobQueue<S> {
                 Selection::One(id) => &entry.id == id,
             });
         state.pending = keep;
-        if let Selection::One(id) = &selection {
-            if take.is_empty() {
-                return Err(QueueError::NoSuchJob(id.clone()));
-            }
+        if let Selection::One(id) = &selection
+            && take.is_empty()
+        {
+            return Err(QueueError::NoSuchJob(id.clone()));
         }
         let mut runs = Vec::new();
         for mut entry in take {
