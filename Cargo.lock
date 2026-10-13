@@ -1720,6 +1720,7 @@ dependencies = [
  "thiserror",
  "tinymemory-api",
  "tinymemory-tools",
+ "tinyredact",
  "tokio",
  "toml",
  "tracing",
@@ -1741,6 +1742,15 @@ dependencies = [
  "thiserror",
  "tinymemory-api",
  "tokio",
+]
+
+[[package]]
+name = "tinyredact"
+version = "1.27.2"
+dependencies = [
+ "log",
+ "regex",
+ "serde_json",
 ]
 
 [[package]]
