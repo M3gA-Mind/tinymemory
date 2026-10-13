@@ -1,4 +1,4 @@
-//! Secret and PII scrubbing for anything a memory host persists or hands on.
+//! Secret and PII scrubbing for anything a host persists or hands on.
 //!
 //! Conservative by design — it prefers false positives over leaking
 //! credentials into long-lived stores. One copy of this policy is shared by the
@@ -6,9 +6,11 @@
 //! design, what is blocked versus redacted, and the known limits are in this
 //! module's `README.md`.
 //!
-//! [`scrub_item`] applies the policy to every text a
-//! [`tinymemory_api::StoreItem`] carries, and is what a host runs on each item
-//! before `MemoryEngine::store`.
+//! This crate owns the scrubbers (`sanitize_text_with`, `sanitize_json_with`,
+//! [`Policy`]) for every caller: approvals, artifact offload and agent
+//! middleware use it without any memory dependency. Scrubbing a
+//! `StoreItem` (`scrub_item`) stays in `tinymemory-integrations`, which depends
+//! on this crate.
 //!
 //! The exhaustive multilingual national-ID PII module ([`pii`]) runs as part
 //! of [`sanitize_text`]. The write-rejection boundary ([`has_likely_pii`])
@@ -35,7 +37,6 @@
 //! caller that does not opt in redacts less than before. Callers that want the
 //! corroborated behaviour use the `*_with` variants and [`Policy::corroborated`].
 
-mod item;
 mod markers;
 mod pattern;
 /// Exhaustive checksum-gated multilingual national-ID PII module. Content
@@ -45,7 +46,6 @@ pub mod pii;
 mod policy;
 mod sanitize;
 
-pub use item::{scrub_item, scrub_item_with};
 pub use markers::redact_credential_markers;
 pub use pii::{has_likely_email, has_likely_pii};
 pub use policy::{BareCardGate, Policy, SanitizationReport, Sanitized};

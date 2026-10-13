@@ -1,6 +1,6 @@
 # `safety` — secret and PII scrubbing
 
-`tinymemory_integrations::safety` (feature `safety`) removes credentials and
+`tinyredact` removes credentials and
 personal identifiers from text before a memory host stores it. It is
 conservative by design: it would rather redact a harmless string than let a
 token or a national ID into a long-lived store. It runs on-device, uses regular
