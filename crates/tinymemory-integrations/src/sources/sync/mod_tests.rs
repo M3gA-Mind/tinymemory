@@ -188,7 +188,7 @@ impl Scripted {
     }
 
     fn bad(&self, item: &StoreItem) -> bool {
-        self.bad_text.is_some_and(|text| item.text().contains(text))
+        self.bad_text.is_some_and(|text| format!("{item:?}").contains(text))
     }
 }
 
@@ -313,7 +313,7 @@ async fn a_folder_source_is_read_into_items() {
     std::fs::write(dir.path().join("a.md"), "# Title\n\nSome notes.").unwrap();
     let mut folder = source("f", SourceKind::Folder, None);
     folder.target = dir.path().display().to_string();
-    let converter = crate::documents::ConverterChain::new();
+    let converter = crate::documents::NativeConverter;
     let collected = read_source(&folder, dir.path(), &converter).await.unwrap();
     assert_eq!(collected.items.len(), 1);
 }
