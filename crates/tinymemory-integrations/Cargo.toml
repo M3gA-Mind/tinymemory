@@ -131,7 +131,7 @@ sources-network = ["sources", "dep:reqwest", "dep:futures", "dep:tokio", "tokio/
 safety = ["dep:regex", "dep:serde_json", "dep:log"]
 # `import`: reads a legacy v1 (embedded TinyCortex) workspace and migrates it
 # into any engine, resumably.
-legacy-import = ["dep:rusqlite", "dep:serde", "dep:serde_json", "dep:thiserror"]
+legacy-import = ["dep:rusqlite", "dep:serde", "dep:serde_json", "dep:thiserror", "dep:async-trait", "dep:log"]
 # Every integration.
 full = ["cortex", "documents-office", "brain", "sources-network", "safety", "legacy-import"]
 
