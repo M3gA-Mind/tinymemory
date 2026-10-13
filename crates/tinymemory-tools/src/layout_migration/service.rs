@@ -1,40 +1,23 @@
-//! The migration as a service: what the RPCs and the background job call.
+//! The migration as a service: what a host's RPCs and background job call.
 //!
-//! - [`scan`]: whether there is anything to move (the UI shows nothing when
+//! - [`scan`]: whether there is anything to move (a UI shows nothing when
 //!   there is not).
-//! - [`start`]: runs the migration in the background; at most one run per
-//!   workspace at a time.
 //! - [`status`]: its progress, with a run the app quit in the middle of
 //!   reported as interrupted.
 //! - [`retry`]: puts the items that could not be moved back in line.
-//! - [`tick`]: memory's background job, every few minutes. It starts or
-//!   resumes an automatic run, which itself waits for a free period (and,
-//!   on a shared legacy tree, for the user's consent).
-
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+//! - [`is_finished`]: whether a background tick has nothing left to start.
+//! - [`record_failure`]: saves why a run stopped on an error.
+//!
+//! Running in the background (one run per workspace, a spawned task) needs an
+//! executor, which this crate does not link: the host owns that, and passes
+//! `running` in.
 
 use serde::Serialize;
 
-use super::claim;
 use super::copy::legacy_present;
-use super::job::LayoutHost;
-use super::job::{run, Trigger};
-use super::state::{self, MigrationState, Phase};
-use crate::config::Config;
 use super::error::{Error, Result};
-
-/// Workspaces with a migration running now.
-static RUNNING: LazyLock<Mutex<HashSet<PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
-
-/// `memory_migration_start` params.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-pub struct StartParams {
-    /// The user's consent to take a legacy tree other accounts may share.
-    #[serde(default)]
-    pub takeover: bool,
-}
+use super::job::LayoutHost;
+use super::state::{MigrationState, Phase};
 
 /// What [`scan`] found.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -58,15 +41,15 @@ pub struct MigrationStatus {
     pub interrupted: bool,
 }
 
-/// Whether `config`'s account has legacy memory to move.
+/// Whether the host's account has legacy memory to move.
 ///
 /// # Errors
 ///
 /// When the state cannot be read, the engines cannot be bound, or the legacy
 /// tree cannot be read.
-pub async fn scan(config: &Config, host: &dyn LayoutHost) -> Result<ScanView> {
-    let state = state::load(&config.workspace_dir)?;
-    let claim = match host.legacy_claim(config) {
+pub async fn scan(host: &dyn LayoutHost) -> Result<ScanView> {
+    let state = host.store().load()?;
+    let claim = match host.legacy_claim() {
         // Memory off or signed out: nothing to show.
         Err(Error::Off(_)) => None,
         claim => claim?,
@@ -75,8 +58,16 @@ pub async fn scan(config: &Config, host: &dyn LayoutHost) -> Result<ScanView> {
     let needed = match state.phase {
         Phase::Cleaned => false,
         // Another account on this machine took the shared tree.
-        Phase::Idle if claim.as_ref().map(claim::held_by_other).transpose()? == Some(true) => false,
-        Phase::Idle if !state.switched => match host.engines(config) {
+        Phase::Idle
+            if claim
+                .as_ref()
+                .map(|claim| claim.held_by_other())
+                .transpose()?
+                == Some(true) =>
+        {
+            false
+        }
+        Phase::Idle if !state.switched => match host.engines() {
             // Memory off or signed out: nothing to show.
             Err(Error::Off(_)) => false,
             Err(error) => return Err(error),
@@ -87,14 +78,13 @@ pub async fn scan(config: &Config, host: &dyn LayoutHost) -> Result<ScanView> {
     Ok(ScanView { needed, shared })
 }
 
-/// The migration's progress for `config`'s workspace.
+/// The migration's progress; `running` is whether the host has a run going.
 ///
 /// # Errors
 ///
-/// When the state file cannot be read.
-pub fn status(config: &Config) -> Result<MigrationStatus> {
-    let state = state::load(&config.workspace_dir)?;
-    let running = is_running(config);
+/// When the state cannot be read.
+pub fn status(host: &dyn LayoutHost, running: bool) -> Result<MigrationStatus> {
+    let state = host.store().load()?;
     let interrupted = !running && matches!(state.phase, Phase::Copying | Phase::Cleaning);
     Ok(MigrationStatus {
         state,
@@ -103,95 +93,18 @@ pub fn status(config: &Config) -> Result<MigrationStatus> {
     })
 }
 
-pub(crate) fn is_running(config: &Config) -> bool {
-    RUNNING
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .contains(&config.workspace_dir)
-}
-
-/// Releases the workspace's run slot when the run ends, however it ends.
-struct RunGuard(PathBuf);
-
-impl Drop for RunGuard {
-    fn drop(&mut self) {
-        RUNNING
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&self.0);
-    }
-}
-
-/// Starts a run in the background. Returns `false`, starting nothing, when
-/// one is already running for this workspace, or while an import of old
-/// local memory is unfinished (import first, then reorganise).
-pub fn start(
-    config: Config,
-    host: Arc<dyn LayoutHost>,
-    trigger: Trigger,
-    paused: Arc<dyn Fn() -> bool + Send + Sync>,
-) -> bool {
-    let _gate = crate::memory::import::START_GATE
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    if crate::memory::import::in_progress(&config) {
-        tracing::info!("[memory:layout_migration] waiting for the import to finish");
-        return false;
-    }
-    let workspace = config.workspace_dir.clone();
-    if !RUNNING
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(workspace.clone())
-    {
-        return false;
-    }
-    let guard = RunGuard(workspace);
-    crate::core::runtime::spawn_scoped(async move {
-        let _guard = guard;
-        let outcome = run(&config, host.as_ref(), trigger, || {
-            let paused = paused();
-            async move { paused }
-        })
-        .await;
-        match outcome {
-            Ok(outcome) => {
-                tracing::info!(?outcome, "[memory:layout_migration] run ended");
-            }
-            Err(error) => {
-                tracing::warn!(code = error.code(), "[memory:layout_migration] run failed");
-                record_failure(&config, &error);
-            }
-        }
-    });
-    true
-}
-
-/// Saves why a run stopped on an error, so the status shows it.
-fn record_failure(config: &Config, error: &Error) {
-    if let Ok(mut state) = state::load(&config.workspace_dir) {
-        state.phase = Phase::Paused;
-        state.error = Some(error.to_string());
-        if let Err(save) = state::save(&config.workspace_dir, &state) {
-            tracing::warn!(
-                code = save.code(),
-                "[memory:layout_migration] state not saved"
-            );
-        }
-    }
-}
-
 /// Puts the items that could not be moved back in line: the next run copies
 /// again from the start (what was copied replays) and cleans up again.
 ///
 /// # Errors
 ///
 /// When the state cannot be read or saved, or a run is going now.
-pub fn retry(config: &Config) -> Result<MigrationState> {
-    if is_running(config) {
+pub fn retry(host: &dyn LayoutHost, running: bool) -> Result<MigrationState> {
+    if running {
         return Err(Error::invalid("the migration is running"));
     }
-    let mut state = state::load(&config.workspace_dir)?;
+    let store = host.store();
+    let mut state = store.load()?;
     state.failures.clear();
     state.incomplete.clear();
     state.cursor = None;
@@ -203,33 +116,32 @@ pub fn retry(config: &Config) -> Result<MigrationState> {
     if state.phase != Phase::Idle {
         state.phase = Phase::Paused;
     }
-    state::save(&config.workspace_dir, &state)?;
+    store.save(&state)?;
     Ok(state)
 }
 
-/// Memory's background job: starts or resumes an automatic run unless the
-/// migration is done or already running. Returns whether one started.
-pub fn tick(
-    config: &Config,
-    host: Arc<dyn LayoutHost>,
-    paused: Arc<dyn Fn() -> bool + Send + Sync>,
-) -> bool {
-    match state::load(&config.workspace_dir) {
-        Ok(state)
-            if state.phase == Phase::Cleaned
-                && (state.rechecked
-                    || !crate::memory::import::listed_unconfirmed(&config.workspace_dir)) =>
-        {
-            false
-        }
-        Ok(_) if paused() || is_running(config) => false,
-        Ok(_) => start(config.clone(), host, Trigger::Auto, paused),
-        Err(error) => {
-            tracing::warn!(
-                code = error.code(),
-                "[memory:layout_migration] state unreadable"
+/// Whether the migration is done for good: cleaned, with no import left to
+/// re-check. A background tick starts nothing then.
+///
+/// # Errors
+///
+/// When the state cannot be read.
+pub fn is_finished(host: &dyn LayoutHost) -> Result<bool> {
+    let state = host.store().load()?;
+    Ok(state.phase == Phase::Cleaned && (state.rechecked || !host.listed_unconfirmed()))
+}
+
+/// Saves why a run stopped on `error`, so the status shows it.
+pub fn record_failure(host: &dyn LayoutHost, error: &Error) {
+    let store = host.store();
+    if let Ok(mut state) = store.load() {
+        state.phase = Phase::Paused;
+        state.error = Some(error.to_string());
+        if let Err(save) = store.save(&state) {
+            log::warn!(
+                "[memory:layout_migration] state not saved code={}",
+                save.code()
             );
-            false
         }
     }
 }

@@ -20,13 +20,11 @@
 
 use async_trait::async_trait;
 
-use super::claim::{self, ClaimKey};
 use super::cleanup::cleanup;
 use super::copy::{copy, legacy_present, Engines};
+use super::error::Result;
 use super::map::Placement;
-use super::state::{self, MigrationState, Phase};
-use crate::config::Config;
-use crate::memory::error::Result;
+use super::state::{MigrationState, MigrationStateStore, Phase};
 
 /// What started a run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

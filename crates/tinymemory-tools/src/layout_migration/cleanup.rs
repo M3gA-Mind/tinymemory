@@ -23,9 +23,9 @@ use tinymemory_api::{
 };
 
 use super::copy::Engines;
+use super::error::{Error, Result};
 use super::map::Placement;
 use super::state::{MigrationState, MigrationStateStore, Phase};
-use super::error::{Error, Result};
 
 /// The legacy items of one kind at one node: their ids, and whether every
 /// one of them has its twin.

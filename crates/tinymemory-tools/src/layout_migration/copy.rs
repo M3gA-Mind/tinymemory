@@ -11,9 +11,9 @@ use std::sync::Arc;
 
 
 
+use super::error::{Error, Result};
 use super::map::Placement;
 use super::state::{Failure, MigrationState, MigrationStateStore, Phase};
-use super::error::{Error, Result};
 
 /// Whether the engine refused this item on its own (the item is skipped and
 /// recorded) rather than the whole account (the copy pauses). Skipping an
