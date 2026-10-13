@@ -177,14 +177,14 @@ where
         }
     }
 
-    fn rebuild(self, change: impl FnOnce(&mut Inner<K, V>)) -> Self {
-        // Builders run before the prefetcher is shared.
-        let mut inner = Arc::try_unwrap(self.inner)
-            .unwrap_or_else(|_| panic!("configure a Prefetcher before cloning it"));
-        change(&mut inner);
-        Self {
-            inner: Arc::new(inner),
+    /// Applies `change` while this handle is the only one; a clone already
+    /// shares the settings, so the change is skipped (and logged).
+    fn rebuild(mut self, change: impl FnOnce(&mut Inner<K, V>)) -> Self {
+        match Arc::get_mut(&mut self.inner) {
+            Some(inner) => change(inner),
+            None => log::warn!("[memory:prefetch] configure a Prefetcher before cloning it"),
         }
+        self
     }
 
     /// Replaces the bounds.
@@ -285,7 +285,9 @@ where
                 },
             );
         }
-        let entry = state.entries.get_mut(&key).expect("inserted");
+        let Some(entry) = state.entries.get_mut(&key) else {
+            return;
+        };
         if entry.pending.len() >= inner.limits.max_pending {
             log::warn!("[memory:prefetch] queue full; automatic refresh skipped");
             return;
