@@ -7,14 +7,35 @@ use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     LearningKind, ListRequest, MemoryEngine, MemoryMeta, MetaFilter, Namespace, StoreItem,
 };
-use tinymemory_tools::MemoryLayout;
+use crate::layout::MemoryLayout;
 
-use super::claim::ClaimKey;
 use super::copy::Engines;
-use super::job::LayoutHost;
+use super::error::Result;
+use super::job::{LayoutHost, LegacyClaim};
 use super::map::{FlowPlacement, Placement};
-use crate::config::Config;
-use super::error::{Error, Result};
+use super::state::{MemoryStateStore, MigrationStateStore};
+
+/// A shared-tree claim kept in memory: `other` is whether another account
+/// holds it, `taken` whether this one took it.
+#[derive(Clone, Default)]
+pub(crate) struct FakeClaim {
+    pub(crate) other: Arc<AtomicBool>,
+    pub(crate) taken: Arc<AtomicBool>,
+}
+
+impl LegacyClaim for FakeClaim {
+    fn held_by_other(&self) -> Result<bool> {
+        Ok(self.other.load(Ordering::SeqCst))
+    }
+
+    fn take(&self) -> Result<bool> {
+        if self.other.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+        self.taken.store(true, Ordering::SeqCst);
+        Ok(true)
+    }
+}
 
 /// Two in-memory engines and the switches a real host keeps.
 pub(crate) struct FakeHost {
@@ -23,7 +44,11 @@ pub(crate) struct FakeHost {
     pub(crate) switched: AtomicBool,
     pub(crate) free: AtomicBool,
     /// The claim when the legacy tree is shared.
-    pub(crate) claim: Option<ClaimKey>,
+    pub(crate) claim: Option<FakeClaim>,
+    /// Where the progress is saved.
+    pub(crate) store: MemoryStateStore,
+    /// The last import ended with its last batch not confirmed listed.
+    pub(crate) unconfirmed: AtomicBool,
     /// Asks for free_now: after this many, moving stops being free.
     pub(crate) free_for: AtomicUsize,
     /// Written to the legacy tree as the switch happens (a turn racing it).
@@ -42,6 +67,8 @@ impl FakeHost {
             switched: AtomicBool::new(false),
             free: AtomicBool::new(true),
             claim: None,
+            store: MemoryStateStore::default(),
+            unconfirmed: AtomicBool::new(false),
             free_for: AtomicUsize::new(usize::MAX),
             racing_write: Mutex::new(None),
         }
@@ -69,28 +96,31 @@ pub(crate) async fn count(engine: &dyn MemoryEngine) -> usize {
 
 #[async_trait::async_trait]
 impl LayoutHost for FakeHost {
-    fn engines(&self, _: &Config) -> Result<Engines> {
+    fn store(&self) -> &dyn MigrationStateStore {
+        &self.store
+    }
+
+    fn engines(&self) -> Result<Engines> {
         Ok(Engines {
             legacy: self.legacy.clone(),
             tree: self.tree.clone(),
         })
     }
 
-    fn placement(&self, _: &Config) -> Result<Placement> {
+    fn placement(&self) -> Result<Placement> {
         Ok(Placement {
-            layout: MemoryLayout::new(Namespace::ROOT)
-                .map_err(|e| Error::invalid(e.to_string()))?,
+            layout: MemoryLayout::new(Namespace::ROOT)?,
             chat_node: "ws:main".parse().unwrap(),
             flows: FlowPlacement::WithRoot,
             split_github_by_repo: false,
         })
     }
 
-    fn is_switched(&self, _: &Config) -> bool {
+    fn is_switched(&self) -> bool {
         self.switched.load(Ordering::SeqCst)
     }
 
-    async fn switch(&self, _: &Config) -> Result<()> {
+    async fn switch(&self) -> Result<()> {
         let racing = self.racing_write.lock().unwrap().take();
         if let Some(item) = racing {
             self.legacy.store(item).await.unwrap();
@@ -99,12 +129,26 @@ impl LayoutHost for FakeHost {
         Ok(())
     }
 
-    async fn free_now(&self, _: &Config) -> bool {
+    async fn free_now(&self) -> bool {
         let left = self.free_for.fetch_sub(1, Ordering::SeqCst);
         self.free.load(Ordering::SeqCst) && left > 0
     }
 
-    fn legacy_claim(&self, _: &Config) -> Result<Option<ClaimKey>> {
-        Ok(self.claim.clone())
+    fn legacy_claim(&self) -> Result<Option<Box<dyn LegacyClaim>>> {
+        Ok(self
+            .claim
+            .clone()
+            .map(|claim| Box::new(claim) as Box<dyn LegacyClaim>))
+    }
+
+    fn listed_unconfirmed(&self) -> bool {
+        self.unconfirmed.load(Ordering::SeqCst)
+    }
+
+    async fn wait_for_listing(&self) {
+        // Yields, never sleeps: the tests run without a clock.
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
     }
 }
