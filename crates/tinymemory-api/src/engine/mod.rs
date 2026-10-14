@@ -33,7 +33,9 @@ pub trait MemoryEngine: Send + Sync {
     /// Whether the engine can serve right now.
     async fn health(&self) -> EngineHealth;
 
-    /// Answers a question from stored items.
+    /// Answers a question from stored items, or, in
+    /// [`crate::RecallMode::Evidence`], returns the evidence for the caller
+    /// to answer from without writing an answer.
     ///
     /// # Errors
     ///

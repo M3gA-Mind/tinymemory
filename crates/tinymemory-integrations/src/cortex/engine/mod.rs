@@ -18,6 +18,7 @@ mod beliefs;
 mod consolidate;
 mod cursor;
 mod erase;
+mod evidence;
 mod explore;
 mod fetch;
 mod forget;

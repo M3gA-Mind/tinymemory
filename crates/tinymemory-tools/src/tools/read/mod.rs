@@ -10,7 +10,7 @@
 use serde_json::Value;
 use tinymemory_api::{
     Error, ExploreRequest, FetchRequest, GetRequest, Hit, ItemId, ListRequest, MemoryEngine,
-    RecallRequest, Result,
+    RecallMode, RecallRequest, Result,
 };
 
 use super::ToolScope;
@@ -42,6 +42,8 @@ pub(crate) async fn recall(
         limit: args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?,
         instructions: args.string("instructions")?,
         refers_to: time_hint(&args, "refers_to", scope)?,
+        exclude_thread: None,
+        mode: RecallMode::Answer,
     };
     Ok(render::recall(&engine.recall(request).await?))
 }
@@ -81,6 +83,7 @@ pub(crate) async fn fetch(
         beliefs: 0,
         refers_to: time_hint(&args, "refers_to", scope)?,
         max_scopes: None,
+        exclude_thread: None,
     };
     Ok(render::fetch(&engine.fetch(request).await?))
 }
