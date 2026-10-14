@@ -131,3 +131,18 @@ fn a_read_without_an_excluded_thread_serializes_as_before() {
             .unwrap();
     assert_eq!(parsed.exclude_thread, None);
 }
+
+#[test]
+fn a_thread_window_excludes_conversation_turns_only() {
+    let meta = MemoryMeta {
+        thread_id: Some("t1".into()),
+        ..MemoryMeta::default()
+    };
+    let window = ThreadWindow::whole("t1");
+    assert!(window.excludes(ItemKind::Conversation, &meta));
+    assert!(
+        !window.excludes(ItemKind::Learning, &meta),
+        "a learning stamped with the thread stays readable"
+    );
+    assert!(!window.excludes(ItemKind::Document, &meta));
+}

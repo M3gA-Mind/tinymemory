@@ -161,7 +161,7 @@ impl MemoryEngine for ReferenceEngine {
         req.validate()?;
         let mut hits = self.ranked(&req.question, FetchMode::Hybrid, &req.filter)?;
         if let Some(window) = &req.exclude_thread {
-            hits.retain(|hit| !window.covers(hit));
+            hits.retain(|hit| !window.excludes(hit.kind, &hit.meta));
         }
         let citations: Vec<Citation> = hits
             .into_iter()
@@ -207,7 +207,7 @@ impl MemoryEngine for ReferenceEngine {
         req.validate()?;
         let mut hits = self.ranked(&req.query, req.mode, &req.filter)?;
         if let Some(window) = &req.exclude_thread {
-            hits.retain(|hit| !window.covers(hit));
+            hits.retain(|hit| !window.excludes(hit.kind, &hit.meta));
         }
         if let Some(hint) = &req.refers_to {
             hint.rank(&mut hits);

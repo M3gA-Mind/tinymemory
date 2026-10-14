@@ -158,7 +158,7 @@ fn gather(pack: &Value, filter: &MetaFilter, exclude: Option<&ThreadWindow>) -> 
         if !keeps(filter, envelope.kind, &envelope) {
             continue;
         }
-        if exclude.is_some_and(|window| window.covers_meta(&envelope.meta)) {
+        if exclude.is_some_and(|window| window.excludes(envelope.kind, &envelope.meta)) {
             excluded.insert(decoded.event_id);
             continue;
         }

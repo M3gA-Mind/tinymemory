@@ -133,7 +133,9 @@ pub(super) fn ranked(
         .filter(|envelope| keeps(filter, kind.unwrap_or(envelope.kind), envelope))
         // CortexDB's recall filters can only narrow by label, so an excluded
         // thread is dropped here, from what the pack returned.
-        .filter(|envelope| exclude.is_none_or(|window| !window.covers_meta(&envelope.meta)))
+        .filter(|envelope| {
+            exclude.is_none_or(|window| !window.excludes(envelope.kind, &envelope.meta))
+        })
         .filter(|envelope| seen.insert(envelope.id.clone()))
         .collect()
 }
