@@ -159,7 +159,10 @@ impl MemoryEngine for ReferenceEngine {
 
     async fn recall(&self, req: RecallRequest) -> Result<RecallAnswer> {
         req.validate()?;
-        let hits = self.ranked(&req.question, FetchMode::Hybrid, &req.filter)?;
+        let mut hits = self.ranked(&req.question, FetchMode::Hybrid, &req.filter)?;
+        if let Some(window) = &req.exclude_thread {
+            hits.retain(|hit| !window.covers(hit));
+        }
         let citations: Vec<Citation> = hits
             .into_iter()
             .take(req.limit)
@@ -192,6 +195,9 @@ impl MemoryEngine for ReferenceEngine {
         self.descriptor.ensure_mode(req.mode)?;
         req.validate()?;
         let mut hits = self.ranked(&req.query, req.mode, &req.filter)?;
+        if let Some(window) = &req.exclude_thread {
+            hits.retain(|hit| !window.covers(hit));
+        }
         if let Some(hint) = &req.refers_to {
             hint.rank(&mut hits);
         }

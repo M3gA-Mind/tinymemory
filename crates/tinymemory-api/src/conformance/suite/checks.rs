@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     Error as ApiError, FetchMode, FetchRequest, ForgetTarget, ItemId, MemoryMeta, MetaFilter,
-    RecallRequest,
+    RecallRequest, Role, StoreItem, ThreadWindow, Turn, TurnRange,
 };
 
 use super::{Ctx, ensure};
@@ -21,6 +21,7 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     super::bulk::store_many(ctx).await?;
     super::lifecycle::store_with(ctx).await?;
     fetch_filters(ctx).await?;
+    excluded_thread(ctx).await?;
     unsupported_modes(ctx).await?;
     super::namespaces::namespaces(ctx).await?;
     empty_forget(ctx).await?;
@@ -179,6 +180,83 @@ async fn fetch_filters(ctx: &Ctx<'_>) -> Result<()> {
         })?;
     }
     Ok(())
+}
+
+/// A read's `exclude_thread` leaves that thread's turns out of every fetch
+/// mode and of recall's citations, and a window starting after a turn keeps
+/// it.
+async fn excluded_thread(ctx: &Ctx<'_>) -> Result<()> {
+    const CHECK: &str = "excluded_thread";
+    let turn = |thread: &str| {
+        let mut meta = ctx.run.meta();
+        meta.thread_id = Some(thread.to_string());
+        meta.turns = Some(TurnRange { first: 0, last: 0 });
+        StoreItem::Conversation {
+            turns: vec![Turn::new(
+                Role::User,
+                format!("{} the turn being answered in {thread}", ctx.run.marker),
+            )],
+            meta,
+        }
+    };
+    let (live, other) = (
+        format!("{}-live", ctx.run.marker),
+        format!("{}-other", ctx.run.marker),
+    );
+    let live_id = ctx.call(CHECK, ctx.engine.store(turn(&live))).await?.id;
+    let other_id = ctx.call(CHECK, ctx.engine.store(turn(&other))).await?.id;
+    let modes = ctx.engine.descriptor().fetch_modes.clone();
+    for mode in &modes {
+        let mut request = FetchRequest::new(ctx.run.marker.clone(), *mode, 50);
+        request.filter = ctx.run.filter();
+        request.exclude_thread = Some(ThreadWindow::whole(&live));
+        let page = ctx.call(CHECK, ctx.engine.fetch(request.clone())).await?;
+        let found: BTreeSet<&ItemId> = page.hits.iter().map(|hit| &hit.id).collect();
+        ensure(
+            CHECK,
+            !found.contains(&live_id) && found.contains(&other_id),
+            || {
+                format!(
+                    "{} fetch excluding {live} returned {found:?}: expected {other_id}, not {live_id}",
+                    mode.as_str()
+                )
+            },
+        )?;
+        request.exclude_thread = Some(ThreadWindow {
+            thread_id: live.clone(),
+            from_turn: 1,
+        });
+        let page = ctx.call(CHECK, ctx.engine.fetch(request)).await?;
+        ensure(CHECK, page.hits.iter().any(|hit| hit.id == live_id), || {
+            format!(
+                "{} fetch excluding turns of {live} from 1 on dropped its turn 0",
+                mode.as_str()
+            )
+        })?;
+    }
+    let mut request = RecallRequest::new(ctx.run.marker.clone(), 50);
+    request.filter = ctx.run.filter();
+    request.exclude_thread = Some(ThreadWindow::whole(&live));
+    let answer = ctx.call(CHECK, ctx.engine.recall(request)).await?;
+    ensure(
+        CHECK,
+        answer
+            .citations
+            .iter()
+            .all(|citation| citation.id != live_id),
+        || format!("a recall excluding {live} cited its turn {live_id}"),
+    )?;
+    let blank = ThreadWindow::whole(" ");
+    let mut request = FetchRequest::new(ctx.run.marker.clone(), FetchMode::Hybrid, 5);
+    request.exclude_thread = Some(blank.clone());
+    ensure(CHECK, request.validate().is_err(), || {
+        "a fetch excluding a blank thread id validated".to_string()
+    })?;
+    let mut request = RecallRequest::new(ctx.run.marker.clone(), 5);
+    request.exclude_thread = Some(blank);
+    ensure(CHECK, request.validate().is_err(), || {
+        "a recall excluding a blank thread id validated".to_string()
+    })
 }
 
 async fn unsupported_modes(ctx: &Ctx<'_>) -> Result<()> {

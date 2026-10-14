@@ -176,8 +176,10 @@ Only `Hybrid`. Other modes fail `Error::Unsupported` before any request.
    (Three raw events per wanted hit, because a conversation contributes
    several turns and the client-side filter drops some. 1000 events is the
    deepest a fetch page can go.)
-4. Decode each pack's events, apply the **full filter** client-side, keep each
-   item once at its best rank.
+4. Decode each pack's events, apply the **full filter** client-side, drop the
+   turns `exclude_thread` covers (CortexDB's recall filters only narrow by
+   label, so an exclusion cannot be sent), and keep each item once at its
+   best rank.
 5. **Interleave** the scopes rank by rank: every scope's best, then every
    scope's second, and so on.
 6. Take the page `[offset, end)`. A conversation hit carries the whole
@@ -206,7 +208,9 @@ Recall builds a pack, asks the answer route **once** with `use_pack_id`
 2. Each pack's events budget is `2 * limit`, with the derived layers sharing
    `limit` (see [the wire](cortex-wire.md#recall-recall)).
 3. Decode and filter each pack's events with the full `MetaFilter` (reach
-   included).
+   included), and drop the turns `exclude_thread` covers. The exclusion
+   reaches the **citations only**: CortexDB writes the answer text from the
+   whole pack (step 4), which can still hold the excluded turns.
 4. The answer comes from the pack holding the **most admitted events**, the
    most specific node on a tie. A missing `pack_id` is `Error::Engine`.
    `/v1/answer` takes one `use_pack_id` (its scope must match), so the

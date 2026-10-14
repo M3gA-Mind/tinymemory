@@ -22,11 +22,17 @@
 //! `subtree` lane (experimental and off by default in 0.10.4).
 //!
 //! Citations come from the packs' `layers.events`, decoded back to items,
-//! filtered by the full [`tinymemory_api::MetaFilter`] (reach included), and
+//! filtered by the full [`tinymemory_api::MetaFilter`] (reach included) and
+//! [`tinymemory_api::RecallRequest::exclude_thread`], and
 //! merged rank by rank across the packs (each pack's best, the most specific
 //! node's first, then each pack's second, …), one per item, at most `limit`.
 //! CortexDB scores none of them. A pack with no decodable events still
 //! returns the engine's answer, with no citations.
+//!
+//! **An excluded thread leaves the citations, not the answer text.** CortexDB
+//! narrows a recall only by label, so `exclude_thread` is applied to the
+//! decoded events; the server writes the answer from the whole pack, which
+//! may still hold the excluded turns.
 
 use std::collections::HashSet;
 
@@ -198,7 +204,7 @@ impl CortexEngine {
             .await?;
         let per_pack: Vec<Vec<Envelope>> = packs
             .iter()
-            .map(|(_, pack)| ranked(pack, None, &req.filter))
+            .map(|(_, pack)| ranked(pack, None, &req.filter, req.exclude_thread.as_ref()))
             .collect();
         let chosen = per_pack
             .iter()

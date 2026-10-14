@@ -32,7 +32,7 @@ use std::time::Instant;
 use futures::{StreamExt, TryStreamExt, stream};
 use serde_json::{Value, json};
 use tinymemory_api::{
-    FetchPage, FetchRequest, Hit, ItemKind, MetaFilter, Namespace, Reach, StoreItem,
+    FetchPage, FetchRequest, Hit, ItemKind, MetaFilter, Namespace, Reach, StoreItem, ThreadWindow,
 };
 
 use super::CortexEngine;
@@ -116,8 +116,13 @@ pub(super) fn whole_items_budget(items: usize) -> usize {
 }
 
 /// The distinct items of `kind` a pack's events decode to, best rank first,
-/// keeping only what `filter` matches.
-pub(super) fn ranked(pack: &Value, kind: Option<ItemKind>, filter: &MetaFilter) -> Vec<Envelope> {
+/// keeping only what `filter` matches and `exclude` does not cover.
+pub(super) fn ranked(
+    pack: &Value,
+    kind: Option<ItemKind>,
+    filter: &MetaFilter,
+    exclude: Option<&ThreadWindow>,
+) -> Vec<Envelope> {
     let mut seen = HashSet::new();
     pack.pointer("/layers/events")
         .and_then(Value::as_array)
@@ -126,6 +131,9 @@ pub(super) fn ranked(pack: &Value, kind: Option<ItemKind>, filter: &MetaFilter) 
         .filter_map(decode_event)
         .map(|decoded| decoded.envelope)
         .filter(|envelope| keeps(filter, kind.unwrap_or(envelope.kind), envelope))
+        // CortexDB's recall filters can only narrow by label, so an excluded
+        // thread is dropped here, from what the pack returned.
+        .filter(|envelope| exclude.is_none_or(|window| !window.covers_meta(&envelope.meta)))
         .filter(|envelope| seen.insert(envelope.id.clone()))
         .collect()
 }
@@ -201,7 +209,10 @@ impl CortexEngine {
                 } else {
                     Vec::new()
                 };
-                Ok::<_, Error>((ranked(&pack, Some(scope.kind), &req.filter), beliefs))
+                Ok::<_, Error>((
+                    ranked(&pack, Some(scope.kind), &req.filter, req.exclude_thread.as_ref()),
+                    beliefs,
+                ))
             })
             .buffered(PACKS_AT_ONCE)
             .try_collect()

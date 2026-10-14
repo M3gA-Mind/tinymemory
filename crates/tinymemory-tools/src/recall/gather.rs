@@ -228,6 +228,9 @@ async fn answer(
             limit: section.limit,
             instructions,
             refers_to: request.refers_to.clone(),
+            // The engine leaves the thread out itself, so the window's turns
+            // do not use up the section's citations.
+            exclude_thread: request.exclude_thread.clone(),
         })
         .await?;
     if answer.citations.is_empty() || answer.answer.trim().is_empty() {

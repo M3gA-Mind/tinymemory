@@ -39,6 +39,11 @@ pub struct RecallRequest {
     /// ranking hint, never a filter (see [`TimeHint`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refers_to: Option<TimeHint>,
+    /// Conversation turns never cited: the calling thread's, which its
+    /// prompt already holds (see [`ThreadWindow`]). Read-only, so it can
+    /// never narrow a forget or an erase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclude_thread: Option<ThreadWindow>,
 }
 
 impl RecallRequest {
@@ -51,6 +56,7 @@ impl RecallRequest {
             limit,
             instructions: None,
             refers_to: None,
+            exclude_thread: None,
         }
     }
 
@@ -58,12 +64,69 @@ impl RecallRequest {
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidRequest`] for a blank question, a zero limit or an
-    /// invalid [`TimeHint`].
+    /// [`Error::InvalidRequest`] for a blank question, a zero limit, an
+    /// invalid [`TimeHint`] or a blank excluded thread.
     pub fn validate(&self) -> Result<()> {
         non_blank("recall question", &self.question)?;
         positive("recall limit", self.limit)?;
+        self.exclude_thread
+            .as_ref()
+            .map_or(Ok(()), ThreadWindow::validate)?;
         self.refers_to.as_ref().map_or(Ok(()), TimeHint::validate)
+    }
+}
+
+/// A thread's turns a read leaves out: every turn of `thread_id` from
+/// `from_turn` on. A caller reading inside a thread sets it to the turns its
+/// prompt already holds, so the message being answered (logged before the
+/// read) does not come back as a memory; `from_turn: 0` leaves the whole
+/// thread out. Engines apply it to what they return; an engine whose store
+/// cannot exclude server side drops the matching items from its results.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadWindow {
+    /// The thread.
+    pub thread_id: String,
+    /// The first turn index still in the prompt; turns from here on are
+    /// left out.
+    #[serde(default)]
+    pub from_turn: u32,
+}
+
+impl ThreadWindow {
+    /// The whole of `thread_id`.
+    #[must_use]
+    pub fn whole(thread_id: impl Into<String>) -> Self {
+        Self {
+            thread_id: thread_id.into(),
+            from_turn: 0,
+        }
+    }
+
+    /// Whether `hit` lies inside the window.
+    #[must_use]
+    pub fn covers(&self, hit: &Hit) -> bool {
+        self.covers_meta(&hit.meta)
+    }
+
+    /// Whether an item carrying `meta` lies inside the window: it belongs
+    /// to the thread, and its turns (when it records them) reach
+    /// `from_turn`.
+    #[must_use]
+    pub fn covers_meta(&self, meta: &MemoryMeta) -> bool {
+        meta.thread_id.as_deref() == Some(self.thread_id.as_str())
+            && meta
+                .turns
+                .as_ref()
+                .is_none_or(|turns| turns.last >= self.from_turn)
+    }
+
+    /// Checks the window names a thread.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for a blank thread id.
+    pub fn validate(&self) -> Result<()> {
+        non_blank("excluded thread id", &self.thread_id)
     }
 }
 
@@ -157,6 +220,11 @@ pub struct FetchRequest {
     /// scopes ignores it. Must be positive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_scopes: Option<usize>,
+    /// Conversation turns never returned: the calling thread's (see
+    /// [`ThreadWindow`]). Read-only, so it can never narrow a forget or an
+    /// erase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclude_thread: Option<ThreadWindow>,
 }
 
 /// Whether `n` is zero (serde's skip test).
@@ -177,6 +245,7 @@ impl FetchRequest {
             beliefs: 0,
             refers_to: None,
             max_scopes: None,
+            exclude_thread: None,
         }
     }
 
@@ -185,13 +254,17 @@ impl FetchRequest {
     /// # Errors
     ///
     /// [`Error::InvalidRequest`] for a blank query, a zero limit, a zero
-    /// [`FetchRequest::max_scopes`] or an invalid [`TimeHint`].
+    /// [`FetchRequest::max_scopes`], an invalid [`TimeHint`] or a blank
+    /// excluded thread.
     pub fn validate(&self) -> Result<()> {
         non_blank("fetch query", &self.query)?;
         positive("fetch limit", self.limit)?;
         if let Some(scopes) = self.max_scopes {
             positive("fetch max_scopes", scopes)?;
         }
+        self.exclude_thread
+            .as_ref()
+            .map_or(Ok(()), ThreadWindow::validate)?;
         self.refers_to.as_ref().map_or(Ok(()), TimeHint::validate)
     }
 }
