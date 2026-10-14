@@ -234,6 +234,31 @@ Recall builds a pack, asks the answer route **once** with `use_pack_id`
    envelope's text as the snippet. A pack with no decodable events still
    returns the answer, with no citations.
 
+### Recall in evidence mode
+
+`RecallMode::Evidence` reads the same packs (step 1, with step 2's budgets)
+and **never asks the answer route**: no model runs after retrieval, and no
+answer is grounded on one pack while citing others. The engine renders the
+evidence itself (`engine/evidence.rs`):
+
+1. Decode each pack's events, keep what the full `MetaFilter` admits, and
+   drop the turns `exclude_thread` covers, noting their event ids.
+2. When the filter narrows by reach and kinds alone, render the `facts`
+   layer (`[valid_from date] statement`) and the `beliefs` layer
+   (`subject predicate object`), leaving out a fact whose `supports` name an
+   excluded event and a belief resting on such a fact. Derived records carry
+   no item metadata, so any other filter field leaves them out. `episodes`
+   and `understanding` are not rendered.
+3. Merge the events rank by rank across the packs (most specific node
+   first) and render each as `[YYYY-MM-DD HH:MM UTC] [role] text`.
+4. The answer is `## Facts`, `## Beliefs` and `## Conversation`, each line
+   once, empty when nothing was gathered; `model` is `None`. Citations are
+   the conversation's items, at most `limit`.
+
+Because the text is rendered from decoded events, an excluded turn never
+appears in it, unlike the answer route, whose text CortexDB writes from the
+whole pack.
+
 ## Forget
 
 `forget` looks the items' events up, then removes them by `memory_ids`. The

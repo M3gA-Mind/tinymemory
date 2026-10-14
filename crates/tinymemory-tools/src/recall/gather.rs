@@ -35,7 +35,7 @@ use std::time::Instant;
 use futures::future::join;
 use tinymemory_api::{
     BeliefsRequest, FetchMode, FetchRequest, Hit, ItemId, ItemKind, ListRequest, MemoryEngine,
-    MetaFilter, Namespace, Reach, RecallRequest, TimeHint,
+    MetaFilter, Namespace, Reach, RecallMode, RecallRequest, TimeHint,
 };
 
 use super::render::{Body, Line, Section, shorten, single_line};
@@ -231,6 +231,7 @@ async fn answer(
             // The engine leaves the thread out itself, so the window's turns
             // do not use up the section's citations.
             exclude_thread: request.exclude_thread.clone(),
+            mode: RecallMode::Answer,
         })
         .await?;
     if answer.citations.is_empty() || answer.answer.trim().is_empty() {

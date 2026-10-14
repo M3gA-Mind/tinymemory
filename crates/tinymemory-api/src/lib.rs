@@ -85,8 +85,8 @@ pub use namespace::{Namespace, Reach, Segment, SegmentKind};
 pub use provenance::{ProvenancePolicy, wrap_untrusted_for_agent};
 pub use query::{
     Citation, EraseReport, EraseRequest, ExportPage, Exported, FetchMode, FetchPage, FetchRequest,
-    ForgetReport, ForgetTarget, Hit, ListPage, ListRequest, RecallAnswer, RecallRequest,
-    ThreadWindow, TimeHint,
+    ForgetReport, ForgetTarget, Hit, ListPage, ListRequest, RecallAnswer, RecallMode,
+    RecallRequest, ThreadWindow, TimeHint,
 };
 pub use write::{WaitFor, WriteOptions};
 

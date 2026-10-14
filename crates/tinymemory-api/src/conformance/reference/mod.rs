@@ -20,8 +20,8 @@ use crate::{
     Citation, ConsolidateReceipt, ConsolidateRequest, ConsolidateStatus, Consolidation,
     EngineDescriptor, EngineHealth, EraseReport, EraseRequest, Error, ExportPage, Exported,
     FetchMode, FetchPage, FetchRequest, ForgetReport, ForgetTarget, Hit, ItemId, ListPage,
-    ListRequest, MemoryEngine, MetaFilter, Reach, RecallAnswer, RecallRequest, Result, StoreItem,
-    StoreReceipt,
+    ListRequest, MemoryEngine, MetaFilter, Reach, RecallAnswer, RecallMode, RecallRequest, Result,
+    StoreItem, StoreReceipt,
 };
 use async_trait::async_trait;
 
@@ -174,6 +174,17 @@ impl MemoryEngine for ReferenceEngine {
                 score: Some(hit.score),
             })
             .collect();
+        if req.mode == RecallMode::Evidence {
+            let lines: Vec<String> = citations
+                .iter()
+                .map(|c| format!("- {}", c.snippet))
+                .collect();
+            return Ok(RecallAnswer {
+                answer: lines.join("\n"),
+                citations,
+                model: None,
+            });
+        }
         let answer = if citations.is_empty() {
             "Nothing stored answers this question.".to_string()
         } else {

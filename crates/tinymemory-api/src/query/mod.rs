@@ -1,7 +1,8 @@
 //! Requests and responses for recall, fetch, list and forget.
 //!
 //! - **Recall** ([`RecallRequest`] → [`RecallAnswer`]) asks a question and gets
-//!   a synthesised answer with [`Citation`]s.
+//!   a synthesised answer with [`Citation`]s, or, in [`RecallMode::Evidence`],
+//!   the evidence for the caller's own model to answer from.
 //! - **Fetch** ([`FetchRequest`] → [`FetchPage`]) is raw retrieval in a
 //!   [`FetchMode`], filtered by metadata.
 //! - **List** ([`ListRequest`] → [`ListPage`]) pages through stored items
@@ -44,6 +45,33 @@ pub struct RecallRequest {
     /// never narrow a forget or an erase.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exclude_thread: Option<ThreadWindow>,
+    /// Whether the engine writes the answer ([`RecallMode::Answer`], the
+    /// default) or returns the evidence for the caller to answer from.
+    #[serde(default, skip_serializing_if = "RecallMode::is_answer")]
+    pub mode: RecallMode,
+}
+
+/// What [`crate::MemoryEngine::recall`] puts in [`RecallAnswer::answer`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecallMode {
+    /// An answer the engine writes from what it recalled (an engine may run
+    /// a model for it).
+    #[default]
+    Answer,
+    /// The recalled evidence itself, as text, for a caller whose own model
+    /// writes the answer: the engine runs no answer step, and
+    /// [`RecallAnswer::model`] is `None`. The citations are the items the
+    /// evidence holds.
+    Evidence,
+}
+
+impl RecallMode {
+    /// Whether this is [`RecallMode::Answer`] (serde's skip test).
+    #[must_use]
+    pub fn is_answer(&self) -> bool {
+        matches!(self, Self::Answer)
+    }
 }
 
 impl RecallRequest {
@@ -57,6 +85,7 @@ impl RecallRequest {
             instructions: None,
             refers_to: None,
             exclude_thread: None,
+            mode: RecallMode::Answer,
         }
     }
 
@@ -133,12 +162,14 @@ impl ThreadWindow {
 /// A synthesised answer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecallAnswer {
-    /// The answer text.
+    /// The answer text; in [`RecallMode::Evidence`], the recalled evidence
+    /// as text (empty when nothing was recalled).
     pub answer: String,
     /// The items it drew on.
     #[serde(default)]
     pub citations: Vec<Citation>,
-    /// The model that answered, when the engine reports it.
+    /// The model that answered, when the engine reports it; `None` in
+    /// [`RecallMode::Evidence`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
 }

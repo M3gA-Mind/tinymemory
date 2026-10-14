@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::{
     Error as ApiError, FetchMode, FetchRequest, ForgetTarget, ItemId, MemoryMeta, MetaFilter,
-    RecallRequest, Role, StoreItem, ThreadWindow, Turn, TurnRange,
+    RecallMode, RecallRequest, Role, StoreItem, ThreadWindow, Turn, TurnRange,
 };
 
 use super::{Ctx, ensure};
@@ -237,7 +237,7 @@ async fn excluded_thread(ctx: &Ctx<'_>) -> Result<()> {
     let mut request = RecallRequest::new(ctx.run.marker.clone(), 50);
     request.filter = ctx.run.filter();
     request.exclude_thread = Some(ThreadWindow::whole(&live));
-    let answer = ctx.call(CHECK, ctx.engine.recall(request)).await?;
+    let answer = ctx.call(CHECK, ctx.engine.recall(request.clone())).await?;
     ensure(
         CHECK,
         answer
@@ -245,6 +245,27 @@ async fn excluded_thread(ctx: &Ctx<'_>) -> Result<()> {
             .iter()
             .all(|citation| citation.id != live_id),
         || format!("a recall excluding {live} cited its turn {live_id}"),
+    )?;
+    // In evidence mode the engine writes no answer of its own, so the text it
+    // returns is all evidence, and none of it may come from the window.
+    request.mode = RecallMode::Evidence;
+    let evidence = ctx.call(CHECK, ctx.engine.recall(request)).await?;
+    let live_text = format!("the turn being answered in {live}");
+    ensure(
+        CHECK,
+        !evidence.answer.contains(&live_text)
+            && evidence
+                .citations
+                .iter()
+                .all(|citation| citation.id != live_id),
+        || format!("an evidence recall excluding {live} returned its turn {live_id}"),
+    )?;
+    ensure(
+        CHECK,
+        evidence
+            .answer
+            .contains(&format!("the turn being answered in {other}")),
+        || format!("an evidence recall left out {other}, which no window covers"),
     )?;
     let blank = ThreadWindow::whole(" ");
     let mut request = FetchRequest::new(ctx.run.marker.clone(), FetchMode::Hybrid, 5);
@@ -381,6 +402,27 @@ async fn recall(ctx: &Ctx<'_>) -> Result<()> {
     })?;
     ensure(CHECK, answer.citations.len() <= 5, || {
         format!("{} citations exceed the limit of 5", answer.citations.len())
+    })?;
+    let mut evidence = RecallRequest::new(ctx.run.marker.clone(), 5);
+    evidence.filter = ctx.run.filter();
+    evidence.mode = RecallMode::Evidence;
+    let evidence = ctx.call(CHECK, ctx.engine.recall(evidence)).await?;
+    ensure(
+        CHECK,
+        !evidence.answer.trim().is_empty() && !evidence.citations.is_empty(),
+        || "an evidence recall over matching items returned no evidence".to_string(),
+    )?;
+    ensure(CHECK, evidence.model.is_none(), || {
+        format!(
+            "an evidence recall reported answering model {:?}",
+            evidence.model
+        )
+    })?;
+    ensure(CHECK, evidence.citations.len() <= 5, || {
+        format!(
+            "{} evidence citations exceed the limit of 5",
+            evidence.citations.len()
+        )
     })?;
     let listed = ctx.list_all(CHECK, &ctx.run.filter()).await?;
     for citation in &answer.citations {

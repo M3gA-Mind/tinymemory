@@ -10,7 +10,7 @@
 use serde_json::Value;
 use tinymemory_api::{
     Error, ExploreRequest, FetchRequest, GetRequest, Hit, ItemId, ListRequest, MemoryEngine,
-    RecallRequest, Result,
+    RecallMode, RecallRequest, Result,
 };
 
 use super::ToolScope;
@@ -43,6 +43,7 @@ pub(crate) async fn recall(
         instructions: args.string("instructions")?,
         refers_to: time_hint(&args, "refers_to", scope)?,
         exclude_thread: None,
+        mode: RecallMode::Answer,
     };
     Ok(render::recall(&engine.recall(request).await?))
 }
