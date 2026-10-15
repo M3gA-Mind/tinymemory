@@ -161,6 +161,9 @@ pub(crate) struct Double {
     pub(crate) scoped_erase_answer: Mutex<Option<serde_json::Value>>,
     /// The status a settled erasure ends with; `completed` when unset.
     pub(crate) erasure_ends: Mutex<Option<&'static str>>,
+    /// Recalls over a scope containing this text are held this long (ms)
+    /// before they answer, as a slow pack is.
+    pub(crate) slow_recall: Mutex<Option<(&'static str, u64)>>,
 }
 
 /// The shared handle the routes and tests hold.

@@ -27,10 +27,20 @@
 //!
 //! The citations are the conversation's items, at most `limit`; the evidence
 //! may hold more events than that (each pack's events budget is `2 * limit`).
+//!
+//! **Deadline.** The packs are built at once and waited for at most 12
+//! seconds from the start of the recall. A pack still building then is left
+//! out (logged as a warning), and the evidence is rendered from the packs
+//! that arrived, still most specific first. A host bounds a memory tool call
+//! (OpenHuman: 15 seconds), and one scope's pack can take that long on its
+//! own, so without the deadline the slowest scope decided whether any
+//! evidence arrived. If no pack arrives in time the recall fails as
+//! unavailable rather than claim memory holds nothing. A pack that fails
+//! still fails the recall, as before.
 
 use std::collections::HashSet;
 
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::{StreamExt, stream};
 use serde_json::Value;
 use tinymemory_api::{
     Citation, ItemId, ItemKind, MetaFilter, RecallAnswer, RecallRequest, Role, ThreadWindow,
@@ -41,7 +51,7 @@ use super::fetch::interleave;
 use super::items::{keeps, located_meta};
 use super::recall::PACKS_AT_ONCE;
 use crate::cortex::envelope::{Envelope, decode_event};
-use crate::cortex::error::Result;
+use crate::cortex::error::{Error, Result};
 
 /// What one pack contributes to the evidence.
 #[derive(Debug, Default)]
@@ -256,6 +266,43 @@ fn render(facts: &[String], beliefs: &[String], events: &[Envelope]) -> String {
 }
 
 impl CortexEngine {
+    /// The packs for `paths` that arrive within the evidence deadline (see
+    /// the module docs), in `paths` order.
+    async fn packs_by_deadline(&self, req: &RecallRequest, paths: &[String]) -> Result<Vec<Value>> {
+        let deadline = tokio::time::Instant::now() + self.log.timing.evidence;
+        let mut building = stream::iter(paths.iter().cloned().enumerate())
+            .map(|(index, path)| async move { (index, self.pack(req, &path).await) })
+            .buffer_unordered(PACKS_AT_ONCE);
+        let mut arrived = Vec::new();
+        while let Ok(next) = tokio::time::timeout_at(deadline, building.next()).await {
+            let Some((index, pack)) = next else { break };
+            arrived.push((index, pack?));
+        }
+        let late: Vec<&str> = paths
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !arrived.iter().any(|(got, _)| got == index))
+            .map(|(_, path)| path.as_str())
+            .collect();
+        if !paths.is_empty() && arrived.is_empty() {
+            return Err(Error::Unavailable(format!(
+                "no recall pack arrived within {:?}",
+                self.log.timing.evidence
+            )));
+        }
+        if !late.is_empty() {
+            log::warn!(
+                "[cortex] evidence recall left out {} of {} scopes still building after {:?}: {}",
+                late.len(),
+                paths.len(),
+                self.log.timing.evidence,
+                late.join(", ")
+            );
+        }
+        arrived.sort_by_key(|(index, _)| *index);
+        Ok(arrived.into_iter().map(|(_, pack)| pack).collect())
+    }
+
     /// See the module docs. `paths` are the kind scopes to read, most
     /// specific node first.
     pub(super) async fn recall_evidence(
@@ -263,11 +310,7 @@ impl CortexEngine {
         req: &RecallRequest,
         paths: &[String],
     ) -> Result<RecallAnswer> {
-        let packs: Vec<Value> = stream::iter(paths.to_vec())
-            .map(|path| async move { self.pack(req, &path).await })
-            .buffered(PACKS_AT_ONCE)
-            .try_collect()
-            .await?;
+        let packs = self.packs_by_deadline(req, paths).await?;
         let mut facts = Vec::new();
         let mut beliefs = Vec::new();
         let mut per_pack = Vec::new();
