@@ -34,9 +34,11 @@
 //! that arrived, still most specific first. A host bounds a memory tool call
 //! (OpenHuman: 15 seconds), and one scope's pack can take that long on its
 //! own, so without the deadline the slowest scope decided whether any
-//! evidence arrived. If no pack arrives in time the recall fails as
-//! unavailable rather than claim memory holds nothing. A pack that fails
-//! still fails the recall, as before.
+//! evidence arrived. A recall that left a pack out says so: if the packs
+//! that arrived hold nothing, it fails as unavailable (so does one where no
+//! pack arrived) rather than claim memory holds nothing; otherwise the
+//! evidence ends with a note that memory was only partly searched. A pack
+//! that fails still fails the recall, as before.
 
 use std::collections::HashSet;
 
@@ -267,8 +269,12 @@ fn render(facts: &[String], beliefs: &[String], events: &[Envelope]) -> String {
 
 impl CortexEngine {
     /// The packs for `paths` that arrive within the evidence deadline (see
-    /// the module docs), in `paths` order.
-    async fn packs_by_deadline(&self, req: &RecallRequest, paths: &[String]) -> Result<Vec<Value>> {
+    /// the module docs), in `paths` order, and how many were left out.
+    async fn packs_by_deadline(
+        &self,
+        req: &RecallRequest,
+        paths: &[String],
+    ) -> Result<(Vec<Value>, usize)> {
         let deadline = tokio::time::Instant::now() + self.log.timing.evidence;
         let mut building = stream::iter(paths.iter().cloned().enumerate())
             .map(|(index, path)| async move { (index, self.pack(req, &path).await) })
@@ -300,7 +306,10 @@ impl CortexEngine {
             );
         }
         arrived.sort_by_key(|(index, _)| *index);
-        Ok(arrived.into_iter().map(|(_, pack)| pack).collect())
+        Ok((
+            arrived.into_iter().map(|(_, pack)| pack).collect(),
+            late.len(),
+        ))
     }
 
     /// See the module docs. `paths` are the kind scopes to read, most
@@ -310,7 +319,7 @@ impl CortexEngine {
         req: &RecallRequest,
         paths: &[String],
     ) -> Result<RecallAnswer> {
-        let packs = self.packs_by_deadline(req, paths).await?;
+        let (packs, late) = self.packs_by_deadline(req, paths).await?;
         let mut facts = Vec::new();
         let mut beliefs = Vec::new();
         let mut per_pack = Vec::new();
@@ -321,7 +330,23 @@ impl CortexEngine {
             per_pack.push(gathered.events);
         }
         let events = interleave(per_pack);
-        let answer = render(&facts, &beliefs, &events);
+        let mut answer = render(&facts, &beliefs, &events);
+        if late > 0 {
+            if answer.is_empty() {
+                return Err(Error::Unavailable(format!(
+                    "{late} of {} memory areas were still being searched after {:?} and the \
+                     rest hold nothing relevant; memory was not fully searched",
+                    paths.len(),
+                    self.log.timing.evidence
+                )));
+            }
+            answer.push_str(&format!(
+                "\n\n(Memory was only partly searched: {late} of {} areas did not answer \
+                 within {:?}, so this evidence may be incomplete.)",
+                paths.len(),
+                self.log.timing.evidence
+            ));
+        }
         let citations = events
             .into_iter()
             .take(req.limit)

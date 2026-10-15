@@ -244,9 +244,12 @@ evidence itself (`engine/evidence.rs`):
 0. Wait for the packs at most 12 seconds from the start of the recall
    (`Timing::evidence`). A pack still building then is left out with a
    warning, so one slow scope no longer costs the evidence of the others
-   inside a host's tool-call limit (OpenHuman's is 15 seconds); no pack in
-   time is `Unavailable`, never an empty answer. A pack that fails still
-   fails the recall.
+   inside a host's tool-call limit (OpenHuman's is 15 seconds). A recall
+   that left a pack out says so: if what arrived holds nothing it is
+   `Unavailable` (as is one where no pack arrived), never an empty answer
+   that reads as "nothing stored"; otherwise the evidence ends with a note
+   that memory was only partly searched. A pack that fails still fails the
+   recall.
 1. Decode each pack's events, keep what the full `MetaFilter` admits, and
    drop the turns `exclude_thread` covers, noting their event ids.
 2. When the filter narrows by reach and kinds alone, render the `facts`

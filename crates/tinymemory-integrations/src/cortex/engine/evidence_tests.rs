@@ -216,7 +216,31 @@ async fn a_scope_still_building_at_the_deadline_is_left_out() {
     assert!(got.answer.contains("## Conversation"), "{}", got.answer);
     assert!(!got.citations.is_empty());
     assert!(!got.answer.contains("prefers helix"), "{}", got.answer);
+    assert!(
+        got.answer.contains("only partly searched: 1 of"),
+        "{}",
+        got.answer
+    );
     assert!(got.citations.iter().all(|c| c.kind != ItemKind::Learning));
+}
+
+#[tokio::test]
+async fn a_late_scope_beside_empty_ones_is_unavailable_not_nothing_stored() {
+    let engine = engine_with_slow("app:conversations").await;
+    let mut req = evidence_request();
+    req.question = "editor".into();
+    let error = engine.recall(req).await.unwrap_err();
+    assert!(
+        matches!(&error, Error::Unavailable(m) if m.contains("not fully searched")),
+        "{error:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_recall_with_every_pack_in_time_carries_no_note() {
+    let engine = engine_with_slow("app:no-such-scope").await;
+    let got = engine.recall(evidence_request()).await.unwrap();
+    assert!(!got.answer.contains("partly searched"), "{}", got.answer);
 }
 
 #[tokio::test]
