@@ -159,3 +159,27 @@ fn turns_are_separated_and_attributed_by_role() {
          [2023-06-27 10:37 UTC] [assistant] hi there"
     );
 }
+
+#[test]
+fn a_learning_made_in_an_excluded_thread_stays_in_the_evidence() {
+    let learned = StoreItem::learning(
+        "the user prefers green tea",
+        tinymemory_api::LearningKind::Preference,
+        0.9,
+        MemoryMeta {
+            thread_id: Some("live".into()),
+            ..MemoryMeta::default()
+        },
+    );
+    let pack = json!({ "layers": { "events": [
+        event("e_live", &turn("live", Role::User, "what tea do I like")),
+        event("e_learned", &learned),
+    ] } });
+    let gathered = gather(
+        &pack,
+        &MetaFilter::default(),
+        Some(&ThreadWindow::whole("live")),
+    );
+    let texts: Vec<&str> = gathered.events.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(texts, vec!["the user prefers green tea"]);
+}

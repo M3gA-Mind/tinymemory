@@ -109,8 +109,9 @@ impl RecallRequest {
 /// `from_turn` on. A caller reading inside a thread sets it to the turns its
 /// prompt already holds, so the message being answered (logged before the
 /// read) does not come back as a memory; `from_turn: 0` leaves the whole
-/// thread out. Engines apply it to what they return; an engine whose store
-/// cannot exclude server side drops the matching items from its results.
+/// thread out. Engines apply it to what they return ([`ThreadWindow::excludes`]:
+/// conversation turns only); an engine whose store cannot exclude server side
+/// drops the matching items from its results.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThreadWindow {
     /// The thread.
@@ -147,6 +148,16 @@ impl ThreadWindow {
                 .turns
                 .as_ref()
                 .is_none_or(|turns| turns.last >= self.from_turn)
+    }
+
+    /// Whether a read's `exclude_thread` leaves out an item of `kind`
+    /// carrying `meta`: only **conversation** turns are left out. A learning
+    /// or a document stamped with the thread (a host records where it was
+    /// learned) stays readable, since the prompt holds the thread's turns,
+    /// not what was learned from them.
+    #[must_use]
+    pub fn excludes(&self, kind: ItemKind, meta: &MemoryMeta) -> bool {
+        kind == ItemKind::Conversation && self.covers_meta(meta)
     }
 
     /// Checks the window names a thread.

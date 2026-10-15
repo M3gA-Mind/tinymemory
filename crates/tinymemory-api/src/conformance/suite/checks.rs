@@ -3,8 +3,8 @@
 use std::collections::BTreeSet;
 
 use crate::{
-    Error as ApiError, FetchMode, FetchRequest, ForgetTarget, ItemId, MemoryMeta, MetaFilter,
-    RecallMode, RecallRequest, Role, StoreItem, ThreadWindow, Turn, TurnRange,
+    Error as ApiError, FetchMode, FetchRequest, ForgetTarget, ItemId, LearningKind, MemoryMeta,
+    MetaFilter, RecallMode, RecallRequest, Role, StoreItem, ThreadWindow, Turn, TurnRange,
 };
 
 use super::{Ctx, ensure};
@@ -21,7 +21,6 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     super::bulk::store_many(ctx).await?;
     super::lifecycle::store_with(ctx).await?;
     fetch_filters(ctx).await?;
-    excluded_thread(ctx).await?;
     unsupported_modes(ctx).await?;
     super::namespaces::namespaces(ctx).await?;
     empty_forget(ctx).await?;
@@ -29,6 +28,8 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     forget_by_filter(ctx).await?;
     super::erase::erase(ctx).await?;
     recall(ctx).await?;
+    // After `recall`, so a recall fault is reported by the check named for it.
+    excluded_thread(ctx).await?;
     super::lifecycle::consolidate(ctx).await
 }
 
@@ -183,8 +184,8 @@ async fn fetch_filters(ctx: &Ctx<'_>) -> Result<()> {
 }
 
 /// A read's `exclude_thread` leaves that thread's turns out of every fetch
-/// mode and of recall's citations, and a window starting after a turn keeps
-/// it.
+/// mode and of recall's citations, a window starting after a turn keeps it,
+/// and a learning stamped with the thread stays readable.
 async fn excluded_thread(ctx: &Ctx<'_>) -> Result<()> {
     const CHECK: &str = "excluded_thread";
     let turn = |thread: &str| {
@@ -205,6 +206,21 @@ async fn excluded_thread(ctx: &Ctx<'_>) -> Result<()> {
     );
     let live_id = ctx.call(CHECK, ctx.engine.store(turn(&live))).await?.id;
     let other_id = ctx.call(CHECK, ctx.engine.store(turn(&other))).await?.id;
+    let mut learned_meta = ctx.run.meta();
+    learned_meta.thread_id = Some(live.clone());
+    let learned_text = format!("{} a learning made in {live}", ctx.run.marker);
+    let learned_id = ctx
+        .call(
+            CHECK,
+            ctx.engine.store(StoreItem::learning(
+                learned_text.clone(),
+                LearningKind::Fact,
+                0.9,
+                learned_meta,
+            )),
+        )
+        .await?
+        .id;
     let modes = ctx.engine.descriptor().fetch_modes.clone();
     for mode in &modes {
         let mut request = FetchRequest::new(ctx.run.marker.clone(), *mode, 50);
@@ -222,6 +238,12 @@ async fn excluded_thread(ctx: &Ctx<'_>) -> Result<()> {
                 )
             },
         )?;
+        ensure(CHECK, found.contains(&learned_id), || {
+            format!(
+                "{} fetch excluding {live} dropped its learning {learned_id}: only conversation turns are excluded",
+                mode.as_str()
+            )
+        })?;
         request.exclude_thread = Some(ThreadWindow {
             thread_id: live.clone(),
             from_turn: 1,
@@ -245,6 +267,14 @@ async fn excluded_thread(ctx: &Ctx<'_>) -> Result<()> {
             .iter()
             .all(|citation| citation.id != live_id),
         || format!("a recall excluding {live} cited its turn {live_id}"),
+    )?;
+    ensure(
+        CHECK,
+        answer
+            .citations
+            .iter()
+            .any(|citation| citation.id == learned_id),
+        || format!("a recall excluding {live} left out its learning {learned_id}"),
     )?;
     // In evidence mode the engine writes no answer of its own, so the text it
     // returns is all evidence, and none of it may come from the window.
