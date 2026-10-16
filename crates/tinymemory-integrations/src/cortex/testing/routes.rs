@@ -335,6 +335,12 @@ async fn recall(
     if state.recall_down.load(Ordering::SeqCst) {
         return fail(&state, 500, "INTERNAL");
     }
+    let slow = *state.slow_recall.lock().unwrap();
+    if let Some((scope, ms)) = slow
+        && body["scope"].as_str().unwrap_or_default().contains(scope)
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+    }
     let pack = state.log.lock().unwrap().recall(&body);
     ok(&state, 200, pack)
 }
