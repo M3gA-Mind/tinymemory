@@ -29,7 +29,7 @@ fn source_kinds_map_to_their_brain_source() {
         (SourceKind::Folder, BrainSource::Files),
         (SourceKind::File, BrainSource::Files),
     ] {
-        assert_eq!(source_for(kind), expected, "{kind:?}");
+        assert_eq!(brain_source(kind), expected, "{kind:?}");
     }
 }
 

@@ -46,7 +46,7 @@ pub const MAX_INGEST_BYTES: u64 = 25 * 1024 * 1024;
 /// The source a synced item belongs to, keyed by the source kind on the
 /// TinyMemory API wire.
 #[must_use]
-pub fn source_for(kind: tinymemory_api::SourceKind) -> BrainSource {
+pub fn brain_source(kind: tinymemory_api::SourceKind) -> BrainSource {
     use tinymemory_api::SourceKind as Kind;
     match kind {
         Kind::Github => BrainSource::Github,

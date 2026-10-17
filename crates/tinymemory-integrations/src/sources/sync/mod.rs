@@ -375,7 +375,7 @@ pub struct Stored {
 }
 
 /// What [`store_placed`] stored and the host can schedule afterward.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Placed {
     /// Store result, including nodes that accepted items.
     pub stored: Stored,
