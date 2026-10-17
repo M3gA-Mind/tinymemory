@@ -17,7 +17,6 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     super::export::export(ctx).await?;
     replay(ctx).await?;
     super::explore::explore(ctx).await?;
-    super::channel::channel(ctx).await?;
     super::explore::get(ctx).await?;
     super::bulk::store_many(ctx).await?;
     super::lifecycle::store_with(ctx).await?;
@@ -31,6 +30,7 @@ pub(super) async fn all(ctx: &Ctx<'_>) -> Result<()> {
     recall(ctx).await?;
     // After `recall`, so a recall fault is reported by the check named for it.
     excluded_thread(ctx).await?;
+    super::channel::channel(ctx).await?;
     super::lifecycle::consolidate(ctx).await
 }
 

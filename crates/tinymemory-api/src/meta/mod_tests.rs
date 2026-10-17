@@ -1,5 +1,7 @@
 //! Metadata serialisation and defaults.
 
+use chrono::{TimeZone, Utc};
+
 use super::*;
 
 #[test]
@@ -88,6 +90,41 @@ fn host_values_replace_namespace_source_and_tags_when_present() {
     assert_eq!(overlaid.source.kind, SourceKind::Conversation);
     assert_eq!(overlaid.source.id.as_deref(), Some("host"));
     assert_eq!(overlaid.tags, ["host"]);
+}
+
+#[test]
+fn host_overlay_covers_every_metadata_field() {
+    let host = MemoryMeta {
+        namespace: "agent:host".parse().unwrap(),
+        workspace: Some("host-workspace".into()),
+        folder: Some("host-folder".into()),
+        file_path: Some("host-file".into()),
+        language: Some("host-language".into()),
+        repo: Some("host-repo".into()),
+        commit: Some("host-commit".into()),
+        url: Some("host-url".into()),
+        thread_id: Some("host-thread".into()),
+        channel: Some("host-channel".into()),
+        turns: Some(TurnRange { first: 2, last: 4 }),
+        agent_id: Some("host-agent".into()),
+        tool_call: Some(ToolCallRef {
+            name: "host-tool".into(),
+            id: Some("host-call".into()),
+        }),
+        source: SourceRef {
+            kind: SourceKind::Conversation,
+            id: Some("host-source".into()),
+        },
+        tags: vec!["host-tag".into()],
+        observed_at: Some(Utc.with_ymd_and_hms(2026, 10, 17, 0, 0, 0).unwrap()),
+        derive: Some(false),
+        observed_actor: Some(ObservedActor {
+            id: "telegram:123456789".into(),
+            name: Some("Host sender".into()),
+        }),
+    };
+
+    assert_eq!(MemoryMeta::default().overlay(host.clone()), host);
 }
 
 #[test]
