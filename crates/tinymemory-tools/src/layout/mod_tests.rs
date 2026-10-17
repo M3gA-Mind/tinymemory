@@ -189,6 +189,19 @@ fn pooled_conversations_share_one_node_told_apart_by_agent() {
 }
 
 #[test]
+fn pooled_conversations_accept_the_absolute_node_below_a_non_root_layout() {
+    let root: Namespace = "team:acme".parse().unwrap();
+    let node: Namespace = "team:acme/ws:main".parse().unwrap();
+    let layout = MemoryLayout::new(root).unwrap();
+
+    let pooled = layout
+        .with_pooled_conversations(&node)
+        .unwrap();
+
+    assert_eq!(pooled.conversations("coder").unwrap(), node);
+}
+
+#[test]
 fn pooled_conversations_need_a_node_that_fits() {
     let layout = MemoryLayout::default();
     assert!(matches!(
