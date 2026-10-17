@@ -163,7 +163,7 @@ fn a_core_scope_reads_its_node_exactly() {
 
 #[test]
 fn pooled_conversations_share_one_node_told_apart_by_agent() {
-    let chats: Namespace = "ws:main".parse().unwrap();
+    let chats: Namespace = "team:acme/ws:main".parse().unwrap();
     let layout = MemoryLayout::new("team:acme".parse().unwrap())
         .unwrap()
         .with_pooled_conversations(&chats)
@@ -208,12 +208,11 @@ fn pooled_conversations_need_a_node_that_fits() {
         layout.clone().with_pooled_conversations(&Namespace::ROOT),
         Err(Error::InvalidRequest(_))
     ));
-    let deep: Namespace = ["agent:a"; 7].join("/").parse().unwrap();
-    let two: Namespace = "ws:a/ws:b".parse().unwrap();
+    let root: Namespace = "team:other".parse().unwrap();
     assert!(
-        MemoryLayout::new(deep)
+        MemoryLayout::new("team:acme".parse().unwrap())
             .unwrap()
-            .with_pooled_conversations(&two)
+            .with_pooled_conversations(&root)
             .is_err()
     );
 }

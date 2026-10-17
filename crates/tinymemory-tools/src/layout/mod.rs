@@ -56,6 +56,7 @@
 //! # Ok::<(), tinymemory_api::Error>(())
 //! ```
 
+pub mod identity;
 pub mod placement;
 mod source;
 mod types;
@@ -93,24 +94,33 @@ impl MemoryLayout {
         Ok(Self { root, pooled: None })
     }
 
-    /// The same layout, keeping every agent's conversations at `node` below
-    /// the root (`ws:main`) rather than at a node per agent. Each turn
-    /// carries its agent id, so an agent's history is still its own.
+    /// The same layout, keeping every agent's conversations at the absolute
+    /// `node` rather than at a node per agent. The node must be strictly
+    /// below this layout's root. Each turn carries its agent id, so an
+    /// agent's history is still its own.
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidRequest`] for the root itself, or a node too deep
-    /// below the root.
+    /// [`Error::InvalidRequest`] when `node` is the root, is outside the
+    /// layout root, or lies beyond the namespace depth limit.
     pub fn with_pooled_conversations(mut self, node: &Namespace) -> Result<Self> {
-        if node.is_root() {
+        if node == &self.root || !Reach::subtree(self.root.clone()).admits(node) {
             return Err(Error::InvalidRequest(
-                "pooled conversations need a node below the root".to_string(),
+                format!(
+                    "pooled conversations must be below layout root `{}`",
+                    self.root
+                ),
             ));
         }
-        let mut segments = self.root.segments().to_vec();
-        segments.extend(node.segments().iter().cloned());
-        self.pooled = Some(Namespace::new(segments)?);
+        self.pooled = Some(node.clone());
         Ok(self)
+    }
+
+    /// The absolute node holding every agent's conversations, when pooling
+    /// is enabled ([`Self::with_pooled_conversations`]).
+    #[must_use]
+    pub fn pooled_conversations_node(&self) -> Option<&Namespace> {
+        self.pooled.as_ref()
     }
 
     /// Whether every agent's conversations are kept at one node
