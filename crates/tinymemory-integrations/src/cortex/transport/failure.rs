@@ -114,19 +114,17 @@ fn excerpt(text: &str) -> String {
 
 /// Maps a status to its variant, given the message head and detail.
 fn by_status(status: StatusCode, head: String, detail: &str) -> Error {
+    let insufficient_credits = head
+        .strip_prefix('[')
+        .and_then(|rest| rest.split_once("] "))
+        .is_some_and(|(code, _)| code == INSUFFICIENT_CREDITS_CODE);
     let message = if detail.is_empty() {
         head
     } else {
         format!("{head} — {detail}")
     };
     match status.as_u16() {
-        402 if head
-            .strip_prefix('[')
-            .and_then(|rest| rest.split_once("] "))
-            .is_some_and(|(code, _)| code == INSUFFICIENT_CREDITS_CODE) =>
-        {
-            Error::InsufficientCredits(message)
-        }
+        402 if insufficient_credits => Error::InsufficientCredits(message),
         401 | 403 => Error::Unauthorized(message),
         404 => Error::NotFound(message),
         400 | 413 | 422 => Error::InvalidRequest(message),
