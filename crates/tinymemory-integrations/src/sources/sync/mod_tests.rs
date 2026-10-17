@@ -340,13 +340,20 @@ async fn store_placed_files_items_and_builds_one_job_per_touched_node() {
     let mut index = 0;
     let result = store_placed(&engine, "source-1", items, |_| {
         index += 1;
-        Ok(if index == 2 { github.clone() } else { files.clone() })
+        Ok(if index == 2 {
+            github.clone()
+        } else {
+            files.clone()
+        })
     })
     .await
     .unwrap();
 
     assert_eq!(result.stored.stored, 3);
-    assert_eq!(result.stored.touched, [files.clone(), github.clone()].into());
+    assert_eq!(
+        result.stored.touched,
+        [files.clone(), github.clone()].into()
+    );
     assert_eq!(
         result.jobs,
         vec![

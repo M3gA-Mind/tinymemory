@@ -17,7 +17,7 @@ wants one integration enables one feature and links nothing else.
 | `cortex`, `registry`, `config` | `cortex` (default) | `CortexEngine` over two wires (`cortexdb`, `tinyhumans`); `list_engines`, `build_engine`, `EngineCredential`; `MemoryConfig` | [`src/cortex/README.md`](src/cortex/README.md) |
 | `documents` | `documents` | Format sniffing and conversion to markdown, producing `StoreItem::Document`. No I/O. | [`src/documents/README.md`](src/documents/README.md) |
 | `documents::OfficeConverter` | `documents-office` | PDF, DOCX, PPTX and XLSX to markdown, in process | (same) |
-| `sources` | `sources` | Readers for folders, files and conversations; `collect_items`. Links no HTTP stack. | [`src/sources/README.md`](src/sources/README.md) |
+| `sources` | `sources` | Reader and host source types, target/layout validation, sync state, batch storage and placement jobs. Links no HTTP client. | [`src/sources/README.md`](src/sources/README.md) |
 | Source schemas | `schema` | Optional JSON Schema derives for the source configuration and reader types | (same) |
 | `sources::fetch`, GitHub, RSS and web-page readers | `sources-network` | The network readers and `fetch_url`, all behind the SSRF guard | (same) |
 | `safety` | `safety` | Secret and PII scrubbing of a `StoreItem` before it is stored | [`src/safety/README.md`](src/safety/README.md) |
@@ -40,7 +40,7 @@ already needs):
 | `documents` | nothing beyond the small set above |
 | `documents-office` | `pdf-extract`, `calamine`, `quick-xml`, `zip` (all pure Rust, no system libraries) |
 | `brain` | `tinymemory-tools` (for `BrainDocument`; it adds only `futures`, `chrono`, `log`) |
-| `sources` | `url`, `regex`, `walkdir`, `chrono`, `log`, `tracing` |
+| `sources` | `tinymemory-tools` (layout and background-job types; no Tokio), `url`, `regex`, `walkdir`, `chrono`, `log`, `tracing` |
 | `schema` | `schemars` |
 | `sources-network` | `reqwest`, `futures`, `tokio` with `process`, `io-util` and `net` (the GitHub reader runs `gh` and `git`; the SSRF resolver does DNS) |
 | `safety` | `regex`, `serde_json`, `log` |

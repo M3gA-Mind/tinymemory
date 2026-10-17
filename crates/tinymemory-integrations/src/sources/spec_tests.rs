@@ -51,7 +51,10 @@ fn target_normalization_rejects_blank_malformed_and_non_http_targets() {
         (MemorySourceKind::Link, "ftp://example.com/x"),
         (MemorySourceKind::Rss, "file:///etc/passwd"),
     ] {
-        assert!(SourceSpec::normalize_target(kind, target).is_err(), "{kind:?} {target}");
+        assert!(
+            SourceSpec::normalize_target(kind, target).is_err(),
+            "{kind:?} {target}"
+        );
     }
 }
 
@@ -87,9 +90,22 @@ fn namespace_layout_uses_source_root_or_configured_root() {
         schedule_mins: None,
         namespace: Some("team:source".into()),
     };
-    assert_eq!(layout_of_source(&configured, &source).root().to_string(), "team:source");
-    assert_eq!(layout_of(&configured, &[source.clone()], "s").root().to_string(), "team:source");
-    assert_eq!(layout_of(&configured, &[source], "unknown").root().to_string(), "team:configured");
+    assert_eq!(
+        layout_of_source(&configured, &source).root().to_string(),
+        "team:source"
+    );
+    assert_eq!(
+        layout_of(&configured, &[source.clone()], "s")
+            .root()
+            .to_string(),
+        "team:source"
+    );
+    assert_eq!(
+        layout_of(&configured, &[source], "unknown")
+            .root()
+            .to_string(),
+        "team:configured"
+    );
 }
 
 #[test]
@@ -103,7 +119,10 @@ fn invalid_saved_namespace_falls_back_to_configured_layout() {
         schedule_mins: None,
         namespace: Some("not-a-namespace".into()),
     };
-    assert_eq!(layout_of_source(&configured, &source).root(), configured.root());
+    assert_eq!(
+        layout_of_source(&configured, &source).root(),
+        configured.root()
+    );
 }
 
 #[test]

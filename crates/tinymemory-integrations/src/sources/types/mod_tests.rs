@@ -418,11 +418,13 @@ fn memory_source_kind_parses_the_host_wire_names_case_insensitively() {
     for kind in MemorySourceKind::ALL {
         assert_eq!(MemorySourceKind::parse(kind.as_str()), Some(kind));
         assert_eq!(
-            serde_json::from_str::<MemorySourceKind>(&format!("\"{}\"", kind.as_str()))
-                .unwrap(),
+            serde_json::from_str::<MemorySourceKind>(&format!("\"{}\"", kind.as_str())).unwrap(),
             kind
         );
     }
-    assert_eq!(MemorySourceKind::parse(" FOLDER "), Some(MemorySourceKind::Folder));
+    assert_eq!(
+        MemorySourceKind::parse(" FOLDER "),
+        Some(MemorySourceKind::Folder)
+    );
     assert_eq!(MemorySourceKind::parse("composio"), None);
 }

@@ -109,7 +109,7 @@ pub enum SyncStatus {
 }
 
 /// What the registry remembers of a source's last runs.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SyncState {
     /// Where the sync stands.
     pub status: SyncStatus,
@@ -400,7 +400,10 @@ pub async fn store_placed(
     let mut placed = Vec::with_capacity(items.len());
     for item in items {
         let node = placement(&item).map_err(|error| SyncError::Invalid(error.to_string()))?;
-        placed.push((node.clone(), tinymemory_tools::layout::placement::file_into(node, item)));
+        placed.push((
+            node.clone(),
+            tinymemory_tools::layout::placement::file_into(node, item),
+        ));
     }
     let stored = store_all(engine, source_id, placed).await?;
     let jobs = if engine.descriptor().consolidation == Consolidation::Automatic {
@@ -411,8 +414,7 @@ pub async fn store_placed(
             .iter()
             .cloned()
             .map(|node| BackgroundJob::BuildBeliefs {
-                request: ConsolidateRequest::new(Reach::exact(node))
-                    .kinds([ItemKind::Document]),
+                request: ConsolidateRequest::new(Reach::exact(node)).kinds([ItemKind::Document]),
             })
             .collect()
     };

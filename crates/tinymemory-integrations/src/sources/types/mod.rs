@@ -14,9 +14,9 @@
 //! Wire strings are snake_case and are part of the persisted contract — do not
 //! rename them when porting from OpenHuman.
 
-use serde::{Deserialize, Serialize};
 #[cfg(feature = "schema")]
 use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::sources::error::{Error, Result};
 
@@ -111,7 +111,13 @@ pub enum MemorySourceKind {
 
 impl MemorySourceKind {
     /// Every configured kind, in display order.
-    pub const ALL: [Self; 5] = [Self::Folder, Self::File, Self::Link, Self::Github, Self::Rss];
+    pub const ALL: [Self; 5] = [
+        Self::Folder,
+        Self::File,
+        Self::Link,
+        Self::Github,
+        Self::Rss,
+    ];
 
     /// The stable wire name.
     #[must_use]

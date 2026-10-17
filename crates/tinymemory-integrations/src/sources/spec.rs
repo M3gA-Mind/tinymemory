@@ -3,9 +3,9 @@
 use tinymemory_api::Namespace;
 use tinymemory_tools::MemoryLayout;
 
-use super::types::{MemorySourceConfig, MemorySourceKind};
-use super::sync::MIN_SCHEDULE_MINS;
 use super::error::{Error, Result};
+use super::sync::MIN_SCHEDULE_MINS;
+use super::types::{MemorySourceConfig, MemorySourceKind};
 
 /// The fields that determine whether a source can be added.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,7 +44,9 @@ impl SourceSpec {
                 } else {
                     let mut parts = target.split('/');
                     match (parts.next(), parts.next(), parts.next()) {
-                        (Some(owner), Some(repo), None) if !owner.is_empty() && !repo.is_empty() => {
+                        (Some(owner), Some(repo), None)
+                            if !owner.is_empty() && !repo.is_empty() =>
+                        {
                             Ok(format!("https://github.com/{owner}/{repo}"))
                         }
                         _ => Err(Error::Invalid(
@@ -83,7 +85,11 @@ impl SourceSpec {
         {
             return Err(Error::Invalid("that source is already added".to_string()));
         }
-        if let Some(namespace) = self.namespace.as_deref().map(str::trim).filter(|s| !s.is_empty())
+        if let Some(namespace) = self
+            .namespace
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
         {
             namespace
                 .parse::<Namespace>()
@@ -143,11 +149,15 @@ pub fn layout_of(
     sources
         .iter()
         .find(|source| source.id == source_id)
-        .map_or_else(|| configured.clone(), |source| layout_of_source(configured, source))
+        .map_or_else(
+            || configured.clone(),
+            |source| layout_of_source(configured, source),
+        )
 }
 
 fn http_url(target: &str) -> Result<String> {
-    let url = url::Url::parse(target).map_err(|_| Error::Invalid("target is not a URL".to_string()))?;
+    let url =
+        url::Url::parse(target).map_err(|_| Error::Invalid("target is not a URL".to_string()))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
         return Err(Error::Invalid("target must be an http(s) URL".to_string()));
     }
