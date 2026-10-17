@@ -112,7 +112,6 @@ async fn cancelling_a_waiting_owner_fence_releases_its_gate_token() {
     drop(completed);
 }
 
-#[test]
 #[tokio::test]
 async fn active_mutations_and_fences_keep_the_owner_identity_alive() {
     let registry = OwnerRegistry::new();
