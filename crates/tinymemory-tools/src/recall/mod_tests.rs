@@ -149,6 +149,7 @@ async fn excluded_ids_and_the_live_thread_window_are_left_out() {
 struct Broken {
     inner: ReferenceEngine,
     fetch_too: bool,
+    recall_error: Error,
 }
 
 #[async_trait]
@@ -160,7 +161,7 @@ impl tinymemory_api::MemoryEngine for Broken {
         EngineHealth::Ok
     }
     async fn recall(&self, _req: RecallRequest) -> tinymemory_api::Result<RecallAnswer> {
-        Err(Error::Unavailable("recall is down".into()))
+        Err(self.recall_error.clone())
     }
     async fn fetch(&self, req: FetchRequest) -> tinymemory_api::Result<FetchPage> {
         if self.fetch_too {
@@ -184,6 +185,7 @@ async fn a_failed_answer_falls_back_to_fetch_only_when_asked() {
     let engine = Broken {
         inner: seeded().await,
         fetch_too: false,
+        recall_error: Error::Unavailable("recall is down".into()),
     };
     let mut section = ScopeSection::answer("Refunds", "refunds", docs(), 3);
     let plain = holistic_recall(&engine, &HolisticRecall::new(None, vec![section.clone()]))
@@ -216,6 +218,7 @@ async fn a_failing_section_never_fails_the_pack() {
     let engine = Broken {
         inner: seeded().await,
         fetch_too: true,
+        recall_error: Error::Unauthorized("credential expired".into()),
     };
     let request = HolisticRecall::new(
         Some("refunds".into()),
