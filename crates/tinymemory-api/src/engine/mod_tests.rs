@@ -41,6 +41,25 @@ fn only_down_is_not_serving() {
     );
 }
 
+#[test]
+fn engine_status_carries_health_capabilities_and_contract_version() {
+    let descriptor = descriptor(vec![FetchMode::Hybrid]);
+    let status = EngineStatus::from_engine(
+        &descriptor,
+        EngineHealth::Degraded("slow".into()),
+    );
+    assert_eq!(status.health, EngineStatusHealth::Degraded);
+    assert_eq!(status.reason.as_deref(), Some("slow"));
+    assert_eq!(status.capabilities, ["recall", "fetch", "store", "forget", "list"]);
+    assert_eq!(status.contract_version, CONTRACT_VERSION);
+
+    let off = EngineStatus::off("disabled");
+    assert_eq!(off.health, EngineStatusHealth::Off);
+    assert_eq!(off.reason.as_deref(), Some("disabled"));
+    assert!(off.capabilities.is_empty());
+    assert_eq!(off.contract_version, CONTRACT_VERSION);
+}
+
 /// An engine implementing only the required methods, so every default is
 /// the trait's own.
 struct Bare(EngineDescriptor);
