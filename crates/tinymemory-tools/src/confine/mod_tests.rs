@@ -125,6 +125,11 @@ fn learn_metadata_obeys_the_selected_policy() {
     let clamped = clamp.learn_meta(None, &default).unwrap();
     assert_eq!(clamped.namespace, default);
 
+    let out_of_scope_default = clamp
+        .learn_meta(None, &ns("team:other/agent:writer"))
+        .unwrap();
+    assert_eq!(out_of_scope_default.namespace, clamp.allowed.at);
+
     let root_meta = clamp
         .learn_meta(Some(MemoryMeta::default()), &ns("team:acme/agent:writer"))
         .unwrap();
@@ -146,6 +151,11 @@ fn learn_metadata_obeys_the_selected_policy() {
     let accepted = refuse.learn_meta(None, &default).unwrap();
     assert_eq!(accepted.namespace, default);
 
+    let explicit_root = refuse
+        .learn_meta(Some(MemoryMeta::default()), &default)
+        .unwrap();
+    assert_eq!(explicit_root.namespace, default);
+
     let explicit_inside = refuse
         .learn_meta(
             Some(MemoryMeta {
@@ -159,6 +169,10 @@ fn learn_metadata_obeys_the_selected_policy() {
 
     assert!(matches!(
         refuse.learn_meta(None, &ns("team:other/agent:writer")),
+        Err(Error::InvalidRequest(_))
+    ));
+    assert!(matches!(
+        refuse.learn_meta(Some(MemoryMeta::default()), &ns("team:other/agent:writer")),
         Err(Error::InvalidRequest(_))
     ));
     assert!(matches!(

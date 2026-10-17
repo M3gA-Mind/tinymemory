@@ -5,7 +5,7 @@ use tinymemory_api::{Error, MemoryMeta, MetaFilter, Namespace, Reach, Result, St
 /// What to do when a requested namespace falls outside the allowed reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Policy {
-    /// Move out-of-scope reads and writes to the allowed namespace subtree.
+    /// Narrow out-of-scope reads and move out-of-scope writes to the allowed reach.
     Clamp,
     /// Reject an out-of-scope read or write as an invalid request.
     Refuse,
