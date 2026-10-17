@@ -123,6 +123,7 @@ impl MetaFilter {
             && exact(self.commit.as_deref(), meta.commit.as_deref())
             && exact(self.url.as_deref(), meta.url.as_deref())
             && exact(self.thread_id.as_deref(), meta.thread_id.as_deref())
+            && exact(self.channel.as_deref(), meta.channel.as_deref())
             && self.turns.is_none_or(|turns| meta.turns == Some(turns))
             && exact(self.agent_id.as_deref(), meta.agent_id.as_deref())
             && exact(
