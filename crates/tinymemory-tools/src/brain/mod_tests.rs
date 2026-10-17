@@ -131,7 +131,7 @@ impl tinymemory_api::MemoryEngine for ExploreFixture {
                     count: 2,
                 },
             ],
-            total: 4,
+            total: 8,
             missing: 2,
             more_buckets: 0,
             truncated: false,

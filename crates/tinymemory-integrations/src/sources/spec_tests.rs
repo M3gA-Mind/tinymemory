@@ -95,7 +95,7 @@ fn namespace_layout_uses_source_root_or_configured_root() {
         "team:source"
     );
     assert_eq!(
-        layout_of(&configured, &[source.clone()], "s")
+        layout_of(&configured, std::slice::from_ref(&source), "s")
             .root()
             .to_string(),
         "team:source"
