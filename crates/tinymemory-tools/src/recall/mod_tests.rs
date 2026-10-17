@@ -232,8 +232,8 @@ async fn a_failing_section_never_fails_the_pack() {
     assert_eq!(pack.skipped[0].heading, "Docs");
     assert!(matches!(
         &pack.skipped[0].reason,
-        SkipReason::Engine(error @ Error::Unauthorized(message))
-            if message == "credential expired" && error.is_account_wide()
+        SkipReason::Engine(error @ Error::Unavailable(message))
+            if message == "fetch is down" && error.is_account_wide()
     ));
     assert!(pack.markdown.contains("## Learnings"));
 }
