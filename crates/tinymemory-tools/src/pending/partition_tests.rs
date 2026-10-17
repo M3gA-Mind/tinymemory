@@ -36,3 +36,15 @@ async fn cancelling_a_waiting_partition_drain_releases_its_lock_request() {
 
     assert!(partition.try_lock_arc().is_some());
 }
+
+#[test]
+fn partition_registry_evicts_locks_after_the_last_handle_drops() {
+    let locks = PartitionLocks::new();
+    let first = locks.for_partition("owner-a/root");
+    drop(first);
+
+    let replacement = locks.for_partition("owner-a/agent");
+
+    assert_eq!(locks.tracked_partitions(), 1);
+    assert!(replacement.try_lock_arc().is_some());
+}

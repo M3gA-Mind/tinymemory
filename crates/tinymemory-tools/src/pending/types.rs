@@ -168,6 +168,7 @@ pub struct FenceToken<'a> {
 /// Unlike [`FenceToken`], this token can be stored in a fence object that also
 /// owns the gate. Dropping it lifts exactly one active fence.
 #[must_use = "dropping the token lifts the fence"]
+#[derive(Debug)]
 pub(super) struct OwnedFenceToken {
     gate: std::sync::Arc<WriteGate>,
     generation: u64,

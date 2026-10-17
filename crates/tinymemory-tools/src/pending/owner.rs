@@ -16,6 +16,7 @@ static GLOBAL_OWNERS: LazyLock<OwnerRegistry> = LazyLock::new(OwnerRegistry::new
 ///
 /// The registry prunes dead entries on every lookup. Callers hold an owner
 /// only while a mutation, drain, or erasure needs its gate and barrier.
+#[derive(Debug)]
 pub struct OwnerRegistry {
     owners: Mutex<Owners>,
 }
@@ -70,6 +71,7 @@ impl OwnerRegistry {
 }
 
 /// One owner's write gate and mutation barrier.
+#[derive(Debug)]
 pub struct OwnerState {
     gate: Arc<WriteGate>,
     barrier: Arc<RwLock<()>>,
@@ -116,6 +118,7 @@ impl OwnerState {
 }
 
 /// Automatic work admitted at an owner's current erasure generation.
+#[derive(Debug)]
 pub struct AutomaticMutation {
     owner: Arc<OwnerState>,
     generation: u64,
@@ -140,6 +143,7 @@ impl AutomaticMutation {
 
 /// An erasure fence held across the host's explicit engine deletion.
 #[must_use = "dropping the fence lets later owner mutations proceed"]
+#[derive(Debug)]
 pub struct OwnerFence {
     owner: Arc<OwnerState>,
     token: Option<OwnedFenceToken>,
