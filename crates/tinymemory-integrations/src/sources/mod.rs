@@ -66,6 +66,8 @@ pub mod error;
 pub mod fetch;
 pub mod items;
 pub mod readers;
+pub mod spec;
+pub mod state;
 pub mod sync;
 pub mod types;
 
@@ -74,4 +76,9 @@ pub const FOLDER_FILE_SIZE_CAP_BYTES: u64 = 10 * 1024 * 1024;
 
 pub use error::{Error, Result};
 pub use items::{Collected, collect_items, content_item, conversation_item, file_item};
-pub use types::{ContentType, MemorySourceEntry, SourceContent, SourceItem, SourceKind};
+pub use spec::{SourceSpec, layout_of, layout_of_source};
+pub use state::{SourceState, SourceStatus, reset_interrupted};
+pub use types::{
+    ContentType, MemorySourceConfig, MemorySourceEntry, MemorySourceKind, SourceContent,
+    SourceItem, SourceKind,
+};

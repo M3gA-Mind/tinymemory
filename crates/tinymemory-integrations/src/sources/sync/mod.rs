@@ -23,7 +23,11 @@ use std::collections::{BTreeSet, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::{DateTime, Duration, Utc};
-use tinymemory_api::{MAX_STORE_MANY, MemoryEngine, Namespace, StoreItem};
+use tinymemory_api::{
+    ConsolidateRequest, Consolidation, ItemKind, MAX_STORE_MANY, MemoryEngine, Namespace, Reach,
+    Result as ApiResult, StoreItem,
+};
+use tinymemory_tools::BackgroundJob;
 
 use super::types::{MemorySourceEntry, SourceKind};
 
@@ -105,7 +109,7 @@ pub enum SyncStatus {
 }
 
 /// What the registry remembers of a source's last runs.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SyncState {
     /// Where the sync stands.
     pub status: SyncStatus,
@@ -368,6 +372,51 @@ pub struct Stored {
     /// The nodes that received at least one item, for the host's belief
     /// builds.
     pub touched: BTreeSet<Namespace>,
+}
+
+/// What [`store_placed`] stored and the host can schedule afterward.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Placed {
+    /// Store result, including nodes that accepted items.
+    pub stored: Stored,
+    /// One exact-node belief build for each node touched, unless the engine
+    /// consolidates automatically.
+    pub jobs: Vec<BackgroundJob>,
+}
+
+/// Places each item with the host's callback, stores it, and builds belief
+/// jobs for the nodes that accepted items. The host owns the callback and
+/// decides how to enqueue returned jobs.
+///
+/// # Errors
+///
+/// Placement failures and the errors from [`store_all`].
+pub async fn store_placed(
+    engine: &dyn MemoryEngine,
+    source_id: &str,
+    items: Vec<StoreItem>,
+    mut placement: impl FnMut(&StoreItem) -> ApiResult<Namespace>,
+) -> Result<Placed, SyncError> {
+    let mut placed = Vec::with_capacity(items.len());
+    for item in items {
+        let node = placement(&item).map_err(|error| SyncError::Invalid(error.to_string()))?;
+        placed.push((node.clone(), tinymemory_tools::layout::placement::file_into(node, item)));
+    }
+    let stored = store_all(engine, source_id, placed).await?;
+    let jobs = if engine.descriptor().consolidation == Consolidation::Automatic {
+        Vec::new()
+    } else {
+        stored
+            .touched
+            .iter()
+            .cloned()
+            .map(|node| BackgroundJob::BuildBeliefs {
+                request: ConsolidateRequest::new(Reach::exact(node))
+                    .kinds([ItemKind::Document]),
+            })
+            .collect()
+    };
+    Ok(Placed { stored, jobs })
 }
 
 /// Stores items already placed at their node on `engine`, [`STORE_CHUNK`] at

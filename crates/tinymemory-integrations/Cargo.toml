@@ -66,9 +66,10 @@ quick-xml = { version = "0.41", optional = true }
 zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
 
 # --- sources ---
-# `MemorySourceEntry` and friends appear in generated schemas, same as the
-# contract crate's own types.
+# JSON Schema derives are only needed by hosts that generate schemas.
 schemars = { version = "1.2", optional = true }
+# URL parsing for source target validation, without enabling a network client.
+url = { version = "2", optional = true }
 # The folder reader compiles a source's glob to a regex; safety's credential
 # and PII patterns are regexes too.
 regex = { version = "1.10", optional = true }
@@ -127,7 +128,9 @@ documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-x
 brain = ["documents", "dep:tinymemory-tools"]
 # `sources`: readers that turn folders, files and conversations into
 # `StoreItem`s. Links no HTTP stack.
-sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
+sources = ["documents", "dep:url", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
+# JSON Schema derives for source reader and host configuration types.
+schema = ["sources", "dep:schemars"]
 # The readers that fetch over the network — GitHub, RSS, web pages — and
 # `sources::fetch::fetch_url`, all behind the shared SSRF guard.
 sources-network = ["sources", "dep:reqwest", "dep:futures", "dep:tokio", "tokio/process", "tokio/io-util", "tokio/net"]
