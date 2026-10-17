@@ -120,6 +120,9 @@ fn by_status(status: StatusCode, head: String, detail: &str) -> Error {
         format!("{head} — {detail}")
     };
     match status.as_u16() {
+        402 if head.starts_with("[USER_INSUFFICIENT_CREDITS]") => {
+            Error::InsufficientCredits(message)
+        }
         401 | 403 => Error::Unauthorized(message),
         404 => Error::NotFound(message),
         400 | 413 | 422 => Error::InvalidRequest(message),
