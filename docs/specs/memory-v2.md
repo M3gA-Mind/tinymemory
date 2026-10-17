@@ -86,15 +86,25 @@ pub struct MemoryMeta {
     pub commit: Option<String>,
     pub url: Option<String>,
     pub thread_id: Option<String>,
+    pub channel: Option<String>,
     pub turns: Option<TurnRange>,    // { first: u32, last: u32 }
     pub agent_id: Option<String>,
     pub tool_call: Option<ToolCallRef>, // { name, id }
     pub source: SourceRef,           // { kind: SourceKind, id: Option<String> }
     pub tags: Vec<String>,
     pub observed_at: Option<DateTime<Utc>>,
+    pub observed_actor: Option<ObservedActor>,
 }
 pub enum SourceKind { Folder, File, Link, Github, Rss, Conversation, Agent, Import }
 ```
+
+`MemoryMeta::overlay(host)` takes host values over caller values while
+preserving fields the host leaves unset. `ObservedActor::for_channel_sender`
+keeps the host sender identity rules in this contract: phone ids are
+`user:<dial digits>` on `whatsapp`, `signal`, `imessage`, `linq` and `sms`,
+emails on any channel are lower-cased `user:<email>`, and other senders use
+`<channel>:<sender>`. TinyMemory owns this channel vocabulary so the memory
+contract does not depend on a host channel crate.
 
 `MetaFilter` has the same optional fields (each an exact match, `folder` and
 `file_path` also match as a prefix), plus `kinds: Vec<ItemKind>`,
