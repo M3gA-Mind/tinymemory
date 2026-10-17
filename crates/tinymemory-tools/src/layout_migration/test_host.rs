@@ -164,7 +164,7 @@ pub(crate) struct RefusingEngine {
 impl RefusingEngine {
     /// The hosted engine's refusal for an exhausted credit balance (HTTP 402).
     pub(crate) fn out_of_credits() -> Self {
-        Self::with(tinymemory_api::Error::Engine(
+        Self::with(tinymemory_api::Error::InsufficientCredits(
             "[USER_INSUFFICIENT_CREDITS] memory API fetch on api.example: the account has \
              insufficient credits (HTTP 402)"
                 .into(),

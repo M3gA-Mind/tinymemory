@@ -168,9 +168,7 @@ fn account_wide_failures_are_told_from_item_failures() {
     let wide = |error| SyncError::Engine(error).is_account_wide();
     assert!(wide(Error::Unauthorized("x".into())));
     assert!(wide(Error::Unavailable("x".into())));
-    assert!(wide(Error::Engine(
-        "[USER_INSUFFICIENT_CREDITS] top up".into()
-    )));
+    assert!(wide(Error::InsufficientCredits("top up".into())));
     assert!(!wide(Error::Engine("[OTHER] nope".into())));
     assert!(!wide(Error::InvalidRequest("x".into())));
     assert!(!SyncError::Read("x".into()).is_account_wide());
