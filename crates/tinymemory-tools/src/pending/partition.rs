@@ -83,7 +83,7 @@ impl<S: ListStore<Entry>, K: Eq + Hash> PendingPartitions<S, K> {
     }
 }
 
-impl<K> Default for PartitionLocks<K> {
+impl<K: Eq + Hash> Default for PartitionLocks<K> {
     fn default() -> Self {
         Self::new()
     }
