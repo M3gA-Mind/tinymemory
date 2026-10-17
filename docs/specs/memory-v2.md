@@ -33,21 +33,13 @@ Three memory crates, plus the standalone redaction crate `tinyredact`. Their rel
 | `tinymemory-integrations` | Everything that talks to the outside world, each behind a feature: `cortex` (default; the CortexDB engine, registered twice as `cortexdb` and `tinyhumans`, plus the registry `list_engines`/`build_engine` and `MemoryConfig`), `documents` and `documents-office` (format sniffing and conversion to markdown, emitting `StoreItem::Document`; PDF/DOCX/PPTX/XLSX via `OfficeConverter` or a host `DocumentConverter`), `sources` and `sources-network` (readers for folder, file, link, GitHub, RSS and conversations, with the SSRF guard), `safety` (secret/PII scrubbing applied to every item before `store`), and `legacy-import` (reads a v1 TinyCortex workspace and migrates it into any engine). |
 | `tinyredact` | Standalone local secret and personal identifier detection and scrubbing, usable independently of memory integrations. |
 
-Deleted historical crate names: the earlier `tinymemory` facade, `tinymemory-cortex`,
-`tinymemory-documents`, `tinymemory-sources`, `tinymemory-safety`,
-`tinymemory-context`, `tinymemory-import` and `tinymemory-conformance` as
-separate crates (their code moved into the three above: the engine, registry
-and config, documents, sources, safety and import into
-`tinymemory-integrations`; context into `tinymemory-tools`; conformance into
-the `conformance` feature of `tinymemory-api`). Earlier still: `tinymemory-bus`,
-`tinymemory-core`, `tinymemory-tinycortex`, `tinymemory-remote` (CortexDB is
-the engine; mem0, supermemory, cognee, agentmemory, livingbrain are dropped),
-`tinymemory-conversations`, `tinymemory-guard`, `tinymemory-gate`,
-`tinymemory-sync` (normalisers moved into `sources`), `tinymemory-module`,
-`tinymemory-testing-ui`, and the `vendor/tinycortex`, `vendor/tinybus` and
-`vendor/tinyinference` submodules (`legacy-import` reads the v1 on-disk layout
-directly, so it needs no engine dependency). `tinymemory-conversations` (the
-chat thread store) moved to `tinyagents-session::threads` in tinyagents.
+Earlier designs split the engine, documents, sources, safety, context and
+legacy import into separate crates. That code now lives in the three memory
+crates listed above; `tinyredact` remains the separate redaction library.
+Conformance is a feature of `tinymemory-api`. The older TinyCortex engine and
+its vendor submodule are gone, but `legacy-import` still reads the v1
+TinyCortex on-disk layout directly, without an engine dependency. The former
+chat thread store now lives in `tinyagents-session::threads` in tinyagents.
 
 ## Contract (`tinymemory-api`)
 
