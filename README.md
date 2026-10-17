@@ -24,7 +24,7 @@ namespace tree that keeps one tenant's or agent's memory apart from another's.
 
 ## Layout
 
-The workspace is three crates, split by what each may depend on.
+The workspace has three memory crates plus the standalone `tinyredact` library.
 
 ```text
 crates/
@@ -38,9 +38,10 @@ crates/
 │                             scoping), holistic recall and the `context.md` compiler,
 │                             and the agent lifecycle (`AgentMemory`, `Brain`,
 │                             `MemoryLayout`, background jobs)
-└── tinymemory-integrations/  everything that touches the outside world, one module
+├── tinymemory-integrations/  everything that touches the outside world, one module
                               per feature: `cortex` (+ `registry`, `config`),
                               `documents`, `sources`, `safety`, `import`
+└── tinyredact/               standalone on-device secret and PII redaction
 docs/
 ├── architecture/             how the code delivers the spec, one page per concern
 ├── specs/                    behaviour and architecture specifications
@@ -84,7 +85,7 @@ tinymemory-tools = { git = "https://github.com/tinyhumansai/tinymemory", tag = "
 tinymemory-integrations = { git = "https://github.com/tinyhumansai/tinymemory", tag = "vX.Y.Z", features = ["sources", "safety"] }
 ```
 
-All three crates carry the same version, so one tag names them all. A host that
+All workspace crates carry the same version, so one tag names them all. A host that
 only implements an engine needs just `tinymemory-api`; one that only offers
 tools over an engine it already has needs `tinymemory-api` and
 `tinymemory-tools`.
