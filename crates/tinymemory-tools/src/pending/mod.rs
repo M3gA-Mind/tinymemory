@@ -17,6 +17,8 @@
 //! timeout), and decides when [`PendingWrites::drain`] is called.
 
 mod types;
+mod owner;
+mod partition;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,6 +32,8 @@ pub use types::{
     Ack, Binding, Entry, Epoch, FenceToken, Limits, PendingError, WriteExecutor, WriteGate,
     WriteOperation,
 };
+pub use owner::{AutomaticMutation, OwnerFence, OwnerRegistry, OwnerState};
+pub use partition::PartitionLocks;
 
 static TICKETS: AtomicU64 = AtomicU64::new(0);
 
@@ -261,3 +265,11 @@ impl<S: ListStore<Entry>> PendingWrites<S> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "owner_tests.rs"]
+mod owner_tests;
+
+#[cfg(test)]
+#[path = "partition_tests.rs"]
+mod partition_tests;
