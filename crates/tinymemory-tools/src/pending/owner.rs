@@ -71,14 +71,14 @@ impl OwnerRegistry {
 
 /// One owner's write gate and mutation barrier.
 pub struct OwnerState {
-    gate: WriteGate,
+    gate: Arc<WriteGate>,
     barrier: Arc<RwLock<()>>,
 }
 
 impl OwnerState {
     fn new() -> Self {
         Self {
-            gate: WriteGate::new(uuid::Uuid::new_v4().to_string()),
+            gate: Arc::new(WriteGate::new(uuid::Uuid::new_v4().to_string())),
             barrier: Arc::new(RwLock::new(())),
         }
     }
