@@ -75,6 +75,11 @@ fn team_and_default_identity_fallbacks_are_preserved() {
 }
 
 #[test]
+fn recall_defaults_to_enabled_like_the_host_config() {
+    assert!(Identity::root().resolve(&IdentityPins::default()).recall);
+}
+
+#[test]
 fn invalid_or_blank_roots_fall_through_to_the_next_pin() {
     let identity = Identity::team_member("acme", "writer");
     let mut pins = IdentityPins {
