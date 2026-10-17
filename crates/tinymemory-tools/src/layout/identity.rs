@@ -17,7 +17,7 @@
 
 use std::collections::HashMap;
 
-use tinymemory_api::{Namespace, Reach, Segment, SegmentKind};
+use tinymemory_api::{Namespace, Segment, SegmentKind};
 
 use super::MemoryLayout;
 
