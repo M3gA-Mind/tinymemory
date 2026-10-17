@@ -68,6 +68,7 @@
 pub mod backfill;
 pub mod background;
 pub mod brain;
+pub mod confine;
 pub mod context;
 pub mod deletion;
 pub mod layout;
@@ -82,6 +83,7 @@ pub mod tools;
 
 pub use background::{BackgroundJob, BackgroundRunner, JobOutcome, JobReport};
 pub use brain::{Brain, BrainBatch, BrainDocument, Ingested};
+pub use confine::{Confinement, Policy};
 pub use layout::{BrainSource, CoreScope, DEFAULT_CORE_LIMIT, MemoryLayout};
 pub use lifecycle::{
     AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, RecallPolicy, SessionStart,
