@@ -23,16 +23,17 @@ a model call the same operations under a scope the host fixes (see
 
 ## Crates
 
-Three crates, one directory each under `crates/`. Their relationships are in
+Three memory crates, plus the standalone redaction crate `tinyredact`. Their relationships are in
 [`docs/architecture/overview.md`](../architecture/overview.md).
 
 | Crate | Owns |
 | --- | --- |
-| `tinymemory-api` | Pure safety vocabulary (classification/redaction behind `local-safety`) and the contract: `MemoryEngine`, request/response types, `MemoryMeta`, `MetaFilter`, namespaces, `EngineDescriptor`, `Error`. No I/O. Feature `conformance`: the behavioural suite every engine must pass, plus a reference in-memory engine. |
+| `tinymemory-api` | Pure safety vocabulary (classification/redaction behind `local-safety`) and the contract: `MemoryEngine`, request/response types, `MemoryMeta`, `MetaFilter`, namespaces, `EngineDescriptor`, `EngineStatus`, `Error`. No I/O. Feature `conformance`: the behavioural suite every engine must pass, plus a reference in-memory engine. |
 | `tinymemory-tools` | The agent tool spec `MemoryTools` (seven tools, host-fixed namespace and reach) and `context`, the `ContextCompiler` that builds `context.md` from an engine. |
 | `tinymemory-integrations` | Everything that talks to the outside world, each behind a feature: `cortex` (default; the CortexDB engine, registered twice as `cortexdb` and `tinyhumans`, plus the registry `list_engines`/`build_engine` and `MemoryConfig`), `documents` and `documents-office` (format sniffing and conversion to markdown, emitting `StoreItem::Document`; PDF/DOCX/PPTX/XLSX via `OfficeConverter` or a host `DocumentConverter`), `sources` and `sources-network` (readers for folder, file, link, GitHub, RSS and conversations, with the SSRF guard), `safety` (secret/PII scrubbing applied to every item before `store`), and `legacy-import` (reads a v1 TinyCortex workspace and migrates it into any engine). |
+| `tinyredact` | Standalone local secret and personal identifier detection and scrubbing, usable independently of memory integrations. |
 
-Deleted: the earlier `tinymemory` facade, `tinymemory-cortex`,
+Deleted historical crate names: the earlier `tinymemory` facade, `tinymemory-cortex`,
 `tinymemory-documents`, `tinymemory-sources`, `tinymemory-safety`,
 `tinymemory-context`, `tinymemory-import` and `tinymemory-conformance` as
 separate crates (their code moved into the three above: the engine, registry
