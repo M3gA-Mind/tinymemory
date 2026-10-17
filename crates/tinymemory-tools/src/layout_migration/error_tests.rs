@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn account_wide_refusals_are_told_from_an_items_own_failure() {
-    let credits = Error::Engine(EngineError::Engine(
+    let credits = Error::Engine(EngineError::InsufficientCredits(
         "[USER_INSUFFICIENT_CREDITS] the account has insufficient credits (HTTP 402)".into(),
     ));
     assert!(credits.is_account_wide());
