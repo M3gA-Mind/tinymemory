@@ -15,7 +15,7 @@ of each operation is in [operations.md](operations.md); namespaces are in
 | `engine` | `MemoryEngine`, `EngineDescriptor`, `EngineHealth`, `EngineStatus`, `MAX_STORE_MANY`, `validate_many` |
 | `error` | `Error`, `Result` |
 | `item` | `StoreItem`, `ItemKind`, `ItemId`, `DocumentBody`, `Turn`, `Role`, `LearningKind`, `StoreReceipt` |
-| `meta` | `MemoryMeta`, `MetaFilter`, `SourceKind`, `SourceRef`, `ToolCallRef`, `TurnRange` |
+| `meta` | `MemoryMeta`, `MetaFilter`, `ObservedActor`, `SourceKind`, `SourceRef`, `ToolCallRef`, `TurnRange` |
 | `namespace` | `Namespace`, `Segment`, `SegmentKind`, `Reach` |
 | `query` | Requests and responses for recall, fetch, list and forget |
 | `explore` | `Facet`, explore and get requests, the listing-based defaults, limits |
