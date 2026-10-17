@@ -115,11 +115,7 @@ impl ObservedActor {
     /// channel runtime. A blank channel or sender, or a sender containing
     /// whitespace, has no actor id and returns `None`.
     #[must_use]
-    pub fn for_channel_sender(
-        channel: &str,
-        sender: &str,
-        name: Option<&str>,
-    ) -> Option<Self> {
+    pub fn for_channel_sender(channel: &str, sender: &str, name: Option<&str>) -> Option<Self> {
         let name = name
             .map(str::trim)
             .filter(|name| !name.is_empty())

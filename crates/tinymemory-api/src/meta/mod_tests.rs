@@ -148,6 +148,15 @@ fn channel_sender_actor_ids_keep_host_normalization_rules() {
             .as_deref(),
         Some("user:5551234567")
     );
+    for channel in ["imessage", "linq"] {
+        assert_eq!(
+            ObservedActor::for_channel_sender(channel, "+1 (555) 123-4567", None)
+                .map(|actor| actor.id)
+                .as_deref(),
+            Some("user:+15551234567"),
+            "{channel} identifies senders by phone number"
+        );
+    }
     assert_eq!(
         ObservedActor::for_channel_sender("imessage", "Priya@Acme.com", None)
             .map(|actor| actor.id)
@@ -172,15 +181,35 @@ fn channel_sender_actor_ids_keep_host_normalization_rules() {
             .as_deref(),
         Some("whatsapp:98765432101234@lid")
     );
-    assert_eq!(ObservedActor::for_channel_sender("slack", "two words", None), None);
-    assert_eq!(ObservedActor::for_channel_sender(" ", "+15551234567", None), None);
-    assert_eq!(ObservedActor::for_channel_sender("whatsapp", "  ", Some("Mum")), None);
+    assert_eq!(
+        ObservedActor::for_channel_sender("slack", "two words", None),
+        None
+    );
+    assert_eq!(
+        ObservedActor::for_channel_sender(" ", "+15551234567", None),
+        None
+    );
+    assert_eq!(
+        ObservedActor::for_channel_sender("whatsapp", "  ", Some("Mum")),
+        None
+    );
 }
 
 #[test]
 fn an_empty_object_deserialises_to_the_default() {
     let meta: MemoryMeta = serde_json::from_str("{}").expect("deserialise");
     assert_eq!(meta, MemoryMeta::default());
+}
+
+#[test]
+fn metadata_without_a_channel_remains_readable() {
+    let meta: MemoryMeta = serde_json::from_value(serde_json::json!({
+        "thread_id": "legacy-thread",
+        "source": { "kind": "conversation" }
+    }))
+    .expect("legacy metadata deserialises");
+    assert_eq!(meta.thread_id.as_deref(), Some("legacy-thread"));
+    assert_eq!(meta.channel, None);
 }
 
 #[test]

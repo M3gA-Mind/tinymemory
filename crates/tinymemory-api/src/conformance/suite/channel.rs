@@ -41,7 +41,10 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
 
     let listed = ctx.list_all(CHECK, &filter).await?;
     ensure(CHECK, listed.len() == 1 && listed[0].id == wanted, || {
-        format!("channel list returned {:?}, expected only {wanted}", listed.iter().map(|hit| &hit.id).collect::<Vec<_>>())
+        format!(
+            "channel list returned {:?}, expected only {wanted}",
+            listed.iter().map(|hit| &hit.id).collect::<Vec<_>>()
+        )
     })?;
 
     let mut recall = RecallRequest::new(ctx.run.marker.clone(), 10);
@@ -50,7 +53,16 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
     ensure(
         CHECK,
         answer.citations.len() == 1 && answer.citations[0].id == wanted,
-        || format!("channel recall cited {:?}, expected only {wanted}", answer.citations.iter().map(|citation| &citation.id).collect::<Vec<_>>()),
+        || {
+            format!(
+                "channel recall cited {:?}, expected only {wanted}",
+                answer
+                    .citations
+                    .iter()
+                    .map(|citation| &citation.id)
+                    .collect::<Vec<_>>()
+            )
+        },
     )?;
 
     let mut explore = ExploreRequest::new(Facet::Kind, 10);
@@ -69,7 +81,10 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
         )
         .await?;
     ensure(CHECK, report.forgotten == 1, || {
-        format!("channel forget removed {} items, expected one", report.forgotten)
+        format!(
+            "channel forget removed {} items, expected one",
+            report.forgotten
+        )
     })?;
     let remaining_filter = MetaFilter {
         tags_any: vec![tag],
@@ -79,6 +94,11 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
     ensure(
         CHECK,
         remaining.len() == 1 && remaining[0].id == other,
-        || format!("channel forget left {:?}, expected only {other}", remaining.iter().map(|hit| &hit.id).collect::<Vec<_>>()),
+        || {
+            format!(
+                "channel forget left {:?}, expected only {other}",
+                remaining.iter().map(|hit| &hit.id).collect::<Vec<_>>()
+            )
+        },
     )
 }
