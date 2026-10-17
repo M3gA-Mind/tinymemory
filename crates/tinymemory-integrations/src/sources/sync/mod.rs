@@ -35,9 +35,6 @@ pub const MIN_SCHEDULE_MINS: u32 = 15;
 /// `ceil(N / 100)` instead of `N`.
 pub const STORE_CHUNK: usize = MAX_STORE_MANY;
 
-/// The credit-exhaustion code the hosted engine puts on its message.
-const INSUFFICIENT_CREDITS_CODE: &str = "USER_INSUFFICIENT_CREDITS";
-
 /// Why a sync failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SyncError {
@@ -59,21 +56,9 @@ impl SyncError {
     #[must_use]
     pub fn is_account_wide(&self) -> bool {
         match self {
-            Self::Engine(error) => engine_error_is_account_wide(error),
+            Self::Engine(error) => error.is_account_wide(),
             _ => false,
         }
-    }
-}
-
-fn engine_error_is_account_wide(error: &tinymemory_api::Error) -> bool {
-    use tinymemory_api::Error as E;
-    match error {
-        E::Unauthorized(_) | E::Unavailable(_) => true,
-        E::Engine(message) => message
-            .strip_prefix('[')
-            .and_then(|rest| rest.split_once("] "))
-            .is_some_and(|(code, _)| code == INSUFFICIENT_CREDITS_CODE),
-        _ => false,
     }
 }
 
@@ -395,7 +380,7 @@ pub async fn store_all(
                 out.stored += receipts.len() as u64;
                 out.touched.extend(chunk.into_iter().map(|(node, _)| node));
             }
-            Err(error) if engine_error_is_account_wide(&error) => return Err(error.into()),
+            Err(error) if error.is_account_wide() => return Err(error.into()),
             Err(error) => {
                 log::debug!(
                     "[memory:sources] id={source_id} batch of {} failed ({error}); retrying item by item",
@@ -407,7 +392,7 @@ pub async fn store_all(
                             out.stored += 1;
                             out.touched.insert(node);
                         }
-                        Err(error) if engine_error_is_account_wide(&error) => {
+                        Err(error) if error.is_account_wide() => {
                             return Err(error.into());
                         }
                         Err(error) => {

@@ -90,8 +90,8 @@ warm `pre_turn` measured about 40 ms and a `post_turn` about 2 ms; see
    - Hit lists lose the kinds the section does not admit, the excluded ids,
      the thread window, and anything an earlier section listed. Each list
      is then cut to its limit.
-   - A section left empty is reported as skipped (`reason: "empty"`), as is
-     a failed one (its error).
+   - A section left empty is reported as `SkipReason::Empty`; a failed section
+     carries `SkipReason::Engine(error)` with the original typed engine error.
 4. **Render** (`recall/render.rs`). A section is prose (an answer) or lines
    (one bullet per hit). A titled document is shown as `title: body`, and a
    turn that carries a time is led by it (`[2026-09-15 09:01] user: …`), so

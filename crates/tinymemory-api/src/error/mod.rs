@@ -5,9 +5,15 @@
 //! carry a credential: an engine sanitises its own failure before it becomes
 //! [`Error::Engine`].
 
+use serde::Serialize;
+
 /// Every way a memory operation can fail.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
+#[serde(rename_all = "snake_case")]
 pub enum Error {
+    /// Memory is disabled or no usable engine is configured.
+    #[error("memory is off: {0}")]
+    Off(String),
     /// The engine does not offer the requested operation or mode; a host
     /// reads [`crate::EngineDescriptor`] and should never ask.
     #[error("unsupported: {0}")]
@@ -19,6 +25,9 @@ pub enum Error {
     /// The credential was missing, expired or rejected.
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+    /// The hosted account cannot make this request until it has more credits.
+    #[error("insufficient credits: {0}")]
+    InsufficientCredits(String),
     /// The addressed item or route does not exist.
     #[error("not found: {0}")]
     NotFound(String),
@@ -39,6 +48,33 @@ pub enum Error {
 }
 
 impl Error {
+    /// The stable host-facing code for this failure.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Off(_) => "MEMORY_OFF",
+            Self::Unsupported(_) => "UNSUPPORTED",
+            Self::InvalidRequest(_) | Self::NotFound(_) | Self::Config(_) => "INVALID_REQUEST",
+            Self::Unauthorized(_) => "UNAUTHORIZED",
+            Self::InsufficientCredits(_) => "INSUFFICIENT_CREDITS",
+            Self::Unavailable(_) => "UNAVAILABLE",
+            Self::Conflict(_) | Self::Engine(_) => "ENGINE",
+        }
+    }
+
+    /// Whether the failure affects every request on the account, not only
+    /// one item or operation.
+    #[must_use]
+    pub fn is_account_wide(&self) -> bool {
+        matches!(
+            self,
+            Self::Off(_)
+                | Self::Unauthorized(_)
+                | Self::InsufficientCredits(_)
+                | Self::Unavailable(_)
+        )
+    }
+
     /// Whether retrying the same call later may succeed.
     #[must_use]
     pub fn is_transient(&self) -> bool {
