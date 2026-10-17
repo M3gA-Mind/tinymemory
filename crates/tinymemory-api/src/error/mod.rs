@@ -5,8 +5,11 @@
 //! carry a credential: an engine sanitises its own failure before it becomes
 //! [`Error::Engine`].
 
+use serde::Serialize;
+
 /// Every way a memory operation can fail.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
+#[serde(rename_all = "snake_case")]
 pub enum Error {
     /// Memory is disabled or no usable engine is configured.
     #[error("memory is off: {0}")]
