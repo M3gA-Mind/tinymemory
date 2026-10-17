@@ -89,7 +89,39 @@ fn host_values_replace_namespace_source_and_tags_when_present() {
     assert_eq!(overlaid.namespace, "agent:host".parse().unwrap());
     assert_eq!(overlaid.source.kind, SourceKind::Conversation);
     assert_eq!(overlaid.source.id.as_deref(), Some("host"));
-    assert_eq!(overlaid.tags, ["host"]);
+    assert_eq!(overlaid.tags, ["caller", "host"]);
+}
+
+#[test]
+fn host_root_namespace_and_default_source_are_authoritative() {
+    let caller = MemoryMeta {
+        namespace: "agent:caller".parse().unwrap(),
+        source: SourceRef {
+            kind: SourceKind::File,
+            id: Some("caller".into()),
+        },
+        ..MemoryMeta::default()
+    };
+    let host = MemoryMeta::default();
+
+    let overlaid = caller.overlay(host);
+    assert_eq!(overlaid.namespace, Namespace::ROOT);
+    assert_eq!(overlaid.source, SourceRef::default());
+}
+
+#[test]
+fn host_tags_append_once_after_caller_tags() {
+    let caller = MemoryMeta {
+        tags: vec!["caller".into(), "shared".into()],
+        ..MemoryMeta::default()
+    };
+    let host = MemoryMeta {
+        tags: vec!["host".into(), "shared".into()],
+        ..MemoryMeta::default()
+    };
+
+    let overlaid = caller.overlay(host);
+    assert_eq!(overlaid.tags, ["caller", "shared", "host"]);
 }
 
 #[test]
