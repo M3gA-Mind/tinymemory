@@ -14,8 +14,14 @@ async fn partition_locks_serialize_one_file_without_blocking_another() {
 
     let held = first.lock_arc().await;
     let independent = other.try_lock_arc();
-    assert!(independent.is_some(), "a different file has an independent drain lock");
-    assert!(same.try_lock_arc().is_none(), "one file has only one drain at a time");
+    assert!(
+        independent.is_some(),
+        "a different file has an independent drain lock"
+    );
+    assert!(
+        same.try_lock_arc().is_none(),
+        "one file has only one drain at a time"
+    );
     drop(independent);
     drop(held);
 }

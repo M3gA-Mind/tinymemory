@@ -36,7 +36,10 @@ async fn overlapping_fences_share_one_gate_and_retire_earlier_mutations() {
     let fence_owner = owner.clone();
     let second_fence = tokio::spawn(async move { fence_owner.begin_fence().await });
     tokio::task::yield_now().await;
-    assert!(!second_fence.is_finished(), "fences serialize on the owner barrier");
+    assert!(
+        !second_fence.is_finished(),
+        "fences serialize on the owner barrier"
+    );
     drop(first_fence);
     let second_fence = second_fence.await.unwrap();
     assert!(owner.gate().is_fenced());
