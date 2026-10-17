@@ -206,13 +206,22 @@ fn pooled_conversations_need_a_node_that_fits() {
         layout.clone().with_pooled_conversations(&Namespace::ROOT),
         Err(Error::InvalidRequest(_))
     ));
-    let root: Namespace = "team:other".parse().unwrap();
+    let scoped = MemoryLayout::new("team:acme".parse().unwrap()).unwrap();
     assert!(
-        MemoryLayout::new("team:acme".parse().unwrap())
-            .unwrap()
-            .with_pooled_conversations(&root)
+        scoped
+            .clone()
+            .with_pooled_conversations(&Namespace::ROOT)
             .is_err()
     );
+    for invalid in ["team:acme", "team:other/ws:main", "team:acme2/ws:main"] {
+        assert!(
+            scoped
+                .clone()
+                .with_pooled_conversations(&invalid.parse().unwrap())
+                .is_err(),
+            "expected {invalid:?} to be outside a strict descendant of team:acme"
+        );
+    }
 }
 
 #[test]
