@@ -2,6 +2,9 @@
 
 use super::*;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::list_store::MemoryListStore;
 
 #[tokio::test]
 async fn partition_locks_serialize_one_file_without_blocking_another() {
@@ -53,4 +56,46 @@ fn partition_registry_evicts_locks_after_the_last_handle_drops() {
 
     assert_eq!(locks.tracked_partitions(), 1);
     assert!(replacement.try_lock_arc().is_some());
+}
+
+#[test]
+fn partition_registry_shares_and_releases_queue_instances() {
+    use std::path::PathBuf;
+
+    let partitions = PendingPartitions::<MemoryListStore<Entry>, PathBuf>::new(Limits::default());
+    let factories = AtomicUsize::new(0);
+    let key = PathBuf::from("memory/owner-a/root.json");
+    let first = partitions.get_or_create(key.clone(), || {
+        factories.fetch_add(1, Ordering::SeqCst);
+        MemoryListStore::<Entry>::default()
+    });
+    let shared = partitions.get_or_create(key.clone(), || {
+        factories.fetch_add(1, Ordering::SeqCst);
+        MemoryListStore::<Entry>::default()
+    });
+    assert!(Arc::ptr_eq(&first, &shared));
+    assert_eq!(factories.load(Ordering::SeqCst), 1);
+
+    drop(first);
+    drop(shared);
+    let replacement = partitions.get_or_create(key, || {
+        factories.fetch_add(1, Ordering::SeqCst);
+        MemoryListStore::<Entry>::default()
+    });
+
+    assert_eq!(factories.load(Ordering::SeqCst), 2);
+    assert_eq!(partitions.tracked_queues(), 1);
+    drop(replacement);
+}
+
+#[test]
+fn partition_registries_accept_lossless_filesystem_path_keys() {
+    use std::path::PathBuf;
+
+    let locks = PartitionLocks::<PathBuf>::new();
+    let queue_key = PathBuf::from("memory/owner-a/root.json");
+    let first = locks.for_partition(queue_key.clone());
+    let second = locks.for_partition(queue_key);
+
+    assert!(Arc::ptr_eq(&first, &second));
 }

@@ -20,7 +20,8 @@
 //! [`OwnerRegistry`]. Automatic mutations capture an epoch before scheduling;
 //! [`AutomaticMutation::run`] drops work made stale by a later fence. A
 //! [`OwnerFence`] holds exclusive access across the host's explicit erase.
-//! [`PartitionLocks`] supplies weakly cached drain locks keyed by each durable
+//! [`PendingPartitions`] shares one weakly cached queue per durable partition,
+//! and [`PartitionLocks`] supplies weakly cached drain locks keyed by each
 //! partition, leaving storage paths and persistence to the host.
 
 mod owner;
@@ -36,7 +37,7 @@ use sha2::{Digest, Sha256};
 use crate::list_store::{ListStore, StoreError};
 
 pub use owner::{AutomaticMutation, OwnerFence, OwnerRegistry, OwnerState};
-pub use partition::PartitionLocks;
+pub use partition::{PartitionLocks, PendingPartitions};
 pub use types::{
     Ack, Binding, Entry, Epoch, FenceToken, Limits, PendingError, WriteExecutor, WriteGate,
     WriteOperation,

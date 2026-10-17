@@ -2,32 +2,32 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::hash::Hash;
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 
 use async_lock::{RwLock, RwLockReadGuardArc, RwLockWriteGuardArc};
 
 use super::types::{OwnedFenceToken, WriteGate};
 
-type Owners = HashMap<String, Weak<OwnerState>>;
-
-static GLOBAL_OWNERS: LazyLock<OwnerRegistry> = LazyLock::new(OwnerRegistry::new);
+static GLOBAL_OWNERS: LazyLock<OwnerRegistry<String>> =
+    LazyLock::new(OwnerRegistry::<String>::new);
 
 /// Weak registry shared by the queues belonging to an application host.
 ///
 /// The registry prunes dead entries on every lookup. Callers hold an owner
 /// only while a mutation, drain, or erasure needs its gate and barrier.
 #[derive(Debug)]
-pub struct OwnerRegistry {
-    owners: Mutex<Owners>,
+pub struct OwnerRegistry<K = String> {
+    owners: Mutex<HashMap<K, Weak<OwnerState>>>,
 }
 
-impl Default for OwnerRegistry {
+impl<K: Eq + Hash> Default for OwnerRegistry<K> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl OwnerRegistry {
+impl<K: Eq + Hash> OwnerRegistry<K> {
     /// Creates an empty owner registry.
     #[must_use]
     pub fn new() -> Self {
@@ -39,8 +39,7 @@ impl OwnerRegistry {
     /// Returns the shared owner state for `key`, creating a fresh epoch when
     /// no live operation currently holds that owner.
     #[must_use]
-    pub fn get(&self, key: impl Into<String>) -> Arc<OwnerState> {
-        let key = key.into();
+    pub fn get(&self, key: K) -> Arc<OwnerState> {
         let mut owners = self
             .owners
             .lock()
@@ -54,19 +53,21 @@ impl OwnerRegistry {
         owner
     }
 
-    /// Returns the process-wide registry for hosts whose tools share one
-    /// application lifetime.
-    #[must_use]
-    pub fn global() -> &'static Self {
-        &GLOBAL_OWNERS
-    }
-
     #[cfg(test)]
     pub(super) fn tracked_owners(&self) -> usize {
         self.owners
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len()
+    }
+}
+
+impl OwnerRegistry<String> {
+    /// Returns the process-wide registry for hosts whose tools share one
+    /// application lifetime and use string owner keys.
+    #[must_use]
+    pub fn global() -> &'static Self {
+        &GLOBAL_OWNERS
     }
 }
 
