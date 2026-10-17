@@ -1,5 +1,7 @@
 //! Brain ingestion, search, forgetting and the belief builds it hands back.
 
+use async_trait::async_trait;
+use std::sync::Mutex;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     ConsolidateRequest, Consolidation, EngineDescriptor, EngineHealth, Error, ExplorePage,
@@ -7,8 +9,6 @@ use tinymemory_api::{
     ListPage, ListRequest, MemoryMeta, Namespace, RecallAnswer, RecallRequest, SourceKind,
     SourceRef, StoreItem, StoreReceipt,
 };
-use async_trait::async_trait;
-use std::sync::Mutex;
 
 use super::*;
 
@@ -37,7 +37,10 @@ async fn sources_fold_collections_sort_ties_and_count_unfiled_below_the_root() {
     let brain = Brain::new(engine.clone(), layout);
     for (namespace, text) in [
         ("team:acme/source:github", "github root"),
-        ("team:acme/source:github/project:acme-api", "github collection"),
+        (
+            "team:acme/source:github/project:acme-api",
+            "github collection",
+        ),
         ("team:acme/source:notion", "notion"),
         ("team:acme/source:pdf", "pdf"),
         ("team:acme", "root item"),
@@ -145,7 +148,10 @@ async fn sources_include_missing_facet_items_and_keep_the_bounded_host_query() {
     let brain = Brain::new(engine.clone(), MemoryLayout::default());
     let view = brain.sources().await.unwrap();
 
-    assert_eq!(view.unfiled, 5, "root and malformed buckets plus missing facet");
+    assert_eq!(
+        view.unfiled, 5,
+        "root and malformed buckets plus missing facet"
+    );
     assert_eq!(
         view.sources,
         [BrainSourceCount {

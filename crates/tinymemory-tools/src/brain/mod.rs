@@ -49,9 +49,9 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use tinymemory_api::{
-    ConsolidateRequest, ExploreRequest, Facet, FetchMode, FetchRequest, ForgetReport,
-    ForgetTarget, Hit, ItemKind, MAX_STORE_MANY, MemoryEngine, Reach, Result, SegmentKind,
-    StoreItem, WriteOptions,
+    ConsolidateRequest, ExploreRequest, Facet, FetchMode, FetchRequest, ForgetReport, ForgetTarget,
+    Hit, ItemKind, MAX_STORE_MANY, MemoryEngine, Reach, Result, SegmentKind, StoreItem,
+    WriteOptions,
 };
 
 use crate::background::{BackgroundJob, builds_on_its_own};
