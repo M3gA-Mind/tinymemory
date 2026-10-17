@@ -25,6 +25,7 @@ fn host_pins_precede_definition_team_and_default_values() {
 
     assert_eq!(resolved.agent_id, "host-memory");
     assert_eq!(resolved.layout.root().to_string(), "project:host");
+    assert_eq!(resolved.root(), &ns("project:host"));
     assert!(!resolved.recall, "definition recall overrides the host pin");
     let chat_node = ns("project:host/ws:main");
     assert_eq!(
@@ -72,6 +73,15 @@ fn team_and_default_identity_fallbacks_are_preserved() {
 
     let blank = Identity::agent("  ").resolve(&IdentityPins::default());
     assert_eq!(blank.agent_id, DEFAULT_AGENT_ID);
+}
+
+#[test]
+fn child_identity_keeps_its_parent_team() {
+    let parent = Identity::team_member("acme", "lead");
+    let child = parent.child("scout").resolve(&IdentityPins::default());
+
+    assert_eq!(child.agent_id, "scout");
+    assert_eq!(child.root(), &ns("team:acme"));
 }
 
 #[test]

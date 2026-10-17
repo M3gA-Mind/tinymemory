@@ -41,7 +41,7 @@ pub struct AgentPin {
 }
 
 /// Plain host settings used to resolve an acting identity.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IdentityPins {
     /// An id shared by all work under the host binding.
     pub agent_id: Option<String>,
@@ -54,6 +54,18 @@ pub struct IdentityPins {
     pub recall: bool,
     /// Whether every agent's conversations share one pooled node.
     pub v3: bool,
+}
+
+impl Default for IdentityPins {
+    fn default() -> Self {
+        Self {
+            agent_id: None,
+            root: None,
+            agents: HashMap::new(),
+            recall: true,
+            v3: false,
+        }
+    }
 }
 
 /// Who is acting on memory: an agent definition and, optionally, its team.
@@ -112,7 +124,13 @@ impl Identity {
             .or_else(|| parse_root(definition.and_then(|pin| pin.root.as_deref())))
             .or_else(|| self.team.as_deref().map(team_root))
             .unwrap_or(Namespace::ROOT);
-        let layout = MemoryLayout::new(root).unwrap_or_default();
+        let layout = match MemoryLayout::new(root) {
+            Ok(layout) => layout,
+            Err(error) => {
+                log::warn!("memory identity root is too deep; using the default root: {error}");
+                MemoryLayout::default()
+            }
+        };
         let layout = if pins.v3 {
             pool_conversations(layout)
         } else {
@@ -129,7 +147,7 @@ impl Identity {
 }
 
 /// An identity resolved to its memory layout, turn-label id, and recall policy.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ResolvedIdentity {
     /// The layout root and conversation placement for this identity.
     pub layout: MemoryLayout,
@@ -139,30 +157,37 @@ pub struct ResolvedIdentity {
     pub recall: bool,
 }
 
+impl ResolvedIdentity {
+    /// The layout root for this identity.
+    #[must_use]
+    pub fn root(&self) -> &Namespace {
+        self.layout.root()
+    }
+}
+
 fn pool_conversations(layout: MemoryLayout) -> MemoryLayout {
-    let node = layout
-        .root()
-        .child(Segment::sanitized(
-            SegmentKind::Workspace,
-            POOLED_CONVERSATIONS_WORKSPACE,
-        ))
-        .unwrap_or_else(|_| layout.root().clone());
+    let node = chat_node(&layout);
     layout
         .clone()
         .with_pooled_conversations(&node)
-        .unwrap_or(layout)
+        .unwrap_or_else(|error| {
+            log::warn!("memory conversations could not be pooled: {error}");
+            layout
+        })
 }
 
 /// The absolute chat node below `layout`'s root (`ws:main`).
 #[must_use]
 pub fn chat_node(layout: &MemoryLayout) -> Namespace {
-    layout
-        .root()
-        .child(Segment::sanitized(
-            SegmentKind::Workspace,
-            POOLED_CONVERSATIONS_WORKSPACE,
-        ))
-        .unwrap_or_else(|_| layout.root().clone())
+    chat_node_at(layout.root())
+}
+
+fn chat_node_at(root: &Namespace) -> Namespace {
+    root.child(Segment::sanitized(
+        SegmentKind::Workspace,
+        POOLED_CONVERSATIONS_WORKSPACE,
+    ))
+    .unwrap_or_else(|_| root.clone())
 }
 
 /// Whether `root` names a valid memory-layout root.
