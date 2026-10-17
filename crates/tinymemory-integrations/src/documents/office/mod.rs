@@ -57,6 +57,12 @@ use crate::documents::format::DocumentFormat;
 /// before it is refused as a likely zip bomb. See the module docs.
 pub const MAX_DECOMPRESSED_BYTES: u64 = 64 * 1024 * 1024;
 
+/// The historical spreadsheet used-range cap, retained for API compatibility.
+///
+/// The built-in spreadsheet reader is temporarily disabled, so the limit is
+/// not currently applied by [`OfficeConverter`].
+pub const MAX_SPREADSHEET_DENSE_CELLS: usize = 1_000_000;
+
 /// Converts PDF, DOCX and PPTX documents to markdown, in-process.
 ///
 /// Claims exactly those three formats, so it composes with

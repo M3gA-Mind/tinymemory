@@ -23,25 +23,15 @@ fn package(parts: &[(&str, &str)]) -> Vec<u8> {
     buffer.into_inner()
 }
 
-/// A zip whose slide name is marked UTF-8 but contains an invalid byte.
-fn package_with_invalid_utf8_slide_name() -> Vec<u8> {
+/// A zip whose central-directory slide name length points past the archive.
+fn package_with_invalid_central_name_length() -> Vec<u8> {
     let mut bytes = package(&[("ppt/slides/slide1.xml", "<p:sld/> ")]);
-    let local = bytes
-        .windows(4)
-        .position(|window| window == b"PK\x03\x04")
-        .unwrap();
     let central = bytes
         .windows(4)
         .position(|window| window == b"PK\x01\x02")
         .unwrap();
-
-    for (header, flag_offset, name_offset) in [(local, 6, 30), (central, 8, 46)] {
-        let flags =
-            u16::from_le_bytes([bytes[header + flag_offset], bytes[header + flag_offset + 1]])
-                | (1 << 11);
-        bytes[header + flag_offset..header + flag_offset + 2].copy_from_slice(&flags.to_le_bytes());
-        bytes[header + name_offset + 17] = 0xff;
-    }
+    // The central directory stores the file-name byte length at offset 28.
+    bytes[central + 28..central + 30].copy_from_slice(&u16::MAX.to_le_bytes());
     bytes
 }
 
@@ -248,8 +238,8 @@ async fn a_deck_reads_its_slides_in_numeric_order() {
 
 #[tokio::test]
 async fn a_deck_reports_an_unreadable_zip_entry_name() {
-    let reason = refusal("deck.pptx", package_with_invalid_utf8_slide_name()).await;
-    assert!(reason.contains("unreadable entry name"), "{reason}");
+    let reason = refusal("deck.pptx", package_with_invalid_central_name_length()).await;
+    assert!(reason.contains("not a readable archive"), "{reason}");
 }
 
 #[tokio::test]

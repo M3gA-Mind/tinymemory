@@ -36,7 +36,7 @@ pub(super) fn pptx(bytes: &[u8]) -> Result<String> {
         else {
             continue;
         };
-        if let Ok(number) = number.parse() {
+        if let Ok(number) = number.parse::<u32>() {
             slides.push((number, name.to_string()));
         }
     }
