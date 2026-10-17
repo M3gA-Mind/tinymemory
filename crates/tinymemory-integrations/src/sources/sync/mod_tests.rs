@@ -327,7 +327,13 @@ async fn store_placed_files_items_and_builds_one_job_per_touched_node() {
     let files: Namespace = "team:acme/source:files".parse().unwrap();
     let github: Namespace = "team:acme/source:github".parse().unwrap();
     let items = vec![
-        StoreItem::document("notes", MemoryMeta::default()),
+        StoreItem::document(
+            "notes",
+            MemoryMeta {
+                agent_id: Some("agent-1".into()),
+                ..MemoryMeta::default()
+            },
+        ),
         StoreItem::document("repo", MemoryMeta::default()),
         StoreItem::document("another note", MemoryMeta::default()),
     ];
@@ -345,15 +351,24 @@ async fn store_placed_files_items_and_builds_one_job_per_touched_node() {
         result.jobs,
         vec![
             BackgroundJob::BuildBeliefs {
-                request: ConsolidateRequest::new(Reach::exact(files))
+                request: ConsolidateRequest::new(Reach::exact(files.clone()))
                     .kinds([ItemKind::Document]),
             },
             BackgroundJob::BuildBeliefs {
-                request: ConsolidateRequest::new(Reach::exact(github))
+                request: ConsolidateRequest::new(Reach::exact(github.clone()))
                     .kinds([ItemKind::Document]),
             },
         ]
     );
+    let listed = engine
+        .list(tinymemory_api::ListRequest::new(
+            tinymemory_api::MetaFilter::default(),
+            10,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(listed.items[0].meta.namespace, files);
+    assert_eq!(listed.items[0].meta.agent_id, None);
 }
 
 #[tokio::test]

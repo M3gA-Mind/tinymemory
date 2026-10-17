@@ -18,13 +18,15 @@ wants one integration enables one feature and links nothing else.
 | `documents` | `documents` | Format sniffing and conversion to markdown, producing `StoreItem::Document`. No I/O. | [`src/documents/README.md`](src/documents/README.md) |
 | `documents::OfficeConverter` | `documents-office` | PDF, DOCX, PPTX and XLSX to markdown, in process | (same) |
 | `sources` | `sources` | Readers for folders, files and conversations; `collect_items`. Links no HTTP stack. | [`src/sources/README.md`](src/sources/README.md) |
+| Source schemas | `schema` | Optional JSON Schema derives for the source configuration and reader types | (same) |
 | `sources::fetch`, GitHub, RSS and web-page readers | `sources-network` | The network readers and `fetch_url`, all behind the SSRF guard | (same) |
 | `safety` | `safety` | Secret and PII scrubbing of a `StoreItem` before it is stored | [`src/safety/README.md`](src/safety/README.md) |
 | `import` | `legacy-import` | Reads a v1 (embedded TinyCortex) workspace and migrates it into any engine, resumably | [`src/import/README.md`](src/import/README.md) |
 
 `full` turns on `cortex`, `documents-office`, `sources-network`, `safety` and
 `legacy-import`. Feature implications: `documents-office` implies `documents`;
-`sources` implies `documents`; `sources-network` implies `sources`.
+`sources` implies `documents`; `sources-network` implies `sources`; `schema`
+implies `sources`.
 
 ## Dependency weight per feature
 
@@ -38,7 +40,8 @@ already needs):
 | `documents` | nothing beyond the small set above |
 | `documents-office` | `pdf-extract`, `calamine`, `quick-xml`, `zip` (all pure Rust, no system libraries) |
 | `brain` | `tinymemory-tools` (for `BrainDocument`; it adds only `futures`, `chrono`, `log`) |
-| `sources` | `schemars`, `regex`, `walkdir`, `chrono`, `log`, `tracing` |
+| `sources` | `url`, `regex`, `walkdir`, `chrono`, `log`, `tracing` |
+| `schema` | `schemars` |
 | `sources-network` | `reqwest`, `futures`, `tokio` with `process`, `io-util` and `net` (the GitHub reader runs `gh` and `git`; the SSRF resolver does DNS) |
 | `safety` | `regex`, `serde_json`, `log` |
 | `legacy-import` | `rusqlite` with bundled SQLite (compiles C; no system SQLite needed) |

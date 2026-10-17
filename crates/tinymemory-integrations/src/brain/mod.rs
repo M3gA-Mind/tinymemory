@@ -75,9 +75,10 @@ pub fn parse_source(raw: &str) -> Result<BrainSource> {
 /// [`Error::TooLarge`] when `size` exceeds [`MAX_INGEST_BYTES`].
 pub fn check_ingest_size(size: u64) -> Result<()> {
     if size > MAX_INGEST_BYTES {
-        return Err(Error::TooLarge(format!(
-            "the file is {size} bytes; the limit is {MAX_INGEST_BYTES}"
-        )));
+        return Err(Error::TooLarge {
+            size: size.min(usize::MAX as u64) as usize,
+            limit: MAX_INGEST_BYTES as usize,
+        });
     }
     Ok(())
 }

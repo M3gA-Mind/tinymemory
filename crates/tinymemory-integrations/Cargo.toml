@@ -128,7 +128,7 @@ documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-x
 brain = ["documents", "dep:tinymemory-tools"]
 # `sources`: readers that turn folders, files and conversations into
 # `StoreItem`s. Links no HTTP stack.
-sources = ["documents", "dep:url", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
+sources = ["documents", "dep:tinymemory-tools", "dep:url", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
 # JSON Schema derives for source reader and host configuration types.
 schema = ["sources", "dep:schemars"]
 # The readers that fetch over the network — GitHub, RSS, web pages — and
