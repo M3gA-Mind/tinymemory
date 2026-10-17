@@ -81,7 +81,7 @@ pub mod recall;
 pub mod tools;
 
 pub use background::{BackgroundJob, BackgroundRunner, JobOutcome, JobReport};
-pub use brain::{Brain, BrainBatch, BrainDocument, Ingested};
+pub use brain::{Brain, BrainBatch, BrainDocument, BrainSourceCount, BrainSourcesView, Ingested};
 pub use layout::{BrainSource, CoreScope, DEFAULT_CORE_LIMIT, MemoryLayout};
 pub use lifecycle::{
     AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, RecallPolicy, SessionStart,
