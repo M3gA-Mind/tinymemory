@@ -14,6 +14,7 @@ static GLOBAL_LOCKS: LazyLock<PartitionLocks> = LazyLock::new(PartitionLocks::ne
 /// A host normally keys this registry by the path or identifier of each
 /// durable queue. Locks disappear as soon as the last drain drops its handle;
 /// dead keys are pruned on the next lookup.
+#[derive(Debug)]
 pub struct PartitionLocks {
     locks: Mutex<Locks>,
 }

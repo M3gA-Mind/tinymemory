@@ -15,10 +15,17 @@
 //! The crate links no executor and does no I/O. The host supplies the
 //! store, the [`WriteExecutor`] that runs one write (and wraps it in its own
 //! timeout), and decides when [`PendingWrites::drain`] is called.
+//!
+//! Hosts may share owner generations and erasure barriers through
+//! [`OwnerRegistry`]. Automatic mutations capture an epoch before scheduling;
+//! [`AutomaticMutation::run`] drops work made stale by a later fence. A
+//! [`OwnerFence`] holds exclusive access across the host's explicit erase.
+//! [`PartitionLocks`] supplies weakly cached drain locks keyed by each durable
+//! partition, leaving storage paths and persistence to the host.
 
-mod types;
 mod owner;
 mod partition;
+mod types;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};

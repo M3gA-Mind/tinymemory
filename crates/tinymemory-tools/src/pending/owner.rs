@@ -108,10 +108,12 @@ impl OwnerState {
     /// on this barrier.
     pub async fn begin_fence(self: &Arc<Self>) -> OwnerFence {
         let token = self.gate.begin_fence_owned();
+        let generation = token.generation();
         let guard = self.barrier.clone().write_arc().await;
         OwnerFence {
             owner: self.clone(),
             token: Some(token),
+            generation,
             guard: Some(guard),
         }
     }
@@ -147,6 +149,7 @@ impl AutomaticMutation {
 pub struct OwnerFence {
     owner: Arc<OwnerState>,
     token: Option<OwnedFenceToken>,
+    generation: u64,
     guard: Option<RwLockWriteGuardArc<()>>,
 }
 
@@ -160,10 +163,7 @@ impl OwnerFence {
     /// The generation opened by this fence.
     #[must_use]
     pub fn generation(&self) -> u64 {
-        self.token
-            .as_ref()
-            .expect("an active owner fence holds its token")
-            .generation()
+        self.generation
     }
 }
 
