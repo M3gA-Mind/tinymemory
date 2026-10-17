@@ -239,6 +239,32 @@ async fn a_failing_section_never_fails_the_pack() {
 }
 
 #[tokio::test]
+async fn account_wide_errors_keep_their_typed_cause_when_a_recall_section_is_skipped() {
+    let errors = [
+        Error::Off("opaque off detail".into()),
+        Error::InsufficientCredits("opaque credit detail".into()),
+        Error::Unauthorized("opaque auth detail".into()),
+        Error::Unavailable("opaque outage detail".into()),
+    ];
+
+    for error in errors {
+        let engine = Broken {
+            inner: seeded().await,
+            fetch_too: false,
+            recall_error: error.clone(),
+        };
+        let request = HolisticRecall::new(
+            None,
+            vec![ScopeSection::answer("Account", "question", docs(), 1)],
+        );
+        let pack = holistic_recall(&engine, &request).await.unwrap();
+
+        assert_eq!(pack.skipped[0].reason, SkipReason::Engine(error.clone()));
+        assert!(error.is_account_wide(), "{error:?}");
+    }
+}
+
+#[tokio::test]
 async fn sections_read_only_their_scope() {
     let engine = ReferenceEngine::new();
     for (text, namespace) in [

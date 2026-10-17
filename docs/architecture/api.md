@@ -122,8 +122,10 @@ fails with `Error::Unsupported("engine `<id>` does not offer <mode> fetch")`.
 
 `EngineStatus::from_engine(&descriptor, health)` maps engine health into the
 host subsystem vocabulary (`ready`, `degraded`, `down`) and supplies the
-contract's common `recall`, `fetch`, `store`, `forget`, and `list` capabilities
-plus `contract_version: "2.0"`. `EngineStatus::off(reason)` reports no usable
+contract's five required operations (`recall`, `fetch`, `store`, `forget`, and
+`list`) as capabilities; these are required by `MemoryEngine`, not optional
+descriptor-specific features. It also sets `contract_version: "2.0"`.
+`EngineStatus::off(reason)` reports no usable
 engine with no capabilities.
 
 ## `Error`

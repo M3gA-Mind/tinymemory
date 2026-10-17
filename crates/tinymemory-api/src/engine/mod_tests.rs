@@ -44,6 +44,10 @@ fn only_down_is_not_serving() {
 #[test]
 fn engine_status_carries_health_capabilities_and_contract_version() {
     let descriptor = descriptor(vec![FetchMode::Hybrid]);
+    let ready = EngineStatus::from_engine(&descriptor, EngineHealth::Ok);
+    assert_eq!(ready.health, EngineStatusHealth::Ready);
+    assert!(ready.reason.is_none());
+
     let status = EngineStatus::from_engine(&descriptor, EngineHealth::Degraded("slow".into()));
     assert_eq!(status.health, EngineStatusHealth::Degraded);
     assert_eq!(status.reason.as_deref(), Some("slow"));
@@ -52,6 +56,10 @@ fn engine_status_carries_health_capabilities_and_contract_version() {
         ["recall", "fetch", "store", "forget", "list"]
     );
     assert_eq!(status.contract_version, CONTRACT_VERSION);
+
+    let down = EngineStatus::from_engine(&descriptor, EngineHealth::Down("offline".into()));
+    assert_eq!(down.health, EngineStatusHealth::Down);
+    assert_eq!(down.reason.as_deref(), Some("offline"));
 
     let off = EngineStatus::off("disabled");
     assert_eq!(off.health, EngineStatusHealth::Off);
