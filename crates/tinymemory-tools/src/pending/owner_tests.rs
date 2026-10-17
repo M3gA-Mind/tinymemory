@@ -126,7 +126,10 @@ fn active_mutations_and_fences_keep_the_owner_identity_alive() {
     drop(fence);
     drop(retained);
 
-    assert_ne!(registry.get("workspace/user-a").gate().process(), fence_process);
+    assert_ne!(
+        registry.get("workspace/user-a").gate().process(),
+        fence_process
+    );
 }
 
 #[tokio::test]
@@ -166,9 +169,50 @@ async fn a_recreated_owner_fence_clears_old_persisted_epochs_before_drain() {
     let executor = SuccessfulExecutor;
     assert_eq!(
         queue
-            .drain(&executor, fence.gate(), fence.generation(), |_| true, |_| {})
+            .drain(
+                &executor,
+                fence.gate(),
+                fence.generation(),
+                |_| true,
+                |_| {}
+            )
             .await,
         0
     );
     drop(fence);
+}
+
+#[tokio::test]
+async fn a_recreated_owner_can_drain_durable_writes_until_it_fences_them() {
+    use tinymemory_api::Namespace;
+
+    let registry = OwnerRegistry::new();
+    let queue = PendingWrites::new(MemoryListStore::<Entry>::default(), Limits::default());
+    let old_owner = registry.get("workspace/user-a");
+    queue
+        .enqueue(
+            WriteOperation::Learn {
+                item: tinymemory_api::StoreItem::learning(
+                    "durable across owner recreation",
+                    tinymemory_api::LearningKind::Fact,
+                    0.8,
+                    tinymemory_api::MemoryMeta::default(),
+                ),
+            },
+            Namespace::ROOT,
+            Binding("owner-a".into()),
+            old_owner.gate(),
+        )
+        .unwrap();
+    drop(old_owner);
+
+    let recreated = registry.get("workspace/user-a");
+    let executor = SuccessfulExecutor;
+    assert_eq!(
+        queue
+            .drain(&executor, recreated.gate(), 0, |_| true, |_| {})
+            .await,
+        1
+    );
+    assert!(queue.is_empty());
 }

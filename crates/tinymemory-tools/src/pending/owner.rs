@@ -9,8 +9,7 @@ use async_lock::{RwLock, RwLockReadGuardArc, RwLockWriteGuardArc};
 
 use super::types::{OwnedFenceToken, WriteGate};
 
-static GLOBAL_OWNERS: LazyLock<OwnerRegistry<String>> =
-    LazyLock::new(OwnerRegistry::<String>::new);
+static GLOBAL_OWNERS: LazyLock<OwnerRegistry<String>> = LazyLock::new(OwnerRegistry::<String>::new);
 
 /// Weak registry shared by the queues belonging to an application host.
 ///

@@ -161,7 +161,11 @@ files belongs to the storage adapter. `OwnerRegistry` holds weak references:
 active mutations and fences retain shared owner state, and idle owners are
 reclaimed on the next lookup. `PartitionLocks` applies the same lifetime rule
 to drain serialization, with a separate cancellation-safe async lock per
-partition key.
+partition key. `PendingPartitions` shares the in-memory `PendingWrites` queue
+for an active partition and recreates it from a host-supplied `ListStore`
+factory after eviction. Both partition registries accept exact `Eq + Hash`
+keys, including `PathBuf`, so the host does not need to stringify filesystem
+paths.
 
 The queue's `Entry` is the current persisted representation. A host that has
 older durable encodings should keep decoding them into `Entry` while those

@@ -60,11 +60,7 @@ impl<S: ListStore<Entry>, K: Eq + Hash> PendingPartitions<S, K> {
     /// The store factory runs while the registry is locked and should only
     /// construct a handle; actual I/O remains inside the host's `ListStore`.
     #[must_use]
-    pub fn get_or_create(
-        &self,
-        key: K,
-        create_store: impl FnOnce() -> S,
-    ) -> Arc<PendingWrites<S>> {
+    pub fn get_or_create(&self, key: K, create_store: impl FnOnce() -> S) -> Arc<PendingWrites<S>> {
         let mut queues = self
             .queues
             .lock()
