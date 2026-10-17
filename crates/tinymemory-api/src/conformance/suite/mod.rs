@@ -41,6 +41,7 @@
 //! Finally the run's items are forgotten by filter and must be gone.
 
 mod bulk;
+mod channel;
 mod checks;
 mod erase;
 mod explore;
