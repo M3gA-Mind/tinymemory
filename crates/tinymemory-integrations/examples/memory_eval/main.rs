@@ -81,7 +81,7 @@ use serde::Serialize;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     ConsolidateRequest, FetchMode, FetchRequest, ForgetTarget, ListRequest, MAX_STORE_MANY,
-    MemoryEngine, MemoryMeta, Reach, Role, StoreItem, Turn, TurnRange, WriteOptions,
+    MemoryEngine, MemoryMeta, Namespace, Reach, Role, StoreItem, Turn, TurnRange, WriteOptions,
 };
 use tinymemory_integrations::cortex::{
     CortexCredential, CortexEngine, StaticBearer, TINYHUMANS_API_ENDPOINT,
