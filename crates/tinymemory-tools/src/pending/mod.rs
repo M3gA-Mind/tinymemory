@@ -273,11 +273,3 @@ impl<S: ListStore<Entry>> PendingWrites<S> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "owner_tests.rs"]
-mod owner_tests;
-
-#[cfg(test)]
-#[path = "partition_tests.rs"]
-mod partition_tests;

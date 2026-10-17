@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use crate::list_store::MemoryListStore;
+use crate::pending::{Binding, Entry, Limits, PendingWrites, WriteExecutor, WriteOperation};
 
 fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
     future.poll(&mut Context::from_waker(futures::task::noop_waker_ref()))
@@ -36,7 +37,7 @@ fn owner_registry_releases_idle_owners_and_recreates_a_fresh_epoch() {
     let recreated = registry.get("workspace/user-a");
 
     assert_ne!(recreated.gate().process(), first_process);
-    assert_eq!(registry.tracked_owners(), 1);
+    assert_eq!(registry.owners.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]

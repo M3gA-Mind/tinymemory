@@ -73,14 +73,6 @@ impl<S: ListStore<Entry>, K: Eq + Hash> PendingPartitions<S, K> {
         queues.insert(key, Arc::downgrade(&queue));
         queue
     }
-
-    #[cfg(test)]
-    pub(super) fn tracked_queues(&self) -> usize {
-        self.queues
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
-    }
 }
 
 impl<K: Eq + Hash> Default for PartitionLocks<K> {
@@ -113,14 +105,6 @@ impl<K: Eq + Hash> PartitionLocks<K> {
         locks.insert(key, Arc::downgrade(&lock));
         lock
     }
-
-    #[cfg(test)]
-    pub(super) fn tracked_partitions(&self) -> usize {
-        self.locks
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
-    }
 }
 
 impl PartitionLocks<String> {
@@ -130,3 +114,7 @@ impl PartitionLocks<String> {
         &GLOBAL_LOCKS
     }
 }
+
+#[cfg(test)]
+#[path = "partition_tests.rs"]
+mod tests;

@@ -75,7 +75,7 @@ fn partition_registry_evicts_locks_after_the_last_handle_drops() {
 
     let replacement = locks.for_partition("owner-a/agent");
 
-    assert_eq!(locks.tracked_partitions(), 1);
+    assert_eq!(locks.locks.lock().unwrap().len(), 1);
     assert!(replacement.try_lock_arc().is_some());
 }
 
@@ -105,7 +105,7 @@ fn partition_registry_shares_and_releases_queue_instances() {
     });
 
     assert_eq!(factories.load(Ordering::SeqCst), 2);
-    assert_eq!(partitions.tracked_queues(), 1);
+    assert_eq!(partitions.queues.lock().unwrap().len(), 1);
     drop(replacement);
 }
 

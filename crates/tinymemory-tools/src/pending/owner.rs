@@ -51,14 +51,6 @@ impl<K: Eq + Hash> OwnerRegistry<K> {
         owners.insert(key, Arc::downgrade(&owner));
         owner
     }
-
-    #[cfg(test)]
-    pub(super) fn tracked_owners(&self) -> usize {
-        self.owners
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
-    }
 }
 
 impl OwnerRegistry<String> {
@@ -175,3 +167,7 @@ impl Drop for OwnerFence {
         drop(self.guard.take());
     }
 }
+
+#[cfg(test)]
+#[path = "owner_tests.rs"]
+mod tests;
