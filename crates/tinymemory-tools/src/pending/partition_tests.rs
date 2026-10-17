@@ -1,10 +1,17 @@
 //! Regression tests for per-partition drain serialization.
 
 use super::*;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::{Context, Poll};
 
 use crate::list_store::MemoryListStore;
+
+fn poll_once<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
+    future.poll(&mut Context::from_waker(futures::task::noop_waker_ref()))
+}
 
 #[tokio::test]
 async fn partition_locks_serialize_one_file_without_blocking_another() {
@@ -35,12 +42,9 @@ async fn cancelling_a_waiting_partition_drain_releases_its_lock_request() {
     let partition = locks.for_partition("owner-a/root");
     let held = partition.lock_arc().await;
     let waiting_partition = partition.clone();
-    let waiting = tokio::spawn(async move { waiting_partition.lock_arc().await });
-    tokio::task::yield_now().await;
-    assert!(!waiting.is_finished());
-
-    waiting.abort();
-    let _ = waiting.await;
+    let mut waiting = Box::pin(waiting_partition.lock_arc());
+    assert!(poll_once(waiting.as_mut()).is_pending());
+    drop(waiting);
     drop(held);
 
     assert!(partition.try_lock_arc().is_some());
