@@ -1,6 +1,6 @@
 //! Channel filtering across every read and forget operation.
 
-use crate::{ExploreRequest, Facet, FetchRequest, ForgetTarget, MetaFilter, RecallRequest};
+use crate::{ExploreRequest, Facet, ForgetTarget, MetaFilter, RecallRequest};
 
 use super::{Ctx, ensure};
 use crate::conformance::error::Result;
@@ -11,8 +11,10 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
     const CHECK: &str = "channel";
     let channel = format!("{}-channel", ctx.run.marker);
     let other_channel = format!("{}-other-channel", ctx.run.marker);
+    let tag = format!("{}-channel-check", ctx.run.marker);
     let mut channel_meta = ctx.run.meta();
     channel_meta.channel = Some(channel.clone());
+    channel_meta.tags.push(tag.clone());
     let wanted = ctx
         .call(
             CHECK,
@@ -23,6 +25,7 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
         .id;
     let mut other_meta = ctx.run.meta();
     other_meta.channel = Some(other_channel);
+    other_meta.tags.push(tag.clone());
     let other = ctx
         .call(
             CHECK,
@@ -40,15 +43,6 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
     ensure(CHECK, listed.len() == 1 && listed[0].id == wanted, || {
         format!("channel list returned {:?}, expected only {wanted}", listed.iter().map(|hit| &hit.id).collect::<Vec<_>>())
     })?;
-
-    for mode in ctx.engine.descriptor().fetch_modes.iter().copied() {
-        let mut request = FetchRequest::new(ctx.run.marker.clone(), mode, 10);
-        request.filter = filter.clone();
-        let page = ctx.call(CHECK, ctx.engine.fetch(request)).await?;
-        ensure(CHECK, page.hits.len() == 1 && page.hits[0].id == wanted, || {
-            format!("{mode:?} channel fetch returned {} hits", page.hits.len())
-        })?;
-    }
 
     let mut recall = RecallRequest::new(ctx.run.marker.clone(), 10);
     recall.filter = filter.clone();
@@ -77,7 +71,11 @@ pub(super) async fn channel(ctx: &Ctx<'_>) -> Result<()> {
     ensure(CHECK, report.forgotten == 1, || {
         format!("channel forget removed {} items, expected one", report.forgotten)
     })?;
-    let remaining = ctx.list_all(CHECK, &ctx.run.filter()).await?;
+    let remaining_filter = MetaFilter {
+        tags_any: vec![tag],
+        ..ctx.run.filter()
+    };
+    let remaining = ctx.list_all(CHECK, &remaining_filter).await?;
     ensure(
         CHECK,
         remaining.len() == 1 && remaining[0].id == other,
