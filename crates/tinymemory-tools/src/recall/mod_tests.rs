@@ -142,7 +142,7 @@ async fn excluded_ids_and_the_live_thread_window_are_left_out() {
     request.exclude_ids = older.refs.clone();
     let none = holistic_recall(&engine, &request).await.unwrap();
     assert!(none.is_empty());
-    assert_eq!(none.skipped[0].reason, "empty");
+    assert_eq!(none.skipped[0].reason, SkipReason::Empty);
 }
 
 /// The reference engine with recall (and optionally fetch) broken.
@@ -190,7 +190,10 @@ async fn a_failed_answer_falls_back_to_fetch_only_when_asked() {
         .await
         .unwrap();
     assert!(plain.is_empty());
-    assert!(plain.skipped[0].reason.contains("recall is down"));
+    assert!(matches!(
+        &plain.skipped[0].reason,
+        SkipReason::Engine(Error::Unavailable(message)) if message == "recall is down"
+    ));
 
     if let SectionQuery::Answer {
         fallback_to_fetch, ..
