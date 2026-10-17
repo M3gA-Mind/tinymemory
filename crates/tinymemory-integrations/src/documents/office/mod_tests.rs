@@ -36,10 +36,10 @@ fn package_with_invalid_utf8_slide_name() -> Vec<u8> {
         .unwrap();
 
     for (header, flag_offset, name_offset) in [(local, 6, 30), (central, 8, 46)] {
-        let flags = u16::from_le_bytes([bytes[header + flag_offset], bytes[header + flag_offset + 1]])
-            | (1 << 11);
-        bytes[header + flag_offset..header + flag_offset + 2]
-            .copy_from_slice(&flags.to_le_bytes());
+        let flags =
+            u16::from_le_bytes([bytes[header + flag_offset], bytes[header + flag_offset + 1]])
+                | (1 << 11);
+        bytes[header + flag_offset..header + flag_offset + 2].copy_from_slice(&flags.to_le_bytes());
         bytes[header + name_offset + 17] = 0xff;
     }
     bytes
@@ -260,7 +260,10 @@ async fn spreadsheet_import_is_temporarily_disabled_with_a_helpful_error() {
            <row r="2"><c r="A2"><v>2</v></c><c r="B2"><v>beta</v></c></row>"#,
     );
     let reason = refusal("ledger.xlsx", bytes).await;
-    assert!(reason.contains("spreadsheet import is temporarily disabled"), "{reason}");
+    assert!(
+        reason.contains("spreadsheet import is temporarily disabled"),
+        "{reason}"
+    );
 }
 
 #[tokio::test]
@@ -271,7 +274,10 @@ async fn a_spreadsheet_is_disabled_even_when_its_cells_are_far_apart() {
            <row r="1048576"><c r="XFD1048576"><v>2</v></c></row>"#,
     );
     let reason = refusal("spread.xlsx", bytes).await;
-    assert!(reason.contains("spreadsheet import is temporarily disabled"), "{reason}");
+    assert!(
+        reason.contains("spreadsheet import is temporarily disabled"),
+        "{reason}"
+    );
 }
 
 #[tokio::test]
@@ -294,7 +300,10 @@ async fn an_overexpanding_spreadsheet_is_disabled_before_archive_parsing() {
     let zeroes = "\0".repeat(MAX_DECOMPRESSED_BYTES as usize + 1);
     let bytes = package(&[("xl/workbook.xml", &zeroes)]);
     let reason = refusal("bomb.xlsx", bytes).await;
-    assert!(reason.contains("spreadsheet import is temporarily disabled"), "{reason}");
+    assert!(
+        reason.contains("spreadsheet import is temporarily disabled"),
+        "{reason}"
+    );
 }
 
 #[tokio::test]
@@ -416,9 +425,14 @@ async fn prepended_to_the_default_chain_it_covers_supported_formats() {
     // An unlabelled workbook is recognized and refused, while markdown still
     // goes to the native converter behind it.
     let workbook = xlsx_with_sheet(r#"<row r="1"><c r="A1"><v>7</v></c></row>"#);
-    let error = chain.convert(&RawDocument::new(workbook)).await.unwrap_err();
+    let error = chain
+        .convert(&RawDocument::new(workbook))
+        .await
+        .unwrap_err();
     assert!(
-        error.to_string().contains("spreadsheet import is temporarily disabled"),
+        error
+            .to_string()
+            .contains("spreadsheet import is temporarily disabled"),
         "{error}"
     );
     let notes = chain

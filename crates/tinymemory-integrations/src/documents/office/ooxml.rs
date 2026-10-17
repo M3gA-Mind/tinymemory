@@ -30,7 +30,9 @@ pub(super) fn pptx(bytes: &[u8]) -> Result<String> {
         let name = name.map_err(|error| {
             unreadable(format!("the deck has an unreadable entry name: {error}"))
         })?;
-        let Some(number) = name.strip_prefix(PREFIX).and_then(|name| name.strip_suffix(".xml"))
+        let Some(number) = name
+            .strip_prefix(PREFIX)
+            .and_then(|name| name.strip_suffix(".xml"))
         else {
             continue;
         };

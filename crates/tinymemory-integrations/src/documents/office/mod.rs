@@ -126,9 +126,7 @@ impl DocumentConverter for OfficeConverter {
     fn supports(&self, format: DocumentFormat) -> bool {
         matches!(
             format,
-            DocumentFormat::Pdf
-                | DocumentFormat::Docx
-                | DocumentFormat::Pptx
+            DocumentFormat::Pdf | DocumentFormat::Docx | DocumentFormat::Pptx
         )
     }
 
