@@ -50,6 +50,23 @@ async fn cancelling_a_waiting_partition_drain_releases_its_lock_request() {
     assert!(partition.try_lock_arc().is_some());
 }
 
+#[tokio::test]
+async fn an_owned_drain_guard_keeps_its_partition_lock_shared() {
+    let locks = PartitionLocks::new();
+    let partition = locks.for_partition("owner-a/root");
+    let guard = partition.lock_arc().await;
+    drop(partition);
+
+    let same_partition = locks.for_partition("owner-a/root");
+    assert!(
+        same_partition.try_lock_arc().is_none(),
+        "the owned guard retains the original shared lock"
+    );
+
+    drop(guard);
+    assert!(same_partition.try_lock_arc().is_some());
+}
+
 #[test]
 fn partition_registry_evicts_locks_after_the_last_handle_drops() {
     let locks = PartitionLocks::new();
