@@ -237,7 +237,7 @@ async fn a_deck_reads_its_slides_in_numeric_order() {
 }
 
 #[tokio::test]
-async fn a_deck_reports_an_unreadable_zip_entry_name() {
+async fn a_deck_refuses_malformed_central_directory_entry_metadata() {
     let reason = refusal("deck.pptx", package_with_invalid_central_name_length()).await;
     assert!(reason.contains("not a readable archive"), "{reason}");
 }
