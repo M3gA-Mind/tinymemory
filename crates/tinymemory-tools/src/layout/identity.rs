@@ -103,10 +103,7 @@ impl Identity {
     /// first-match-wins precedence.
     #[must_use]
     pub fn resolve(&self, pins: &IdentityPins) -> ResolvedIdentity {
-        let definition = self
-            .agent_id
-            .as_deref()
-            .and_then(|id| pins.agents.get(id));
+        let definition = self.agent_id.as_deref().and_then(|id| pins.agents.get(id));
         let agent_id = non_blank_opt(pins.agent_id.as_deref())
             .or_else(|| non_blank_opt(definition.and_then(|pin| pin.agent_id.as_deref())))
             .or_else(|| self.agent_id.clone())
@@ -121,9 +118,7 @@ impl Identity {
         } else {
             layout
         };
-        let recall = definition
-            .and_then(|pin| pin.recall)
-            .unwrap_or(pins.recall);
+        let recall = definition.and_then(|pin| pin.recall).unwrap_or(pins.recall);
 
         ResolvedIdentity {
             layout,

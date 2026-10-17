@@ -27,8 +27,14 @@ fn host_pins_precede_definition_team_and_default_values() {
     assert_eq!(resolved.layout.root().to_string(), "project:host");
     assert!(!resolved.recall, "definition recall overrides the host pin");
     let chat_node = ns("project:host/ws:main");
-    assert_eq!(resolved.layout.pooled_conversations_node(), Some(&chat_node));
-    assert_eq!(resolved.layout.conversations("host-memory").unwrap(), chat_node);
+    assert_eq!(
+        resolved.layout.pooled_conversations_node(),
+        Some(&chat_node)
+    );
+    assert_eq!(
+        resolved.layout.conversations("host-memory").unwrap(),
+        chat_node
+    );
 }
 
 #[test]
@@ -114,7 +120,10 @@ fn validates_trimmed_roots_and_rejects_invalid_or_too_deep_roots() {
 #[test]
 fn account_and_actor_roots_keep_org_user_spellings() {
     let account = "ABCDEF0123456789ABCDEF01";
-    assert_eq!(account_root(account).as_deref(), Some("org:abcdef0123456789abcdef01"));
+    assert_eq!(
+        account_root(account).as_deref(),
+        Some("org:abcdef0123456789abcdef01")
+    );
     assert_eq!(account_root("short"), None);
     assert_eq!(org_of_recorded("user:local-123"), "org:local-123");
     assert_eq!(org_of_recorded("org:already"), "org:already");

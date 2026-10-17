@@ -107,12 +107,10 @@ impl MemoryLayout {
     /// layout root, or lies beyond the namespace depth limit.
     pub fn with_pooled_conversations(mut self, node: &Namespace) -> Result<Self> {
         if node == &self.root || !Reach::subtree(self.root.clone()).admits(node) {
-            return Err(Error::InvalidRequest(
-                format!(
-                    "pooled conversations must be below layout root `{}`",
-                    self.root
-                ),
-            ));
+            return Err(Error::InvalidRequest(format!(
+                "pooled conversations must be below layout root `{}`",
+                self.root
+            )));
         }
         self.pooled = Some(node.clone());
         Ok(self)
