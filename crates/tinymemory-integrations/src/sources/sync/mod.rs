@@ -62,7 +62,6 @@ impl SyncError {
     }
 }
 
-
 /// A source as the host's registry holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegisteredSource {

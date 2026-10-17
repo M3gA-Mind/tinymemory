@@ -120,7 +120,11 @@ fn by_status(status: StatusCode, head: String, detail: &str) -> Error {
         format!("{head} — {detail}")
     };
     match status.as_u16() {
-        402 if head.starts_with("[USER_INSUFFICIENT_CREDITS]") => {
+        402 if head
+            .strip_prefix('[')
+            .and_then(|rest| rest.split_once("] "))
+            .is_some_and(|(code, _)| code == INSUFFICIENT_CREDITS_CODE) =>
+        {
             Error::InsufficientCredits(message)
         }
         401 | 403 => Error::Unauthorized(message),

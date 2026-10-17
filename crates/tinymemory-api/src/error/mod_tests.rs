@@ -7,7 +7,10 @@ fn every_variant_renders_its_class_and_message() {
     let cases = [
         (Error::Unsupported("x".into()), "unsupported: x"),
         (Error::Off("disabled".into()), "memory is off: disabled"),
-        (Error::InsufficientCredits("top up".into()), "insufficient credits: top up"),
+        (
+            Error::InsufficientCredits("top up".into()),
+            "insufficient credits: top up",
+        ),
         (Error::InvalidRequest("x".into()), "invalid request: x"),
         (Error::Unauthorized("x".into()), "unauthorized: x"),
         (Error::NotFound("x".into()), "not found: x"),
@@ -33,11 +36,19 @@ fn errors_have_stable_host_codes_and_account_wide_classification() {
     let cases = [
         (Error::Off("disabled".into()), "MEMORY_OFF", true),
         (Error::Unsupported("mode".into()), "UNSUPPORTED", false),
-        (Error::InvalidRequest("bad".into()), "INVALID_REQUEST", false),
+        (
+            Error::InvalidRequest("bad".into()),
+            "INVALID_REQUEST",
+            false,
+        ),
         (Error::NotFound("missing".into()), "INVALID_REQUEST", false),
         (Error::Config("key".into()), "INVALID_REQUEST", false),
         (Error::Unauthorized("expired".into()), "UNAUTHORIZED", true),
-        (Error::InsufficientCredits("top up".into()), "INSUFFICIENT_CREDITS", true),
+        (
+            Error::InsufficientCredits("top up".into()),
+            "INSUFFICIENT_CREDITS",
+            true,
+        ),
         (Error::Unavailable("offline".into()), "UNAVAILABLE", true),
         (Error::Engine("broken".into()), "ENGINE", false),
         (Error::Conflict("changed".into()), "ENGINE", false),

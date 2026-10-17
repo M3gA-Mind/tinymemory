@@ -39,7 +39,9 @@ use tinymemory_api::{
 };
 
 use super::render::{Body, Line, Section, shorten, single_line};
-use super::types::{HolisticRecall, ScopeSection, SectionHits, SectionQuery, SkipReason, SkippedSection};
+use super::types::{
+    HolisticRecall, ScopeSection, SectionHits, SectionQuery, SkipReason, SkippedSection,
+};
 
 /// Longest a single bullet may be, in characters, before it is shortened: one
 /// long document must not crowd out a section.
