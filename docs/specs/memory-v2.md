@@ -98,8 +98,10 @@ pub struct MemoryMeta {
 pub enum SourceKind { Folder, File, Link, Github, Rss, Conversation, Agent, Import }
 ```
 
-`MemoryMeta::overlay(host)` takes host values over caller values while
-preserving fields the host leaves unset. `ObservedActor::for_channel_sender`
+`MemoryMeta::overlay(host)` takes set host optional fields over caller values
+and preserves optional fields the host leaves unset. The host's namespace and
+source always replace caller values, including root/default values; host tags
+append uniquely after caller tags. `ObservedActor::for_channel_sender`
 keeps the host sender identity rules in this contract: phone ids are
 `user:<dial digits>` on `whatsapp`, `signal`, `imessage`, `linq` and `sms`,
 emails on any channel are lower-cased `user:<email>`, and other senders use

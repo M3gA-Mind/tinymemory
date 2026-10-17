@@ -112,8 +112,8 @@ impl ObservedActor {
     /// email addresses become lower-cased `user:<email>` ids; other single
     /// token senders become `<channel>:<sender>`. The supported phone channel
     /// vocabulary is kept in this API so memory does not depend on a host's
-    /// channel runtime. A blank channel or sender, or a sender containing
-    /// whitespace, has no actor id and returns `None`.
+    /// channel runtime. A blank channel or sender, or a non-phone sender
+    /// containing whitespace, has no actor id and returns `None`.
     #[must_use]
     pub fn for_channel_sender(channel: &str, sender: &str, name: Option<&str>) -> Option<Self> {
         let name = name
@@ -188,10 +188,10 @@ impl MemoryMeta {
 
     /// Overlays values known by the host onto this metadata.
     ///
-    /// A value set by `host` replaces this value. An unset optional field, a
-    /// root namespace, the default source, or an empty tag list leaves this
-    /// metadata unchanged. This keeps caller metadata while ensuring host
-    /// context takes precedence wherever it is present.
+    /// Set optional fields from `host` replace their values here. The host's
+    /// namespace and source always replace these values, including the root
+    /// namespace and default source. Host tags append after caller tags, with
+    /// duplicates omitted while preserving order.
     #[must_use]
     pub fn overlay(mut self, mut host: Self) -> Self {
         macro_rules! overlay_options {
@@ -221,14 +221,12 @@ impl MemoryMeta {
             derive,
             observed_actor
         );
-        if !host.namespace.is_root() {
-            self.namespace = host.namespace;
-        }
-        if host.source != SourceRef::default() {
-            self.source = host.source;
-        }
-        if !host.tags.is_empty() {
-            self.tags = host.tags;
+        self.namespace = host.namespace;
+        self.source = host.source;
+        for tag in host.tags {
+            if !self.tags.contains(&tag) {
+                self.tags.push(tag);
+            }
         }
         self
     }

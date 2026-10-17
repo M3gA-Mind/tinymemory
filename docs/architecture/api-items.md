@@ -170,11 +170,14 @@ namespace are omitted on serialisation.
 | `observed_at` | `Option<DateTime<Utc>>` | When the underlying fact was observed, as opposed to stored. Excluded from the fingerprint. |
 | `observed_actor` | `Option<ObservedActor>` | `{ id, name? }`: who said or did it when not the memory's owner, such as an email's sender or a channel's (`id` is `type:id`, `user:priya@acme.com`, `user:+15551234567`). Excluded from the fingerprint; the CortexDB engine sends it only with attribution on. |
 
-`MemoryMeta::from_source(kind, id)` sets only the source. `SourceKind` is
+`MemoryMeta::from_source(kind, id)` sets only the source. `MemoryMeta::overlay(host)`
+uses set host optional fields in preference to caller values; the host's
+namespace and source always replace the caller's, including root/default
+values, and host tags append uniquely after caller tags.
+`SourceKind` is
 `folder | file | link | github | rss | conversation | agent |
-import` (`SourceKind::ALL`, `as_str`); `agent` is the default. `overlay(host)`
-uses each value set by the host in preference to the caller's value while
-preserving fields the host leaves unset. `ObservedActor::for_channel_sender`
+import` (`SourceKind::ALL`, `as_str`); `agent` is the default.
+`ObservedActor::for_channel_sender`
 normalizes phone senders on `whatsapp`, `signal`, `imessage`, `linq` and `sms`,
 emails on any channel, and otherwise uses `<channel>:<sender>`. That channel
 vocabulary lives in TinyMemory to avoid a dependency on a host channel crate.

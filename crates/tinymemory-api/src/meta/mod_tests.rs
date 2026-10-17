@@ -65,7 +65,7 @@ fn host_metadata_overlays_set_fields_and_preserves_unset_fields() {
 }
 
 #[test]
-fn host_values_replace_namespace_source_and_tags_when_present() {
+fn host_values_replace_namespace_and_source_and_append_tags_when_present() {
     let caller = MemoryMeta {
         namespace: "agent:caller".parse().unwrap(),
         source: SourceRef {
