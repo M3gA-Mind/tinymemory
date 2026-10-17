@@ -126,8 +126,8 @@ documents-office = ["documents", "dep:pdf-extract", "dep:calamine", "dep:quick-x
 # `brain`: converting raw files into `tinymemory_tools::BrainDocument`s
 # placed under the source type their format implies.
 brain = ["documents", "dep:tinymemory-tools"]
-# `sources`: readers that turn folders, files and conversations into
-# `StoreItem`s. Links no HTTP stack.
+# `sources`: readers, host source types/validation, state types and placement
+# support. Target validation uses `url` but links no HTTP client.
 sources = ["documents", "dep:tinymemory-tools", "dep:url", "dep:regex", "dep:walkdir", "dep:chrono", "dep:log", "dep:tracing"]
 # JSON Schema derives for source reader and host configuration types.
 schema = ["sources", "dep:schemars"]
