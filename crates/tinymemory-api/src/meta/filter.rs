@@ -50,6 +50,9 @@ pub struct MetaFilter {
     /// Exact thread id.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
+    /// Exact channel.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
     /// Exact turn range.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turns: Option<TurnRange>,

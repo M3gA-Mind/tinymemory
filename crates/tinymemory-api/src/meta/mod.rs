@@ -56,6 +56,9 @@ pub struct MemoryMeta {
     /// Conversation thread the item belongs to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
+    /// Channel the conversation or message came from, such as `telegram`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
     /// Which turns of the thread the item covers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turns: Option<TurnRange>,
