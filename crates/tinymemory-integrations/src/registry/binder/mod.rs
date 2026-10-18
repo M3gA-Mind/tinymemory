@@ -1,9 +1,9 @@
 //! Binds configured and host-provided engines behind one cached, safe surface.
 //!
-//! [`EngineBinder`] owns the strong per-fingerprint cache, explicit invalidation
-//! and a replaceable host-engine slot. Hosts resolve their own config,
+//! [`crate::registry::binder::EngineBinder`] owns the strong per-fingerprint
+//! cache, explicit invalidation and a replaceable host-engine slot. Hosts resolve their own config,
 //! credentials and policy, then pass the resulting [`EngineSettings`],
-//! [`EngineCredential`] and [`Policy`] here. Every path returned by the binder
+//! [`EngineCredential`] and [`crate::safety::Policy`] here. Every path returned by the binder
 //! scrubs every write and times every engine operation.
 //!
 //! The caller fingerprint identifies a credential source, not a token. Static

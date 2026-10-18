@@ -429,5 +429,8 @@ fn timing_failure_outcome_is_the_stable_error_code_only() {
     ));
 
     assert_eq!(timing_outcome(&failure), "UNAUTHORIZED");
-    assert_ne!(timing_outcome(&failure), failure.unwrap_err().to_string());
+    assert_ne!(
+        timing_outcome(&failure),
+        "unauthorized: do-not-log-this-token"
+    );
 }

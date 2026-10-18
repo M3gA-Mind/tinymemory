@@ -1,7 +1,10 @@
 //! Public binder timing behavior: one content-free line per async operation.
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{
+    Arc, Mutex, Once,
+    atomic::{AtomicBool, Ordering},
+};
 
 use async_trait::async_trait;
 use tinymemory_api::conformance::ReferenceEngine;
@@ -16,6 +19,12 @@ use tinymemory_integrations::{EngineBinder, safety::Policy};
 
 static RECORDS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+fn records() -> std::sync::MutexGuard<'static, Vec<String>> {
+    RECORDS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 struct Capture;
 
 impl log::Log for Capture {
@@ -24,10 +33,7 @@ impl log::Log for Capture {
     }
 
     fn log(&self, record: &log::Record<'_>) {
-        RECORDS
-            .lock()
-            .expect("capture lock")
-            .push(record.args().to_string());
+        records().push(record.args().to_string());
     }
 
     fn flush(&self) {}
@@ -37,10 +43,18 @@ static CAPTURE: Capture = Capture;
 
 fn install_capture() {
     static INSTALL: Once = Once::new();
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
     INSTALL.call_once(|| {
-        log::set_logger(&CAPTURE).expect("integration test has a dedicated logger");
-        log::set_max_level(log::LevelFilter::Trace);
+        let installed = log::set_logger(&CAPTURE).is_ok();
+        INSTALLED.store(installed, Ordering::SeqCst);
+        if installed {
+            log::set_max_level(log::LevelFilter::Trace);
+        }
     });
+    assert!(
+        INSTALLED.load(Ordering::SeqCst),
+        "integration test logger installs"
+    );
 }
 
 struct TimingProbe {
@@ -72,9 +86,9 @@ impl MemoryEngine for TimingProbe {
     async fn health(&self) -> EngineHealth {
         self.health
             .lock()
-            .expect("health queue lock")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .pop_front()
-            .expect("three queued health results")
+            .unwrap_or_else(|| EngineHealth::Down("missing queued health result".to_string()))
     }
 
     async fn recall(&self, _: RecallRequest) -> Result<RecallAnswer> {
@@ -149,7 +163,7 @@ impl MemoryEngine for TimingProbe {
 #[tokio::test]
 async fn external_binding_times_every_async_method_without_logging_payloads() {
     install_capture();
-    RECORDS.lock().expect("capture lock").clear();
+    records().clear();
 
     let binder = EngineBinder::default();
     let probe = TimingProbe {
@@ -242,9 +256,7 @@ async fn external_binding_times_every_async_method_without_logging_payloads() {
         ))
         .await;
 
-    let lines: Vec<_> = RECORDS
-        .lock()
-        .expect("capture lock")
+    let lines: Vec<_> = records()
         .iter()
         .filter(|line| line.contains("[memory:timing]"))
         .cloned()
