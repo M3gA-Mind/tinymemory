@@ -121,13 +121,12 @@ impl WriteSink for PolicySink {
         if let Some(error) = &self.enqueue_error {
             return Err(error.clone());
         }
-        if self.scrub_learnings {
-            if let WriteOperation::Learn {
+        if self.scrub_learnings
+            && let WriteOperation::Learn {
                 item: StoreItem::Learning { text, .. },
             } = &mut operation
-            {
-                *text = text.replace("secret", "redacted");
-            }
+        {
+            *text = text.replace("secret", "redacted");
         }
         self.pending.enqueue(operation, scope)
     }
