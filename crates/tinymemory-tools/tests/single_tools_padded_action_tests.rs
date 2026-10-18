@@ -57,8 +57,8 @@ async fn single_call_accepts_padded_action_for_learn() {
     let scope = scope();
     let queue = queue(8);
     let tool = queued_tool(
-        engine,
-        scope,
+        engine.clone(),
+        scope.clone(),
         queue.clone(),
         Arc::new(WriteGate::new("padded-learn")),
     );
@@ -72,16 +72,40 @@ async fn single_call_accepts_padded_action_for_learn() {
         .expect("padded learn action is accepted");
 
     assert_eq!(result["status"], "queued; not yet saved to memory");
-    assert_eq!(queue.entries().expect("queued learn").len(), 1);
+    let entries = queue.entries().expect("queued learn");
+    assert_eq!(entries.len(), 1);
+    assert!(matches!(
+        &entries[0].operation,
+        WriteOperation::Learn {
+            item: StoreItem::Learning { text, meta, .. }
+        } if text == "likes jasmine tea" && meta.namespace == scope.place
+    ));
+    assert!(
+        engine.is_empty(),
+        "learn is queued rather than stored inline"
+    );
 }
 
 #[tokio::test]
 async fn single_call_accepts_padded_action_for_forget() {
     let engine = Arc::new(ReferenceEngine::new());
     let scope = scope();
+    let receipt = engine
+        .store(StoreItem::learning(
+            "prefers green tea",
+            LearningKind::Preference,
+            0.9,
+            MemoryMeta {
+                namespace: scope.place.clone(),
+                ..MemoryMeta::default()
+            },
+        ))
+        .await
+        .expect("seed memory to forget");
+    let expected_reach = scope.reach.clone().expect("scoped reach");
     let queue = queue(8);
     let tool = queued_tool(
-        engine,
+        engine.clone(),
         scope,
         queue.clone(),
         Arc::new(WriteGate::new("padded-forget")),
@@ -97,8 +121,14 @@ async fn single_call_accepts_padded_action_for_forget() {
 
     assert_eq!(result["status"], "queued; not yet removed from memory");
     let entries = queue.entries().expect("queued forget");
+    assert_eq!(entries.len(), 1);
     assert!(matches!(
         &entries[0].operation,
-        WriteOperation::Forget { .. }
+        WriteOperation::Forget { ids, reach }
+            if ids == &vec![receipt.id.0] && reach == &expected_reach
     ));
+    assert!(
+        !engine.is_empty(),
+        "forget is queued and must not remove memory inline"
+    );
 }
