@@ -102,8 +102,8 @@ pub use lifecycle::turn::{
 };
 pub use lifecycle::window::InPromptFrom;
 pub use lifecycle::{
-    AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, RecallPolicy, SessionStart,
-    TurnContext,
+    AgentCount, AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, Preview, PreviewMode,
+    RecallPolicy, RecallSettings, SessionStart, TurnContext,
 };
 pub use recall::{
     ContextPack, HolisticRecall, ScopeSection, SectionQuery, holistic_recall, holistic_recall_dated,

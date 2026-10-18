@@ -161,7 +161,7 @@ pub enum PreviewMode {
 }
 
 /// The pack and mode returned by [`crate::AgentMemory::preview`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Preview {
     /// Whether the pack is for a turn or a session.
     pub mode: PreviewMode,
