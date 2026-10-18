@@ -334,9 +334,7 @@ impl MemoryOps {
             meta.observed_at = Some(options.now);
         }
         let meta = match &self.confinement {
-            Some(confinement) => {
-                confinement.learn_meta(Some(meta), &options.default_namespace)?
-            }
+            Some(confinement) => confinement.learn_meta(Some(meta), &options.default_namespace)?,
             None => {
                 if meta.namespace.is_root() {
                     meta.namespace = options.default_namespace;
