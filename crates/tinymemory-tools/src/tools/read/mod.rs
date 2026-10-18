@@ -113,21 +113,6 @@ pub(crate) async fn fetch_page(
     fetch_page_inner(engine, scope, value, None, limit, exclude_thread, false).await
 }
 
-/// Runs the single-name fetch with the first-declared mode as its default.
-///
-/// # Errors
-///
-/// As fetch_page.
-pub(crate) async fn fetch_page_first(
-    engine: &dyn MemoryEngine,
-    scope: &ToolScope,
-    value: &Value,
-    limit: Option<usize>,
-    exclude_thread: Option<ThreadWindow>,
-) -> Result<FetchPage> {
-    fetch_page_inner(engine, scope, value, None, limit, exclude_thread, true).await
-}
-
 /// Runs the single-name fetch with a full API filter parsed by the caller.
 pub(crate) async fn fetch_page_first_with_filter(
     engine: &dyn MemoryEngine,
