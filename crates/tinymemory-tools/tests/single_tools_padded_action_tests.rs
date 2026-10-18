@@ -102,6 +102,7 @@ async fn single_call_accepts_padded_action_for_forget() {
         ))
         .await
         .expect("seed memory to forget");
+    let id = receipt.id.0;
     let expected_reach = scope.reach.clone().expect("scoped reach");
     let queue = queue(8);
     let tool = queued_tool(
@@ -113,7 +114,7 @@ async fn single_call_accepts_padded_action_for_forget() {
 
     let result = tool
         .call(
-            json!({ "action": " forget ", "ids": ["missing-id"] }),
+            json!({ "action": " forget ", "ids": [id.clone()] }),
             CallContext::default(),
         )
         .await
@@ -124,8 +125,7 @@ async fn single_call_accepts_padded_action_for_forget() {
     assert_eq!(entries.len(), 1);
     assert!(matches!(
         &entries[0].operation,
-        WriteOperation::Forget { ids, reach }
-            if ids == &vec![receipt.id.0] && reach == &expected_reach
+        WriteOperation::Forget { ids, reach } if ids == &vec![id] && reach == &expected_reach
     ));
     assert!(
         !engine.is_empty(),
