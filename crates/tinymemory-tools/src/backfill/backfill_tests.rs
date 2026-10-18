@@ -158,50 +158,56 @@ impl CounterStore for TestCounterStore {
     }
 }
 
-struct DuplicateListEngine(ReferenceEngine);
+struct TestListingEngine {
+    inner: ReferenceEngine,
+    fail: Option<tinymemory_api::Error>,
+}
 
 #[async_trait::async_trait]
-impl MemoryEngine for DuplicateListEngine {
+impl MemoryEngine for TestListingEngine {
     fn descriptor(&self) -> &tinymemory_api::EngineDescriptor {
-        self.0.descriptor()
+        self.inner.descriptor()
     }
 
     async fn health(&self) -> tinymemory_api::EngineHealth {
-        self.0.health().await
+        self.inner.health().await
     }
 
     async fn recall(
         &self,
         request: tinymemory_api::RecallRequest,
     ) -> tinymemory_api::Result<tinymemory_api::RecallAnswer> {
-        self.0.recall(request).await
+        self.inner.recall(request).await
     }
 
     async fn fetch(
         &self,
         request: tinymemory_api::FetchRequest,
     ) -> tinymemory_api::Result<tinymemory_api::FetchPage> {
-        self.0.fetch(request).await
+        self.inner.fetch(request).await
     }
 
     async fn store(
         &self,
         item: tinymemory_api::StoreItem,
     ) -> tinymemory_api::Result<tinymemory_api::StoreReceipt> {
-        self.0.store(item).await
+        self.inner.store(item).await
     }
 
     async fn forget(
         &self,
         target: tinymemory_api::ForgetTarget,
     ) -> tinymemory_api::Result<tinymemory_api::ForgetReport> {
-        self.0.forget(target).await
+        self.inner.forget(target).await
     }
 
     async fn list(
         &self,
         request: tinymemory_api::ListRequest,
     ) -> tinymemory_api::Result<tinymemory_api::ListPage> {
+        if let Some(error) = &self.fail {
+            return Err(error.clone());
+        }
         // Deliberately ignore the filter to prove the cursor validates the
         // returned item's kind, namespace, agent, thread and tag itself.
         let mut unfiltered = tinymemory_api::ListRequest::new(
@@ -209,7 +215,7 @@ impl MemoryEngine for DuplicateListEngine {
             request.limit,
         );
         unfiltered.cursor = request.cursor;
-        let mut page = self.0.list(unfiltered).await?;
+        let mut page = self.inner.list(unfiltered).await?;
         if let Some(first) = page.items.first().cloned() {
             page.items.push(first);
         }
@@ -264,7 +270,10 @@ fn indexed_source_messages(count: usize) -> Vec<ThreadMessage> {
 
 #[tokio::test]
 async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
-    let engine = Arc::new(DuplicateListEngine(ReferenceEngine::new()));
+    let engine = Arc::new(TestListingEngine {
+        inner: ReferenceEngine::new(),
+        fail: None,
+    });
     let layout = MemoryLayout::default();
     // Turn zero is assistant-only, so its valid item has the odd turn index.
     for item in turn_items(
@@ -398,7 +407,10 @@ async fn listing_failure_is_fatal_but_an_unreadable_thread_is_skipped() {
 
 #[tokio::test]
 async fn cursor_ignores_foreign_namespace_agent_tag_kind_and_thread_hits() {
-    let engine = Arc::new(DuplicateListEngine(ReferenceEngine::new()));
+    let engine = Arc::new(TestListingEngine {
+        inner: ReferenceEngine::new(),
+        fail: None,
+    });
     let layout = MemoryLayout::default();
     let source_turn = turn("question", "answer");
 

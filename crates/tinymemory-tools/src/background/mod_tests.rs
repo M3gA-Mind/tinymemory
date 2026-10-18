@@ -11,10 +11,11 @@ use tinymemory_api::{
 
 use super::*;
 use crate::layout::BrainSource;
+use crate::run_slots::StartGate;
 
 struct MutexStartGate(std::sync::Mutex<()>);
 
-impl crate::run_slots::StartGate for MutexStartGate {
+impl StartGate for MutexStartGate {
     fn with_gate(&self, reserve: &mut dyn FnMut() -> bool) -> bool {
         let _guard = self.0.lock().unwrap();
         reserve()

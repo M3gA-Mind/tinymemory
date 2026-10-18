@@ -26,6 +26,28 @@ impl crate::run_slots::StartGate for MutexStartGate {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum GateEvent {
+    GateCalled,
+    ImportChecked(bool),
+    MigrationChecked(bool),
+    MigrationStarted(bool),
+}
+
+#[derive(Clone)]
+struct SignalStartGate {
+    lock: Arc<Mutex<()>>,
+    events: std::sync::mpsc::Sender<GateEvent>,
+}
+
+impl crate::run_slots::StartGate for SignalStartGate {
+    fn with_gate(&self, reserve: &mut dyn FnMut() -> bool) -> bool {
+        self.events.send(GateEvent::GateCalled).unwrap();
+        let _gate = self.lock.lock().unwrap();
+        reserve()
+    }
+}
+
 #[derive(Clone, Default)]
 struct CapturingSpawner(Arc<Mutex<Option<MigrationTask>>>);
 
@@ -298,4 +320,225 @@ fn filesystem_claim_race_has_one_winner_and_torn_markers_are_errors() {
     assert!(torn.held_by_other().is_err());
     assert!(torn.take().is_err());
     assert!(!winner.held_by_other().unwrap());
+}
+
+#[tokio::test]
+async fn separate_services_share_slots_and_dropped_tasks_release_them() {
+    let slots = RunSlots::new();
+    let gate = MutexStartGate(Arc::new(Mutex::new(())));
+    let first_spawner = CapturingSpawner::default();
+    let first = migration_service(slots.clone(), gate.clone(), first_spawner.clone());
+    let second_spawner = CapturingSpawner::default();
+    let second = migration_service(slots.clone(), gate, second_spawner.clone());
+    let host = Arc::new(CountingHost::new(1, false).await);
+    let key = PathBuf::from("workspace-a");
+
+    assert!(first.start(
+        key.clone(),
+        host.clone(),
+        || false,
+        Trigger::Auto,
+        || false,
+    ));
+    assert!(!second.start(
+        key.clone(),
+        host,
+        || false,
+        Trigger::Auto,
+        || false,
+    ));
+    assert!(slots.is_running(&key));
+    assert!(second_spawner.is_empty());
+
+    drop(first_spawner.take());
+    assert!(!slots.is_running(&key), "dropping a queued task releases its slot");
+}
+
+#[tokio::test]
+async fn rejected_spawn_records_one_failure_and_releases_its_slot() {
+    let slots = RunSlots::new();
+    let service = migration_service(
+        slots.clone(),
+        MutexStartGate(Arc::new(Mutex::new(()))),
+        RejectingSpawner,
+    );
+    let host = Arc::new(CountingHost::new(1, false).await);
+    let key = PathBuf::from("workspace-rejected");
+
+    assert!(!service.start(
+        key.clone(),
+        host.clone(),
+        || false,
+        Trigger::Auto,
+        || false,
+    ));
+
+    let state = host.store.load().unwrap();
+    assert_eq!(host.store.saves.load(Ordering::SeqCst), 1);
+    assert_eq!(state.phase, Phase::Paused);
+    assert!(state.error.unwrap().contains("executor refused migration"));
+    assert!(!slots.is_running(&key));
+}
+
+#[tokio::test]
+async fn run_failure_records_once_and_cancelling_an_accepted_task_releases_its_slot() {
+    let slots = RunSlots::new();
+    let spawner = CapturingSpawner::default();
+    let service = migration_service(
+        slots.clone(),
+        MutexStartGate(Arc::new(Mutex::new(()))),
+        spawner.clone(),
+    );
+    let host = Arc::new(CountingHost::new(1, true).await);
+    let key = PathBuf::from("workspace-failed");
+    assert!(service.start(
+        key.clone(),
+        host.clone(),
+        || false,
+        Trigger::Auto,
+        || false,
+    ));
+
+    spawner.take().await;
+
+    let state = host.store.load().unwrap();
+    assert_eq!(host.store.saves.load(Ordering::SeqCst), 1);
+    assert_eq!(state.phase, Phase::Paused);
+    assert_eq!(state.error.as_deref(), Some("memory is off: engine unavailable"));
+    assert!(!slots.is_running(&key));
+
+    assert!(service.start(
+        key.clone(),
+        host,
+        || false,
+        Trigger::Auto,
+        || false,
+    ));
+    drop(spawner.take());
+    assert!(!slots.is_running(&key));
+}
+
+#[tokio::test]
+async fn tick_checks_finished_then_pause_then_running_before_starting() {
+    let slots = RunSlots::new();
+    let spawner = CapturingSpawner::default();
+    let service = migration_service(
+        slots.clone(),
+        MutexStartGate(Arc::new(Mutex::new(()))),
+        spawner.clone(),
+    );
+    let finished_host = Arc::new(CountingHost::new(0, false).await);
+    let mut finished = MigrationState::default();
+    finished.phase = Phase::Cleaned;
+    finished_host.store.save(&finished).unwrap();
+    let paused_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let paused_count = Arc::clone(&paused_calls);
+    assert!(!service.tick(
+        PathBuf::from("workspace-finished"),
+        finished_host,
+        || false,
+        move || {
+            paused_count.fetch_add(1, Ordering::SeqCst);
+            false
+        },
+    ));
+    assert_eq!(paused_calls.load(Ordering::SeqCst), 0);
+    assert!(spawner.is_empty());
+
+    let host = Arc::new(CountingHost::new(1, false).await);
+    let key = PathBuf::from("workspace-running");
+    assert!(service.start(
+        key.clone(),
+        host.clone(),
+        || false,
+        Trigger::Auto,
+        || false,
+    ));
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls_for_pause = Arc::clone(&calls);
+    assert!(!service.tick(
+        key.clone(),
+        host,
+        || false,
+        move || {
+            calls_for_pause.fetch_add(1, Ordering::SeqCst);
+            true
+        },
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(slots.is_running(&key));
+    assert!(spawner.is_empty());
+    drop(spawner.take());
+}
+
+#[tokio::test]
+async fn shared_start_gate_serializes_import_and_migration_reservations() {
+    use crate::run_slots::StartGate;
+    use std::sync::mpsc;
+
+    let (events_tx, events_rx) = mpsc::channel();
+    let gate = SignalStartGate {
+        lock: Arc::new(Mutex::new(())),
+        events: events_tx.clone(),
+    };
+    let import_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (release_tx, release_rx) = mpsc::channel();
+    let import_gate = gate.clone();
+    let import_flag = Arc::clone(&import_running);
+    let import = std::thread::spawn(move || {
+        let mut reserve = || {
+            let peer_running = false;
+            import_gate
+                .events
+                .send(GateEvent::ImportChecked(peer_running))
+                .unwrap();
+            release_rx.recv().unwrap();
+            import_flag.store(true, Ordering::SeqCst);
+            true
+        };
+        import_gate.with_gate(&mut reserve)
+    });
+    assert_eq!(events_rx.recv().unwrap(), GateEvent::GateCalled);
+    assert_eq!(events_rx.recv().unwrap(), GateEvent::ImportChecked(false));
+
+    let slots = RunSlots::new();
+    let spawner = CapturingSpawner::default();
+    let service = migration_service(slots, gate, spawner.clone());
+    let migration_import_flag = Arc::clone(&import_running);
+    let migration_events = events_tx;
+    let host = Arc::new(CountingHost::new(1, false).await);
+    let migration = std::thread::spawn(move || {
+        let started = service.start(
+            PathBuf::from("workspace-interlock"),
+            host,
+            || {
+                let peer_running = migration_import_flag.load(Ordering::SeqCst);
+                migration_events
+                    .send(GateEvent::MigrationChecked(peer_running))
+                    .unwrap();
+                peer_running
+            },
+            Trigger::Auto,
+            || false,
+        );
+        let _ = migration_events.send(GateEvent::MigrationStarted(started));
+        started
+    });
+    // A correct service enters the same gate before checking import state.
+    // The event is sent immediately before it blocks on the import's lock.
+    let second_gate_call = events_rx.recv().unwrap();
+    release_tx.send(()).unwrap();
+    let remaining: Vec<_> = std::iter::from_fn(|| events_rx.recv().ok()).take(2).collect();
+    import.join().unwrap();
+    let migration_started = migration.join().unwrap();
+
+    if !spawner.is_empty() {
+        drop(spawner.take());
+    }
+
+    assert_eq!(second_gate_call, GateEvent::GateCalled);
+    assert_eq!(remaining, [GateEvent::MigrationChecked(true), GateEvent::MigrationStarted(false)]);
+    assert!(!migration_started);
+    assert!(spawner.is_empty());
+    assert!(import_running.load(Ordering::SeqCst));
 }
