@@ -5,10 +5,23 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::task::{Context, Poll, Wake, Waker};
 use std::time::Duration;
 
 use tinymemory_tools::tools::budget::{Clock, Refusal, RunBudget};
 use tokio::sync::{oneshot, watch};
+
+struct NoopWake;
+
+impl Wake for NoopWake {
+    fn wake(self: Arc<Self>) {}
+}
+
+fn poll_once<F: Future>(mut future: Pin<&mut F>) -> Poll<F::Output> {
+    let waker = Waker::from(Arc::new(NoopWake));
+    let mut context = Context::from_waker(&waker);
+    future.as_mut().poll(&mut context)
+}
 
 #[derive(Clone)]
 struct ManualClock {
@@ -172,16 +185,13 @@ async fn an_already_pending_action_wins_a_simultaneously_ready_timer() {
         let _ = started.send(());
         let _ = finished.await;
     }));
-    assert!(futures::poll!(call.as_mut()).is_pending());
+    assert!(poll_once(call.as_mut()).is_pending());
     observed.await.expect("action was polled");
     // Match the host's Tokio timeout: poll the action before the timer, so a
     // pending action that becomes ready on the deadline completes successfully.
     clock.advance(Duration::from_secs(15));
     finish.send(()).expect("action completion queued");
-    assert!(matches!(
-        futures::poll!(call.as_mut()),
-        std::task::Poll::Ready(Ok(()))
-    ));
+    assert!(matches!(poll_once(call.as_mut()), Poll::Ready(Ok(()))));
 }
 
 #[tokio::test]
@@ -193,7 +203,7 @@ async fn cancelling_an_action_refunds_its_unspent_reservation() {
         let _ = started.send(());
         futures::future::pending::<()>().await
     }));
-    assert!(futures::poll!(call.as_mut()).is_pending());
+    assert!(poll_once(call.as_mut()).is_pending());
     observed.await.expect("action was polled");
     drop(call);
 
@@ -211,11 +221,11 @@ async fn cancelling_an_action_refunds_its_unspent_reservation() {
         let _ = started.send(());
         let _ = finished.await;
     }));
-    assert!(futures::poll!(call.as_mut()).is_pending());
+    assert!(poll_once(call.as_mut()).is_pending());
     observed.await.expect("follow-up action was polled");
     clock.advance(Duration::from_secs(4));
     assert!(
-        futures::poll!(call.as_mut()).is_pending(),
+        poll_once(call.as_mut()).is_pending(),
         "four seconds is below the refunded fifteen-second allowance"
     );
     finish.send(()).expect("follow-up action completion queued");

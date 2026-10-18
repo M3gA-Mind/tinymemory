@@ -1,7 +1,10 @@
 //! The single-name memory facade: action dispatch, scope, pages, prompt
 //! windows, bounded evidence, and writes through the durable queue.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Wake, Waker};
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -18,6 +21,18 @@ use tinymemory_tools::tools::single::{
     CallContext, ConcurrencyClass, PendingWriteSink, PermissionClass, SingleTool,
 };
 use tinymemory_tools::tools::{MemoryTools, ToolScope};
+
+struct NoopWake;
+
+impl Wake for NoopWake {
+    fn wake(self: Arc<Self>) {}
+}
+
+fn poll_once<F: Future>(mut future: Pin<&mut F>) -> Poll<F::Output> {
+    let waker = Waker::from(Arc::new(NoopWake));
+    let mut context = Context::from_waker(&waker);
+    future.as_mut().poll(&mut context)
+}
 
 fn scope() -> ToolScope {
     let root = Namespace::agent("writer");
@@ -737,7 +752,7 @@ async fn cancelling_an_in_flight_drain_leaves_the_unsettled_entry_durable() {
         |_| true,
         |_| *settled.lock().expect("settlement state") = true,
     ));
-    assert!(futures::poll!(drain.as_mut()).is_pending());
+    assert!(poll_once(drain.as_mut()).is_pending());
     assert!(*executor.0.lock().expect("executor was polled"));
     drop(drain);
     assert!(!*settled.lock().expect("settlement state"));
