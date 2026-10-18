@@ -49,6 +49,9 @@ where
     }
 
     /// Replaces the cache bounds.
+    ///
+    /// Configure the cache before enqueuing work. As with [`Prefetcher`],
+    /// settings are skipped and logged if its state has already been shared.
     #[must_use]
     pub fn with_limits(self, limits: Limits) -> Self {
         Self {
@@ -57,6 +60,9 @@ where
     }
 
     /// Uses a worker pool shared with other caches.
+    ///
+    /// Configure the cache before enqueuing work. As with [`Prefetcher`],
+    /// settings are skipped and logged if its state has already been shared.
     #[must_use]
     pub fn with_workers(self, workers: WorkerPool) -> Self {
         Self {
