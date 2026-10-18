@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crate::background::BackgroundJob;
 use crate::brain::{Brain, BrainDocument};
-use crate::layout::{BrainSource, MemoryLayout};
+use crate::layout::{BrainSource, CoreScope, MemoryLayout};
 use crate::prefetch::{Limits, PrefetchRuntime, Prefetcher};
 use async_trait::async_trait;
 use futures::channel::oneshot;
@@ -17,8 +17,8 @@ use futures::future::{BoxFuture, poll_fn};
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     EngineDescriptor, EngineHealth, Error, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
-    Hit, ItemKind, ListPage, ListRequest, MemoryEngine, MetaFilter, RecallAnswer, RecallRequest,
-    Result, StoreItem, StoreReceipt, Turn,
+    Hit, ItemKind, LearningKind, ListPage, ListRequest, MemoryEngine, MemoryMeta, MetaFilter,
+    Namespace, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt, Turn,
 };
 
 use super::date_hint::DateHintModel;
@@ -342,6 +342,54 @@ async fn pre_turn_obeys_all_logging_and_recall_combinations() {
         );
         assert_eq!(fixture.model.calls.load(Ordering::SeqCst), model_calls);
     }
+}
+
+#[tokio::test]
+async fn recall_off_does_not_read_positive_core_scopes() {
+    let root: Namespace = "ws:acme/team:hive".parse().unwrap();
+    let company: Namespace = "ws:acme".parse().unwrap();
+    let engine = Arc::new(ReadSpyEngine {
+        inner: ReferenceEngine::new(),
+        reads: AtomicUsize::new(0),
+    });
+    engine
+        .inner
+        .store(StoreItem::learning(
+            "Company policy: renewals happen in April.",
+            LearningKind::Fact,
+            0.9,
+            MemoryMeta {
+                namespace: company.clone(),
+                ..MemoryMeta::default()
+            },
+        ))
+        .await
+        .unwrap();
+    let memory = AgentMemory::new(
+        engine.clone(),
+        MemoryLayout::new(root).unwrap(),
+        "agent",
+    )
+    .unwrap()
+    .with_core(vec![CoreScope::new(company, "Company")])
+    .unwrap();
+    let fixture = fixture_with_memory_and_advance(
+        FakeClock::at(Duration::ZERO),
+        false,
+        memory,
+        None,
+        Duration::ZERO,
+    );
+
+    assert!(fixture
+        .hooks
+        .pre_turn(
+            PreTurn::new("thread", 0, "when are renewals?"),
+            options(true, false),
+        )
+        .await
+        .is_none());
+    assert_eq!(engine.reads.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -721,6 +769,44 @@ struct HeldEngine {
     held_reads: bool,
     read_error: Option<Error>,
     probe: Arc<WorkProbe>,
+}
+
+struct ReadSpyEngine {
+    inner: ReferenceEngine,
+    reads: AtomicUsize,
+}
+
+#[async_trait]
+impl MemoryEngine for ReadSpyEngine {
+    fn descriptor(&self) -> &EngineDescriptor {
+        self.inner.descriptor()
+    }
+
+    async fn health(&self) -> EngineHealth {
+        self.inner.health().await
+    }
+
+    async fn recall(&self, request: RecallRequest) -> Result<RecallAnswer> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        self.inner.recall(request).await
+    }
+
+    async fn fetch(&self, request: FetchRequest) -> Result<FetchPage> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        self.inner.fetch(request).await
+    }
+
+    async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
+        self.inner.store(item).await
+    }
+
+    async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
+        self.inner.forget(target).await
+    }
+
+    async fn list(&self, request: ListRequest) -> Result<ListPage> {
+        self.inner.list(request).await
+    }
 }
 
 #[async_trait]
