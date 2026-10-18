@@ -19,11 +19,25 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
 - **`ops`**: validated host request builders, explorer paths, common read
   limits, learning metadata shaping and deletion helpers. `MemoryOps` applies
   a concrete `Confinement` policy before a request reaches an engine.
+- **`backfill`**: builds and runs a resumable conversation backfill over a
+  host `ThreadSource` and `CounterStore`. Consent, the thread-store adapter,
+  and task scheduling remain with the host.
+- **`layout_migration`**: migrates a legacy tree through a host `LayoutHost`.
+  `MigrationService` owns run-slot and tick policy while a host
+  `MigrationSpawner` supplies the executor; import and migration starts share
+  a synchronous `StartGate`.
+- **`run_slots`**: keyed RAII reservations shared across service instances.
+  Dropping a run task releases its slot after cancellation or spawn rejection.
 
 The crate has no tool-runtime dependency (no MCP, no `tinytools`). A host
 adapts `ToolSpec` to whatever runtime it uses; see
 [Adapting to a tool runtime](#adapting-to-a-tool-runtime). The design is
 written up in [`docs/architecture/tools.md`](../../docs/architecture/tools.md).
+
+The `fs-claim` Cargo feature opts into `layout_migration::FsLegacyClaim`, a
+filesystem marker implementation of `LegacyClaim` for shared local trees. It
+adds only the optional `url` and `tempfile` dependencies; the default build
+keeps the claim implementation behind the host port.
 
 ## The tools
 
