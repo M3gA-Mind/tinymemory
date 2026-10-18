@@ -1,5 +1,7 @@
 use super::*;
 use tinymemory_api::conformance::ReferenceEngine;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 fn message(sender: &str, content: &str, at: &str) -> ThreadMessage {
     ThreadMessage::new(sender, content, at)
@@ -111,4 +113,337 @@ async fn live_logging_is_found_by_the_first_untagged_turn() {
     }
     assert_eq!(first_live_turn(&engine, "t").await, Some(2));
     assert_eq!(first_live_turn(&engine, "other").await, None);
+}
+
+#[derive(Default)]
+struct TestThreadSource {
+    threads: Vec<String>,
+    messages: BTreeMap<String, Vec<ThreadMessage>>,
+    unreadable: Vec<String>,
+    fail_listing: bool,
+}
+
+#[async_trait::async_trait]
+impl ThreadSource for TestThreadSource {
+    async fn list_threads(&self) -> std::result::Result<Vec<String>, String> {
+        if self.fail_listing {
+            Err("thread listing failed".to_string())
+        } else {
+            Ok(self.threads.clone())
+        }
+    }
+
+    async fn messages(
+        &self,
+        thread_id: &str,
+    ) -> std::result::Result<Vec<ThreadMessage>, String> {
+        if self.unreadable.iter().any(|unreadable| unreadable == thread_id) {
+            return Err("thread messages failed".to_string());
+        }
+        Ok(self.messages.get(thread_id).cloned().unwrap_or_default())
+    }
+}
+
+#[derive(Default)]
+struct TestCounterStore(Mutex<BackfillFile>);
+
+impl CounterStore for TestCounterStore {
+    fn load(&self) -> BackfillFile {
+        self.0.lock().unwrap().clone()
+    }
+
+    fn save(&self, file: &BackfillFile) -> std::result::Result<(), String> {
+        *self.0.lock().unwrap() = file.clone();
+        Ok(())
+    }
+}
+
+struct DuplicateListEngine(ReferenceEngine);
+
+#[async_trait::async_trait]
+impl MemoryEngine for DuplicateListEngine {
+    fn descriptor(&self) -> &tinymemory_api::EngineDescriptor {
+        self.0.descriptor()
+    }
+
+    async fn health(&self) -> tinymemory_api::EngineHealth {
+        self.0.health().await
+    }
+
+    async fn recall(
+        &self,
+        request: tinymemory_api::RecallRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::RecallAnswer> {
+        self.0.recall(request).await
+    }
+
+    async fn fetch(
+        &self,
+        request: tinymemory_api::FetchRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::FetchPage> {
+        self.0.fetch(request).await
+    }
+
+    async fn store(
+        &self,
+        item: tinymemory_api::StoreItem,
+    ) -> tinymemory_api::Result<tinymemory_api::StoreReceipt> {
+        self.0.store(item).await
+    }
+
+    async fn forget(
+        &self,
+        target: tinymemory_api::ForgetTarget,
+    ) -> tinymemory_api::Result<tinymemory_api::ForgetReport> {
+        self.0.forget(target).await
+    }
+
+    async fn list(
+        &self,
+        request: tinymemory_api::ListRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::ListPage> {
+        // Deliberately ignore the filter to prove the cursor validates the
+        // returned item's kind, namespace, agent, thread and tag itself.
+        let mut unfiltered = tinymemory_api::ListRequest::new(
+            tinymemory_api::MetaFilter::default(),
+            request.limit,
+        );
+        unfiltered.cursor = request.cursor;
+        let mut page = self.0.list(unfiltered).await?;
+        if let Some(first) = page.items.first().cloned() {
+            page.items.push(first);
+        }
+        Ok(page)
+    }
+}
+
+fn backfiller(
+    engine: Arc<dyn MemoryEngine>,
+    source: TestThreadSource,
+    store: Arc<TestCounterStore>,
+) -> Backfiller {
+    Backfiller::new(
+        engine,
+        MemoryLayout::default(),
+        MAIN_AGENT,
+        Arc::new(source),
+        store,
+    )
+}
+
+fn source_messages(turns: &[(&str, &str)]) -> Vec<ThreadMessage> {
+    turns
+        .iter()
+        .flat_map(|(user, assistant)| {
+            [
+                ThreadMessage::new("user", *user, "2026-09-01T10:00:00Z"),
+                ThreadMessage::new("assistant", *assistant, "2026-09-01T10:01:00Z"),
+            ]
+        })
+        .collect()
+}
+
+fn indexed_source_messages(count: usize) -> Vec<ThreadMessage> {
+    (0..count)
+        .flat_map(|index| {
+            [
+                ThreadMessage::new(
+                    "user",
+                    format!("user {index}"),
+                    "2026-09-01T10:00:00Z",
+                ),
+                ThreadMessage::new(
+                    "assistant",
+                    format!("answer {index}"),
+                    "2026-09-01T10:01:00Z",
+                ),
+            ]
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
+    let engine = Arc::new(DuplicateListEngine(ReferenceEngine::new()));
+    let layout = MemoryLayout::default();
+    // Turn zero is assistant-only, so its valid item has the odd turn index.
+    for item in turn_items(
+        &layout,
+        MAIN_AGENT,
+        "thread",
+        0,
+        &PastTurn {
+            user: String::new(),
+            assistant: "welcome".to_string(),
+            at: Utc::now(),
+        },
+    ) {
+        engine.store(item).await.unwrap();
+    }
+    // Turn one is only partly visible: a user item alone must not make the
+    // cursor skip the missing assistant item. Listing duplicates are also
+    // injected, and must not masquerade as the missing role.
+    for item in turn_items(&layout, MAIN_AGENT, "thread", 1, &turn("question", "answer")) {
+        if item.meta().turns.unwrap().first == 2 {
+            engine.store(item).await.unwrap();
+        }
+    }
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([(
+            "thread".to_string(),
+            vec![
+                ThreadMessage::new("user", "", "2026-09-01T10:00:00Z"),
+                ThreadMessage::new("assistant", "welcome", "2026-09-01T10:01:00Z"),
+                ThreadMessage::new("user", "question", "2026-09-01T10:02:00Z"),
+                ThreadMessage::new("assistant", "answer", "2026-09-01T10:03:00Z"),
+            ],
+        )]),
+        ..Default::default()
+    };
+    let backfiller = backfiller(engine, source, Arc::new(TestCounterStore::default()));
+
+    let view = backfiller.status(false).await.unwrap();
+
+    assert_eq!(view.pending_threads, 1);
+    assert_eq!(view.pending_turns, 1);
+}
+
+#[tokio::test]
+async fn cursor_stops_at_a_gap_and_paginates_all_backfill_items() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let layout = MemoryLayout::default();
+    let turns: Vec<_> = (0..240)
+        .map(|index| turn(&format!("user {index}"), &format!("answer {index}")))
+        .collect();
+    // A gap on a later page means subsequent items cannot move the contiguous
+    // cursor past it; earlier pages must still be read to locate the gap.
+    for index in (0..240).filter(|index| *index != 220) {
+        for item in group_items(&layout, MAIN_AGENT, "thread", &turns, &[index]) {
+            engine.store(item).await.unwrap();
+        }
+    }
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([(
+            "thread".to_string(),
+            indexed_source_messages(240),
+        )]),
+        ..Default::default()
+    };
+    let backfiller = backfiller(engine, source, Arc::new(TestCounterStore::default()));
+
+    let view = backfiller.status(false).await.unwrap();
+
+    assert_eq!(view.pending_turns, 20, "the gap keeps later turns pending");
+}
+
+#[tokio::test]
+async fn cursor_reads_all_pages_when_every_turn_is_already_stored() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let layout = MemoryLayout::default();
+    let turns: Vec<_> = (0..240)
+        .map(|index| turn(&format!("user {index}"), &format!("answer {index}")))
+        .collect();
+    for index in 0..turns.len() {
+        for item in group_items(&layout, MAIN_AGENT, "thread", &turns, &[index]) {
+            engine.store(item).await.unwrap();
+        }
+    }
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([("thread".to_string(), indexed_source_messages(240))]),
+        ..Default::default()
+    };
+    let backfiller = backfiller(engine, source, Arc::new(TestCounterStore::default()));
+
+    let view = backfiller.status(false).await.unwrap();
+
+    assert_eq!(view.pending_threads, 0);
+    assert_eq!(view.pending_turns, 0);
+}
+
+#[tokio::test]
+async fn listing_failure_is_fatal_but_an_unreadable_thread_is_skipped() {
+    let engine: Arc<dyn MemoryEngine> = Arc::new(ReferenceEngine::new());
+    let failing_list = TestThreadSource {
+        fail_listing: true,
+        ..Default::default()
+    };
+    assert!(backfiller(
+        engine.clone(),
+        failing_list,
+        Arc::new(TestCounterStore::default())
+    )
+    .status(false)
+    .await
+    .is_err());
+
+    let source = TestThreadSource {
+        threads: vec!["unreadable".to_string(), "readable".to_string()],
+        messages: BTreeMap::from([(
+            "readable".to_string(),
+            source_messages(&[("question", "answer")]),
+        )]),
+        unreadable: vec!["unreadable".to_string()],
+        ..Default::default()
+    };
+    let view = backfiller(engine, source, Arc::new(TestCounterStore::default()))
+        .status(false)
+        .await
+        .unwrap();
+    assert_eq!(view.pending_threads, 1);
+    assert_eq!(view.pending_turns, 1);
+}
+
+#[tokio::test]
+async fn cursor_ignores_foreign_namespace_agent_tag_kind_and_thread_hits() {
+    let engine = Arc::new(DuplicateListEngine(ReferenceEngine::new()));
+    let layout = MemoryLayout::default();
+    let source_turn = turn("question", "answer");
+
+    let mut foreign_agent = turn_items(&layout, MAIN_AGENT, "thread", 0, &source_turn);
+    for item in &mut foreign_agent {
+        item.meta_mut().namespace = "agent:other".parse().unwrap();
+        item.meta_mut().agent_id = Some("other".to_string());
+    }
+    let mut wrong_tag = turn_items(&layout, MAIN_AGENT, "thread", 0, &source_turn);
+    for item in &mut wrong_tag {
+        item.meta_mut().tags.clear();
+    }
+    let mut wrong_thread = turn_items(&layout, MAIN_AGENT, "elsewhere", 0, &source_turn);
+    let mut wrong_kind = vec![StoreItem::learning(
+        "not a conversation",
+        tinymemory_api::LearningKind::Fact,
+        0.5,
+        MemoryMeta {
+            namespace: "agent:orchestrator".parse().unwrap(),
+            thread_id: Some("thread".to_string()),
+            agent_id: Some(MAIN_AGENT.to_string()),
+            tags: vec![BACKFILL_TAG.to_string()],
+            ..MemoryMeta::default()
+        },
+    )];
+    for item in foreign_agent
+        .drain(..)
+        .chain(wrong_tag)
+        .chain(wrong_thread.drain(..))
+        .chain(wrong_kind.drain(..))
+    {
+        engine.store(item).await.unwrap();
+    }
+
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([(
+            "thread".to_string(),
+            source_messages(&[("question", "answer")]),
+        )]),
+        ..Default::default()
+    };
+    let backfiller = backfiller(engine, source, Arc::new(TestCounterStore::default()));
+
+    let view = backfiller.status(false).await.unwrap();
+
+    assert_eq!(view.pending_turns, 1);
 }

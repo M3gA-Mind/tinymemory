@@ -19,8 +19,8 @@ use tinymemory_api::{
     ListPage, ListRequest, MemoryEngine, RecallAnswer, RecallRequest, StoreItem, StoreReceipt,
 };
 use tinymemory_integrations::import::{
-    CheckpointStore, ImportError, ImportFile, ImportPhase, Importer, MemoryCheckpointStore, Pacer,
-    RetryPolicy,
+    CheckpointStore, FailedItem, ImportError, ImportFile, ImportPhase, Importer,
+    MemoryCheckpointStore, Pacer, ResumePlan, RetryPolicy, record_resume_failure,
 };
 
 const COUNT: usize = 60;
@@ -167,6 +167,76 @@ async fn import(rig: &Rig) -> ImportFile {
     let begun = rig.importer.begin().unwrap();
     rig.importer.run(begun).await;
     rig.store.load()
+}
+
+#[test]
+fn resume_plan_covers_phase_billing_pause_and_retry_state() {
+    let phases = [
+        ImportPhase::Idle,
+        ImportPhase::Running,
+        ImportPhase::Done,
+        ImportPhase::Error,
+    ];
+    for phase in phases {
+        for paused_for_credits in [false, true] {
+            for billing_ok in [false, true] {
+                for paused in [false, true] {
+                    for retrying in [false, true] {
+                        let file = ImportFile {
+                            state: tinymemory_integrations::import::ImportState {
+                                phase,
+                                ..Default::default()
+                            },
+                            paused_for_credits,
+                            retrying,
+                            ..Default::default()
+                        };
+                        let expected = if paused {
+                            ResumePlan::DoNotResume
+                        } else {
+                            match phase {
+                                ImportPhase::Running if retrying => ResumePlan::ResumeRetry,
+                                ImportPhase::Running => ResumePlan::ResumeImport,
+                                ImportPhase::Error if paused_for_credits && billing_ok => {
+                                    ResumePlan::ResumeImport
+                                }
+                                _ => ResumePlan::DoNotResume,
+                            }
+                        };
+                        assert_eq!(
+                            Importer::resume_plan(&file, billing_ok, paused),
+                            expected,
+                            "phase={phase:?}, credits={paused_for_credits}, billing={billing_ok}, paused={paused}, retrying={retrying}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn store_only_resume_failure_preserves_checkpoint_and_failed_items() {
+    let mut file = ImportFile::default();
+    file.state.phase = ImportPhase::Running;
+    file.retrying = true;
+    file.failed.push(FailedItem {
+        id: "memory_docs:retry-me".to_string(),
+        reason: "invalid item".to_string(),
+    });
+    file.checkpoint.documents = Some("last-saved-document".to_string());
+    let expected_checkpoint = file.checkpoint.clone();
+    let expected_failed = file.failed.clone();
+    let store = MemoryCheckpointStore::new(file);
+
+    record_resume_failure(&store, "cannot reach engine");
+
+    let saved = store.load();
+    assert_eq!(saved.state.phase, ImportPhase::Done);
+    assert_eq!(saved.state.error.as_deref(), Some("the retry could not resume: cannot reach engine; press Retry again"));
+    assert!(!saved.retrying);
+    assert_eq!(saved.checkpoint, expected_checkpoint);
+    assert_eq!(saved.failed, expected_failed);
 }
 
 #[test]
