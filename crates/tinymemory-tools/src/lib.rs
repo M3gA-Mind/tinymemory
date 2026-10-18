@@ -108,7 +108,7 @@ pub use lifecycle::{
 pub use recall::{
     ContextPack, HolisticRecall, ScopeSection, SectionQuery, holistic_recall, holistic_recall_dated,
 };
-pub use tools::budget::{Clock, DenialReason, Refusal, RunBudget};
+pub use tools::budget::{Clock as BudgetClock, DenialReason, Refusal, RunBudget};
 pub use tools::single::{
     CallContext, ConcurrencyClass, PendingWriteSink, PermissionClass, SingleTool, SingleToolSpec,
     WriteSink,
