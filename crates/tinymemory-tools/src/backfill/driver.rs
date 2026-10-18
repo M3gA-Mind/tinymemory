@@ -83,9 +83,17 @@ pub struct BackfillView {
 #[async_trait]
 pub trait ThreadSource: Send + Sync {
     /// Lists thread ids. A failure here prevents a complete plan.
+    ///
+    /// # Errors
+    ///
+    /// Returns a description when the thread store cannot list its threads.
     async fn list_threads(&self) -> std::result::Result<Vec<String>, String>;
 
     /// Reads one thread's messages in chronological order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a description when the thread store cannot read this thread.
     async fn messages(&self, thread_id: &str) -> std::result::Result<Vec<ThreadMessage>, String>;
 }
 
@@ -98,6 +106,10 @@ pub trait CounterStore: Send + Sync {
     fn load(&self) -> BackfillFile;
 
     /// Persists the state whole.
+    ///
+    /// # Errors
+    ///
+    /// Returns a description when the host cannot save the state.
     fn save(&self, file: &BackfillFile) -> std::result::Result<(), String>;
 }
 
@@ -146,6 +158,10 @@ impl Backfiller {
 
     /// Progress and work still pending. A stale `Running` state is reported
     /// as interrupted when `running` says no task owns its run slot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an engine error if listing threads or stored items fails.
     pub async fn status(&self, running: bool) -> Result<BackfillView> {
         let file = self.store.load();
         let mut state = file.state.clone();
@@ -163,6 +179,10 @@ impl Backfiller {
 
     /// Plans a run and persists its `Running` state. Consent and executor
     /// ownership stay with the host.
+    ///
+    /// # Errors
+    ///
+    /// Returns an engine error if listing threads or stored items fails.
     pub async fn begin(&self) -> Result<BackfillRun> {
         let mut file = self.store.load();
         let plans = self.plan(&file).await?;

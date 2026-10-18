@@ -8,9 +8,8 @@
 //! - [`is_finished`]: whether a background tick has nothing left to start.
 //! - [`record_failure`]: saves why a run stopped on an error.
 //!
-//! Running in the background (one run per workspace, a spawned task) needs an
-//! executor, which this crate does not link: the host owns that, and passes
-//! `running` in.
+//! Running in the background (one run per workspace, a spawned task) uses a
+//! host-provided [`MigrationSpawner`]; this crate links no executor.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -32,6 +31,11 @@ pub type MigrationTask = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 /// implementations must drop it before returning so its run guard releases.
 pub trait MigrationSpawner: Send + Sync {
     /// Starts `task`, returning an error if it could not be scheduled.
+    ///
+    /// # Errors
+    ///
+    /// Returns a description if the executor rejects the task. The task must
+    /// be dropped before this method returns an error.
     fn spawn(&self, task: MigrationTask) -> std::result::Result<(), String>;
 }
 
@@ -70,16 +74,15 @@ where
     /// Claims the workspace and schedules a migration. `peer_running` is
     /// checked under the common start gate, atomically with this service's
     /// run-slot reservation.
-    pub fn start<H, Peer, Paused>(
+    pub fn start<Peer, Paused>(
         &self,
         key: PathBuf,
-        host: Arc<H>,
+        host: Arc<dyn LayoutHost>,
         peer_running: Peer,
         trigger: super::job::Trigger,
         paused: Paused,
     ) -> bool
     where
-        H: LayoutHost + 'static,
         Peer: FnOnce() -> bool,
         Paused: Fn() -> bool + Send + Sync + 'static,
     {
@@ -129,15 +132,14 @@ where
 
     /// The background tick policy: finished, paused, already running, then
     /// start. A run or spawn failure is recorded once by [`Self::start`].
-    pub fn tick<H, Peer, Paused>(
+    pub fn tick<Peer, Paused>(
         &self,
         key: PathBuf,
-        host: Arc<H>,
+        host: Arc<dyn LayoutHost>,
         peer_running: Peer,
         paused: Paused,
     ) -> bool
     where
-        H: LayoutHost + 'static,
         Peer: FnOnce() -> bool,
         Paused: Fn() -> bool + Send + Sync + 'static,
     {
@@ -146,8 +148,8 @@ where
             Ok(false) => {}
             Err(error) => {
                 log::warn!(
-                    code = error.code(),
-                    "[memory:layout_migration] state unreadable"
+                    "[memory:layout_migration] state unreadable code={}",
+                    error.code()
                 );
                 return false;
             }

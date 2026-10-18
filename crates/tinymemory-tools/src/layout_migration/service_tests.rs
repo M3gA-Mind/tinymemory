@@ -610,7 +610,7 @@ async fn shared_start_gate_serializes_import_and_migration_reservations() {
     let service = migration_service(slots, gate, spawner.clone());
     let migration_import_flag = Arc::clone(&import_running);
     let migration_events = events_tx;
-    let host = Arc::new(CountingHost::new(1, false).await);
+    let host: Arc<dyn LayoutHost> = Arc::new(CountingHost::new(1, false).await);
     let migration = std::thread::spawn(move || {
         let started = service.start(
             PathBuf::from("workspace-interlock"),
