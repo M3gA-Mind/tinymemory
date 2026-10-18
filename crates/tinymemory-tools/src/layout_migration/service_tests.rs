@@ -109,6 +109,7 @@ struct CountingHost {
     inner: FakeHost,
     store: CountingStore,
     fail_engines: bool,
+    blocked_legacy: Option<Arc<BlockingListEngine>>,
 }
 
 impl CountingHost {
@@ -117,7 +118,76 @@ impl CountingHost {
             inner: FakeHost::with(learnings).await,
             store: CountingStore::default(),
             fail_engines,
+            blocked_legacy: None,
         }
+    }
+
+    async fn with_blocked_legacy() -> (Self, tokio::sync::oneshot::Receiver<()>) {
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let host = Self {
+            inner: FakeHost::with(0).await,
+            store: CountingStore::default(),
+            fail_engines: false,
+            blocked_legacy: Some(Arc::new(BlockingListEngine {
+                inner: tinymemory_api::conformance::ReferenceEngine::new(),
+                entered: Mutex::new(Some(entered_tx)),
+            })),
+        };
+        (host, entered_rx)
+    }
+}
+
+struct BlockingListEngine {
+    inner: tinymemory_api::conformance::ReferenceEngine,
+    entered: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+}
+
+#[async_trait::async_trait]
+impl MemoryEngine for BlockingListEngine {
+    fn descriptor(&self) -> &tinymemory_api::EngineDescriptor {
+        self.inner.descriptor()
+    }
+
+    async fn health(&self) -> tinymemory_api::EngineHealth {
+        self.inner.health().await
+    }
+
+    async fn recall(
+        &self,
+        request: tinymemory_api::RecallRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::RecallAnswer> {
+        self.inner.recall(request).await
+    }
+
+    async fn fetch(
+        &self,
+        request: tinymemory_api::FetchRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::FetchPage> {
+        self.inner.fetch(request).await
+    }
+
+    async fn store(
+        &self,
+        item: tinymemory_api::StoreItem,
+    ) -> tinymemory_api::Result<tinymemory_api::StoreReceipt> {
+        self.inner.store(item).await
+    }
+
+    async fn forget(
+        &self,
+        target: tinymemory_api::ForgetTarget,
+    ) -> tinymemory_api::Result<tinymemory_api::ForgetReport> {
+        self.inner.forget(target).await
+    }
+
+    async fn list(
+        &self,
+        _request: tinymemory_api::ListRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::ListPage> {
+        if let Some(entered) = self.entered.lock().unwrap().take() {
+            let _ = entered.send(());
+        }
+        std::future::pending().await
     }
 }
 
@@ -132,6 +202,11 @@ impl LayoutHost for CountingHost {
             Err(crate::layout_migration::Error::Off(
                 "engine unavailable".to_string(),
             ))
+        } else if let Some(legacy) = &self.blocked_legacy {
+            Ok(Engines {
+                legacy: legacy.clone(),
+                tree: self.inner.tree.clone(),
+            })
         } else {
             self.inner.engines()
         }
@@ -419,6 +494,41 @@ async fn run_failure_records_once_and_cancelling_an_accepted_task_releases_its_s
 }
 
 #[tokio::test]
+async fn cancelling_a_pending_migration_releases_the_slot_without_recording_failure() {
+    let slots = RunSlots::new();
+    let spawner = CapturingSpawner::default();
+    let service = migration_service(
+        slots.clone(),
+        MutexStartGate(Arc::new(Mutex::new(()))),
+        spawner.clone(),
+    );
+    let (host, entered) = CountingHost::with_blocked_legacy().await;
+    let host = Arc::new(host);
+    let key = PathBuf::from("workspace-cancelled");
+    let mut persisted = MigrationState::default();
+    persisted.phase = Phase::Copying;
+    host.store.save(&persisted).unwrap();
+
+    assert!(service.start(
+        key.clone(),
+        host.clone(),
+        || false,
+        Trigger::Auto,
+        || false,
+    ));
+    let handle = tokio::spawn(spawner.take());
+    entered.await.unwrap();
+    handle.abort();
+    assert!(handle.await.unwrap_err().is_cancelled());
+
+    assert!(!slots.is_running(&key));
+    assert_eq!(host.store.saves.load(Ordering::SeqCst), 1);
+    let state = host.store.load().unwrap();
+    assert_eq!(state.phase, Phase::Copying);
+    assert!(status(host.as_ref(), false).unwrap().interrupted);
+}
+
+#[tokio::test]
 async fn tick_checks_finished_then_pause_then_running_before_starting() {
     let slots = RunSlots::new();
     let spawner = CapturingSpawner::default();
@@ -445,6 +555,20 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
     assert_eq!(paused_calls.load(Ordering::SeqCst), 0);
     assert!(spawner.is_empty());
 
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls_for_pause = Arc::clone(&calls);
+    assert!(!service.tick(
+        PathBuf::from("workspace-paused"),
+        Arc::new(CountingHost::new(1, false).await),
+        || false,
+        move || {
+            calls_for_pause.fetch_add(1, Ordering::SeqCst);
+            true
+        },
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(spawner.is_empty(), "a paused tick starts no run");
+
     let host = Arc::new(CountingHost::new(1, false).await);
     let key = PathBuf::from("workspace-running");
     assert!(service.start(
@@ -454,20 +578,18 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
         Trigger::Auto,
         || false,
     ));
-    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let calls_for_pause = Arc::clone(&calls);
-    assert!(!service.tick(
-        key.clone(),
-        host,
-        || false,
-        move || {
-            calls_for_pause.fetch_add(1, Ordering::SeqCst);
-            true
-        },
-    ));
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let running_task = spawner.take();
+    assert!(!service.tick(key.clone(), host, || false, || false));
+    assert!(spawner.is_empty(), "an unpaused running tick starts no second run");
     assert!(slots.is_running(&key));
-    assert!(spawner.is_empty());
+    drop(running_task);
+
+    assert!(service.tick(
+        PathBuf::from("workspace-tick-start"),
+        Arc::new(CountingHost::new(1, false).await),
+        || false,
+        || false,
+    ));
     drop(spawner.take());
 }
 

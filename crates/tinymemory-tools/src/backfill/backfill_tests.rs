@@ -11,7 +11,9 @@ fn turn(user: &str, assistant: &str) -> PastTurn {
     PastTurn {
         user: user.into(),
         assistant: assistant.into(),
-        at: Utc::now(),
+        at: DateTime::parse_from_rfc3339("2026-09-01T10:01:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
     }
 }
 
@@ -115,7 +117,7 @@ async fn live_logging_is_found_by_the_first_untagged_turn() {
     assert_eq!(first_live_turn(&engine, "other").await, None);
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct TestThreadSource {
     threads: Vec<String>,
     messages: BTreeMap<String, Vec<ThreadMessage>>,
@@ -295,7 +297,9 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
         &PastTurn {
             user: String::new(),
             assistant: "welcome".to_string(),
-            at: Utc::now(),
+            at: DateTime::parse_from_rfc3339("2026-09-01T10:01:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
         },
     ) {
         engine.store(item).await.unwrap();
@@ -414,6 +418,76 @@ async fn listing_failure_is_fatal_but_an_unreadable_thread_is_skipped() {
         .unwrap();
     assert_eq!(view.pending_threads, 1);
     assert_eq!(view.pending_turns, 1);
+}
+
+#[tokio::test]
+async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([(
+            "thread".to_string(),
+            source_messages(&[("first", "answer"), ("second", "answer")]),
+        )]),
+        ..Default::default()
+    };
+    let mut saved = BackfillFile::default();
+    saved.stored.insert("thread".to_string(), 1);
+    let store = Arc::new(TestCounterStore(Mutex::new(saved)));
+    let unsupported = Arc::new(TestListingEngine {
+        inner: ReferenceEngine::new(),
+        fail: Some(tinymemory_api::Error::Unsupported(
+            "listing is not supported".to_string(),
+        )),
+        waits: Arc::default(),
+    });
+    let view = backfiller(unsupported, source.clone(), store.clone())
+        .status(false)
+        .await
+        .unwrap();
+    assert_eq!(view.pending_turns, 1, "the stored count is used as fallback");
+
+    for error in [
+        tinymemory_api::Error::Unauthorized("bad credential".to_string()),
+        tinymemory_api::Error::Unavailable("engine down".to_string()),
+    ] {
+        let engine = Arc::new(TestListingEngine {
+            inner: ReferenceEngine::new(),
+            fail: Some(error),
+            waits: Arc::default(),
+        });
+        assert!(backfiller(engine, source.clone(), store.clone())
+            .status(false)
+            .await
+            .is_err());
+    }
+}
+
+#[tokio::test]
+async fn backfiller_waits_for_accepted_batches_then_the_last_batch_to_be_visible() {
+    let engine = Arc::new(TestListingEngine {
+        inner: ReferenceEngine::new(),
+        fail: None,
+        waits: Arc::default(),
+    });
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([("thread".to_string(), indexed_source_messages(26))]),
+        ..Default::default()
+    };
+    let store = Arc::new(TestCounterStore::default());
+    let backfiller = backfiller(engine.clone(), source, store.clone());
+    let run = backfiller.begin().await.unwrap();
+
+    let state = backfiller.run(run).await;
+
+    assert_eq!(state.phase, ImportPhase::Done);
+    assert_eq!(state.turns_stored, 26);
+    assert_eq!(state.items_stored, 52);
+    assert_eq!(
+        *engine.waits.lock().unwrap(),
+        [tinymemory_api::WaitFor::Accepted, tinymemory_api::WaitFor::Visible]
+    );
+    assert_eq!(store.load().state, state);
 }
 
 #[tokio::test]
