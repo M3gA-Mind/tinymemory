@@ -51,9 +51,7 @@ impl MemoryEngine for ReleasedEngine {
     }
 }
 
-async fn released_fixture(
-    clock: FakeClock,
-) -> (Fixture, Arc<ReleasedEngine>, oneshot::Sender<()>) {
+async fn released_fixture(clock: FakeClock) -> (Fixture, Arc<ReleasedEngine>, oneshot::Sender<()>) {
     let inner = ReferenceEngine::new();
     Brain::new(inner.clone(), MemoryLayout::default())
         .ingest(BrainDocument::new(
@@ -79,11 +77,10 @@ async fn background_pre_turn_keeps_a_late_engine_result_without_delivering_citat
     let mut options = options(true, true);
     options.timeout = Duration::from_millis(1);
     options.date_hint = false;
-    let mut work = Box::pin(
-        fixture
-            .hooks
-            .pre_turn_background_work(PreTurn::new("thread", 0, "when does the office close?"), options),
-    );
+    let mut work = Box::pin(fixture.hooks.pre_turn_background_work(
+        PreTurn::new("thread", 0, "when does the office close?"),
+        options,
+    ));
 
     poll_fn(|cx| match work.as_mut().poll(cx) {
         Poll::Pending => Poll::Ready(()),
@@ -101,7 +98,9 @@ async fn background_pre_turn_keeps_a_late_engine_result_without_delivering_citat
     release.send(()).unwrap();
 
     let pack = work.await.expect("late pre-turn result");
-    assert!(!pack.markdown.trim().is_empty());
+    assert!(pack.markdown.contains("Fridays"));
+    assert!(pack.refusal.is_none());
+    assert!(!pack.citations.is_empty());
     assert_eq!(fixture.citations.calls.load(Ordering::SeqCst), 0);
 }
 
@@ -134,8 +133,38 @@ async fn background_compaction_keeps_a_late_engine_result() {
     release.send(()).unwrap();
 
     let pack = work.await.expect("late compaction result");
-    assert!(!pack.markdown.trim().is_empty());
+    assert!(pack.markdown.contains("Fridays"));
+    assert!(pack.refusal.is_none());
     assert_eq!(fixture.citations.calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn dropping_background_compaction_cancels_in_flight_engine_work() {
+    let (fixture, engine_probe) = held_fixture(FakeClock::at(Duration::ZERO));
+    let request = Compaction {
+        thread_id: "thread".into(),
+        dropped: vec![Turn::new(
+            tinymemory_api::Role::User,
+            "The office closes on Fridays.",
+        )],
+        focus: None,
+    };
+    let mut work = Box::pin(fixture.hooks.compaction_background_work(request, true));
+
+    poll_fn(|cx| match work.as_mut().poll(cx) {
+        Poll::Pending => Poll::Ready(()),
+        Poll::Ready(_) => panic!("held background compaction completed"),
+    })
+    .await;
+    assert!(engine_probe.live.load(Ordering::SeqCst) > 0);
+    assert_eq!(fixture.model.calls.load(Ordering::SeqCst), 0);
+
+    drop(work);
+    assert_eq!(engine_probe.live.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        engine_probe.dropped.load(Ordering::SeqCst),
+        engine_probe.started.load(Ordering::SeqCst)
+    );
 }
 
 #[tokio::test]
@@ -162,8 +191,14 @@ async fn dropping_background_pre_turn_cancels_in_flight_engine_and_model_work() 
     drop(work);
     assert_eq!(engine_probe.live.load(Ordering::SeqCst), 0);
     assert_eq!(model_probe.live.load(Ordering::SeqCst), 0);
-    assert_eq!(engine_probe.dropped.load(Ordering::SeqCst), engine_probe.started.load(Ordering::SeqCst));
-    assert_eq!(model_probe.dropped.load(Ordering::SeqCst), model_probe.started.load(Ordering::SeqCst));
+    assert_eq!(
+        engine_probe.dropped.load(Ordering::SeqCst),
+        engine_probe.started.load(Ordering::SeqCst)
+    );
+    assert_eq!(
+        model_probe.dropped.load(Ordering::SeqCst),
+        model_probe.started.load(Ordering::SeqCst)
+    );
 }
 
 #[tokio::test]
@@ -193,7 +228,17 @@ async fn background_pre_turn_still_bounds_its_date_hint_subcall() {
     .await;
 
     assert_eq!(model_probe.live.load(Ordering::SeqCst), 0);
-    assert_eq!(model_probe.dropped.load(Ordering::SeqCst), model_probe.started.load(Ordering::SeqCst));
+    assert_eq!(
+        model_probe.dropped.load(Ordering::SeqCst),
+        model_probe.started.load(Ordering::SeqCst)
+    );
+    assert!(engine_probe.live.load(Ordering::SeqCst) > 0);
+    fixture.clock.advance_by(Duration::from_secs(1));
+    poll_fn(|cx| match work.as_mut().poll(cx) {
+        Poll::Pending => Poll::Ready(()),
+        Poll::Ready(_) => panic!("background pre-turn inherited the date-hint cutoff"),
+    })
+    .await;
     assert!(engine_probe.live.load(Ordering::SeqCst) > 0);
     drop(work);
     assert_eq!(engine_probe.live.load(Ordering::SeqCst), 0);
