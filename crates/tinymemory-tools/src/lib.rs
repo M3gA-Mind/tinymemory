@@ -6,6 +6,10 @@
 //!   through [`MemoryTools::call`]. The namespace a model writes to and the
 //!   reach it reads with are fixed by the host in a [`ToolScope`]; no tool
 //!   argument can name either.
+//! - tools::single offers a configurable one-name facade for recall, fetch,
+//!   learn and forget, plus the host-facing pending-write adapter.
+//! - tools::budget provides per-run call and latency limits using a
+//!   host-supplied clock.
 //! - [`context`] compiles `context.md`, a token-budgeted brief a host injects
 //!   at the start of a session.
 //! - [`recall`] is the one read every lifecycle step is built from: a
@@ -100,4 +104,9 @@ pub use recall::{
 pub use tools::{
     MEMORY_EXPLORE, MEMORY_FETCH, MEMORY_FORGET, MEMORY_GET, MEMORY_LIST, MEMORY_RECALL,
     MEMORY_STORE, MemoryTools, TOOL_NAMES, ToolScope, ToolSpec, WRITE_TOOL_NAMES,
+};
+pub use tools::budget::{Clock, DenialReason, Refusal, RunBudget};
+pub use tools::single::{
+    CallContext, ConcurrencyClass, PendingWriteSink, PermissionClass, SingleTool, SingleToolSpec,
+    WriteSink,
 };

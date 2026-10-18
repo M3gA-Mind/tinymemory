@@ -9,8 +9,8 @@
 
 use serde_json::Value;
 use tinymemory_api::{
-    Error, ExploreRequest, FetchRequest, GetRequest, Hit, ItemId, ListRequest, MemoryEngine,
-    RecallMode, RecallRequest, Result,
+    Error, ExploreRequest, FetchPage, FetchRequest, GetRequest, Hit, ItemId, ListRequest,
+    MemoryEngine, RecallAnswer, RecallMode, RecallRequest, Result, ThreadWindow,
 };
 
 use super::ToolScope;
@@ -31,6 +31,23 @@ pub(crate) async fn recall(
     scope: &ToolScope,
     value: &Value,
 ) -> Result<Value> {
+    let answer = recall_answer(engine, scope, value, RecallMode::Answer, None, None).await?;
+    Ok(render::recall(&answer))
+}
+
+/// Runs a recall with a caller-selected answer mode, limit and thread window.
+///
+/// # Errors
+///
+/// Invalid arguments, and the engine's own failures.
+pub(crate) async fn recall_answer(
+    engine: &dyn MemoryEngine,
+    scope: &ToolScope,
+    value: &Value,
+    mode: RecallMode,
+    limit: Option<usize>,
+    exclude_thread: Option<ThreadWindow>,
+) -> Result<RecallAnswer> {
     let args = Args::parse(
         MEMORY_RECALL,
         value,
@@ -41,13 +58,13 @@ pub(crate) async fn recall(
     let request = RecallRequest {
         question: args.required_string("question")?,
         filter,
-        limit: args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?,
+        limit: limit.unwrap_or(args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?),
         instructions: args.string("instructions")?,
         refers_to: time_hint(&args, "refers_to", scope)?,
-        exclude_thread: None,
-        mode: RecallMode::Answer,
+        exclude_thread,
+        mode,
     };
-    Ok(render::recall(&engine.recall(request).await?))
+    Ok(engine.recall(request).await?)
 }
 
 /// `memory_fetch`.
@@ -62,6 +79,23 @@ pub(crate) async fn fetch(
     scope: &ToolScope,
     value: &Value,
 ) -> Result<Value> {
+    let page = fetch_page(engine, scope, value, None, None).await?;
+    Ok(render::fetch(&page))
+}
+
+/// Runs a fetch with an optional fixed page size and thread window.
+///
+/// # Errors
+///
+/// When the engine has no fetch mode, arguments are invalid, or the engine
+/// returns an error.
+pub(crate) async fn fetch_page(
+    engine: &dyn MemoryEngine,
+    scope: &ToolScope,
+    value: &Value,
+    limit: Option<usize>,
+    exclude_thread: Option<ThreadWindow>,
+) -> Result<FetchPage> {
     let modes = &engine.descriptor().fetch_modes;
     let Some(default) = default_mode(modes) else {
         return Err(Error::Unsupported(format!(
@@ -80,14 +114,14 @@ pub(crate) async fn fetch(
         query: args.required_string("query")?,
         mode: fetch_mode(&args, "mode", modes, default)?,
         filter,
-        limit: args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?,
+        limit: limit.unwrap_or(args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?),
         cursor: args.string("cursor")?,
         beliefs: 0,
         refers_to: time_hint(&args, "refers_to", scope)?,
         max_scopes: None,
-        exclude_thread: None,
+        exclude_thread,
     };
-    Ok(render::fetch(&engine.fetch(request).await?))
+    Ok(engine.fetch(request).await?)
 }
 
 /// `memory_list`.
