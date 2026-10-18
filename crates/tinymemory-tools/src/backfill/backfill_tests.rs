@@ -319,8 +319,8 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
             vec![
                 ThreadMessage::new("user", "", "2026-09-01T10:00:00Z"),
                 ThreadMessage::new("assistant", "welcome", "2026-09-01T10:01:00Z"),
-                ThreadMessage::new("user", "question", "2026-09-01T10:02:00Z"),
-                ThreadMessage::new("assistant", "answer", "2026-09-01T10:03:00Z"),
+                ThreadMessage::new("user", "question", "2026-09-01T10:01:00Z"),
+                ThreadMessage::new("assistant", "answer", "2026-09-01T10:01:00Z"),
             ],
         )]),
         ..Default::default()
@@ -331,6 +331,58 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
 
     assert_eq!(view.pending_threads, 1);
     assert_eq!(view.pending_turns, 1);
+}
+
+#[tokio::test]
+async fn a_user_only_turn_is_complete_when_its_expected_user_item_is_visible() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let layout = MemoryLayout::default();
+    let user_only = PastTurn {
+        user: "question".to_string(),
+        assistant: String::new(),
+        at: DateTime::parse_from_rfc3339("2026-09-01T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+    };
+    for item in turn_items(&layout, MAIN_AGENT, "thread", 0, &user_only) {
+        engine.store(item).await.unwrap();
+    }
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([(
+            "thread".to_string(),
+            vec![
+                ThreadMessage::new("user", "question", "2026-09-01T10:00:00Z"),
+                ThreadMessage::new("assistant", "", "2026-09-01T10:01:00Z"),
+            ],
+        )]),
+        ..Default::default()
+    };
+    let view = backfiller(engine, source, Arc::new(TestCounterStore::default()))
+        .status(false)
+        .await
+        .unwrap();
+    assert_eq!(view.pending_turns, 0);
+}
+
+#[tokio::test]
+async fn stale_running_backfill_reports_interrupted_without_a_live_slot() {
+    let engine: Arc<dyn MemoryEngine> = Arc::new(ReferenceEngine::new());
+    let mut file = BackfillFile::default();
+    file.state.phase = ImportPhase::Running;
+    let store = Arc::new(TestCounterStore(Mutex::new(file)));
+    let backfiller = backfiller(
+        engine.clone(),
+        TestThreadSource::default(),
+        store.clone(),
+    );
+
+    let stopped = backfiller.status(false).await.unwrap();
+    assert_eq!(stopped.state.phase, ImportPhase::Error);
+    assert!(stopped.state.error.as_deref().unwrap().contains("interrupted"));
+
+    let live = backfiller.status(true).await.unwrap();
+    assert_eq!(live.state.phase, ImportPhase::Running);
 }
 
 #[tokio::test]

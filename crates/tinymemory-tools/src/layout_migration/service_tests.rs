@@ -52,7 +52,7 @@ impl crate::run_slots::StartGate for SignalStartGate {
 struct CapturingSpawner(Arc<Mutex<Option<MigrationTask>>>);
 
 impl MigrationSpawner for CapturingSpawner {
-    fn spawn(&self, task: MigrationTask) -> Result<(), String> {
+    fn spawn(&self, task: MigrationTask) -> std::result::Result<(), String> {
         *self.0.lock().unwrap() = Some(task);
         Ok(())
     }
@@ -72,7 +72,7 @@ impl CapturingSpawner {
 struct RejectingSpawner;
 
 impl MigrationSpawner for RejectingSpawner {
-    fn spawn(&self, task: MigrationTask) -> Result<(), String> {
+    fn spawn(&self, task: MigrationTask) -> std::result::Result<(), String> {
         drop(task);
         Err("executor refused migration".to_string())
     }
@@ -184,6 +184,16 @@ impl MemoryEngine for BlockingListEngine {
         &self,
         _request: tinymemory_api::ListRequest,
     ) -> tinymemory_api::Result<tinymemory_api::ListPage> {
+        if let Some(entered) = self.entered.lock().unwrap().take() {
+            let _ = entered.send(());
+        }
+        std::future::pending().await
+    }
+
+    async fn export(
+        &self,
+        _request: tinymemory_api::ListRequest,
+    ) -> tinymemory_api::Result<tinymemory_api::ExportPage> {
         if let Some(entered) = self.entered.lock().unwrap().take() {
             let _ = entered.send(());
         }
@@ -546,7 +556,7 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
     assert!(!service.tick(
         PathBuf::from("workspace-finished"),
         finished_host,
-        || false,
+        || panic!("finished migrations skip peer and pause checks"),
         move || {
             paused_count.fetch_add(1, Ordering::SeqCst);
             false
@@ -560,7 +570,7 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
     assert!(!service.tick(
         PathBuf::from("workspace-paused"),
         Arc::new(CountingHost::new(1, false).await),
-        || false,
+        || panic!("paused migrations do not check peer state"),
         move || {
             calls_for_pause.fetch_add(1, Ordering::SeqCst);
             true
@@ -579,7 +589,12 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
         || false,
     ));
     let running_task = spawner.take();
-    assert!(!service.tick(key.clone(), host, || false, || false));
+    assert!(!service.tick(
+        key.clone(),
+        host,
+        || panic!("already-running migrations do not check peer state"),
+        || false,
+    ));
     assert!(spawner.is_empty(), "an unpaused running tick starts no second run");
     assert!(slots.is_running(&key));
     drop(running_task);
