@@ -10,8 +10,9 @@ use async_trait::async_trait;
 use serde_json::json;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
-    Error, LearningKind, MemoryEngine, MemoryMeta, Namespace, Reach, SourceKind, StoreItem,
-    ThreadWindow, ToolCallRef, Turn, TurnRange,
+    EngineDescriptor, Error, FetchMode, FetchRequest, LearningKind, MemoryEngine, MemoryMeta,
+    Namespace, Reach, RecallRequest, SourceKind, StoreItem, ThreadWindow, ToolCallRef, Turn,
+    TurnRange,
 };
 use tinymemory_tools::list_store::{ListStore, MemoryListStore, StoreError};
 use tinymemory_tools::pending::{
@@ -183,6 +184,84 @@ async fn one_configurable_tool_dispatches_actions_and_classifies_each_action() {
 }
 
 #[tokio::test]
+async fn single_reads_use_host_defaults_and_overwrite_model_reach() {
+    let scope = scope();
+    let engine = Arc::new(ControlledRecallEngine::with_modes(
+        "evidence",
+        vec![FetchMode::Keyword, FetchMode::Hybrid],
+    ));
+    let single = SingleTool::new(
+        "memory",
+        MemoryTools::with_scope(engine.clone(), scope.clone()),
+    );
+
+    assert_eq!(
+        single.spec().parameters["properties"]["mode"]["default"],
+        "keyword"
+    );
+    for supplied_reach in [
+        json!(null),
+        json!({ "at": "agent:attacker", "inherit": true }),
+    ] {
+        single
+            .call(
+                json!({
+                    "action": "recall",
+                    "question": "tea",
+                    "limit": 100,
+                    "filter": { "reach": supplied_reach }
+                }),
+                CallContext::default(),
+            )
+            .await
+            .expect("the host replaces a model reach");
+    }
+    let recalls = engine.recall_requests.lock().expect("recorded recalls");
+    assert_eq!(recalls.len(), 2);
+    for request in recalls.iter() {
+        assert_eq!(request.limit, 10, "the host's default limit overrides the model");
+        assert_eq!(request.filter.reach, scope.reach);
+    }
+    drop(recalls);
+
+    single
+        .call(
+            json!({
+                "action": "fetch",
+                "query": "tea",
+                "filter": { "reach": null }
+            }),
+            CallContext::default(),
+        )
+        .await
+        .expect("fetch uses the first declared engine mode");
+    let fetches = engine.fetch_requests.lock().expect("recorded fetches");
+    assert_eq!(fetches[0].mode, FetchMode::Keyword);
+    assert_eq!(fetches[0].limit, 5);
+    assert_eq!(fetches[0].filter.reach, scope.reach);
+    drop(fetches);
+
+    let named = MemoryTools::with_scope(engine.clone(), scope);
+    let old_fetch = named
+        .specs()
+        .into_iter()
+        .find(|spec| spec.name == "memory_fetch")
+        .expect("the seven-tool facade still offers fetch");
+    assert_eq!(
+        old_fetch.parameters["properties"]["mode"]["default"],
+        "hybrid"
+    );
+    named
+        .call("memory_fetch", json!({ "query": "tea" }))
+        .await
+        .expect("the seven-tool fetch path retains its hybrid default");
+    assert_eq!(
+        engine.fetch_requests.lock().expect("recorded fetches")[1].mode,
+        FetchMode::Hybrid
+    );
+}
+
+#[tokio::test]
 async fn learn_stamps_trusted_scope_and_acknowledges_only_durable_queueing() {
     let engine = Arc::new(ReferenceEngine::new());
     let queue = queue(4);
@@ -235,7 +314,7 @@ async fn learn_stamps_trusted_scope_and_acknowledges_only_durable_queueing() {
     assert_eq!(meta.agent_id.as_deref(), Some("agent-writer"));
     assert_eq!(
         meta.tool_call.as_ref().map(|call| call.name.as_str()),
-        Some("trusted_memory")
+        Some("memory")
     );
     assert_eq!(
         meta.tool_call.as_ref().and_then(|call| call.id.as_deref()),
@@ -412,10 +491,7 @@ async fn recall_caps_utf8_evidence_without_splitting_a_line() {
         "界".repeat(500),
         "x".repeat(2_000)
     );
-    let engine = Arc::new(ControlledRecallEngine {
-        inner: ReferenceEngine::new(),
-        recall_answer: evidence,
-    });
+    let engine = Arc::new(ControlledRecallEngine::new(evidence));
     let result = SingleTool::new("memory", MemoryTools::with_scope(engine, scope()))
         .call(
             json!({ "action": "recall", "question": "entry" }),
@@ -436,10 +512,9 @@ async fn recall_caps_utf8_evidence_without_splitting_a_line() {
 #[tokio::test]
 async fn an_oversized_first_evidence_line_is_kept_whole() {
     let first_line = format!("entry zero {}", "x".repeat(10_500));
-    let engine = Arc::new(ControlledRecallEngine {
-        inner: ReferenceEngine::new(),
-        recall_answer: format!("{first_line}\nentry one"),
-    });
+    let engine = Arc::new(ControlledRecallEngine::new(format!(
+        "{first_line}\nentry one"
+    )));
     let result = SingleTool::new("memory", MemoryTools::with_scope(engine, scope()))
         .call(
             json!({ "action": "recall", "question": "entry" }),
@@ -455,13 +530,10 @@ async fn an_oversized_first_evidence_line_is_kept_whole() {
 
 #[tokio::test]
 async fn the_partly_searched_closing_note_survives_the_evidence_cap() {
-    let engine = Arc::new(ControlledRecallEngine {
-        inner: ReferenceEngine::new(),
-        recall_answer: format!(
+    let engine = Arc::new(ControlledRecallEngine::new(format!(
             "entry {}\n\n(Memory was only partly searched: one scope did not answer in time.)",
             "x".repeat(10_500)
-        ),
-    });
+        )));
     let tool = SingleTool::new("memory", MemoryTools::with_scope(engine, scope()));
     let result = tool
         .call(
@@ -480,13 +552,35 @@ async fn the_partly_searched_closing_note_survives_the_evidence_cap() {
 
 struct ControlledRecallEngine {
     inner: ReferenceEngine,
+    descriptor: EngineDescriptor,
     recall_answer: String,
+    recall_requests: Mutex<Vec<RecallRequest>>,
+    fetch_requests: Mutex<Vec<FetchRequest>>,
+}
+
+impl ControlledRecallEngine {
+    fn new(recall_answer: impl Into<String>) -> Self {
+        Self::with_modes(recall_answer, ReferenceEngine::new().descriptor().fetch_modes.clone())
+    }
+
+    fn with_modes(recall_answer: impl Into<String>, fetch_modes: Vec<FetchMode>) -> Self {
+        let inner = ReferenceEngine::new();
+        let mut descriptor = inner.descriptor().clone();
+        descriptor.fetch_modes = fetch_modes;
+        Self {
+            inner,
+            descriptor,
+            recall_answer: recall_answer.into(),
+            recall_requests: Mutex::new(Vec::new()),
+            fetch_requests: Mutex::new(Vec::new()),
+        }
+    }
 }
 
 #[async_trait]
 impl MemoryEngine for ControlledRecallEngine {
     fn descriptor(&self) -> &tinymemory_api::EngineDescriptor {
-        self.inner.descriptor()
+        &self.descriptor
     }
 
     async fn health(&self) -> tinymemory_api::EngineHealth {
@@ -495,8 +589,12 @@ impl MemoryEngine for ControlledRecallEngine {
 
     async fn recall(
         &self,
-        _: tinymemory_api::RecallRequest,
+        request: tinymemory_api::RecallRequest,
     ) -> tinymemory_api::Result<tinymemory_api::RecallAnswer> {
+        self.recall_requests
+            .lock()
+            .expect("recall request recorder")
+            .push(request);
         Ok(tinymemory_api::RecallAnswer {
             answer: self.recall_answer.clone(),
             citations: Vec::new(),
@@ -508,6 +606,10 @@ impl MemoryEngine for ControlledRecallEngine {
         &self,
         request: tinymemory_api::FetchRequest,
     ) -> tinymemory_api::Result<tinymemory_api::FetchPage> {
+        self.fetch_requests
+            .lock()
+            .expect("fetch request recorder")
+            .push(request.clone());
         self.inner.fetch(request).await
     }
 
