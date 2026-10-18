@@ -191,6 +191,20 @@ an empty engine yields an empty document. `ContextSpec::reach` confines the
 brief to one agent's part of the tree. Details:
 [`docs/architecture/tools.md`](../../docs/architecture/tools.md#contextmd).
 
+## Memory identity and layout
+
+Hosts adapt their configuration into `IdentityPins` and resolve the acting
+`Identity` for each operation. Resolution preserves the documented precedence:
+host-wide pins, a definition pin, the agent's team, then the default root and
+agent id. With `IdentityPins::v3`, conversations are pooled at `ws:main` below
+the resolved root.
+
+`MemoryLayout::with_pooled_conversations` accepts an **absolute** namespace
+inside the layout root, such as `team:acme/ws:main`; it does not append the
+root. `pooled_conversations_node()` returns the same absolute namespace for
+host migration placement. Callers upgrading from the previous relative-node
+contract must include the layout root when constructing the node.
+
 ## Layout
 
 ```text
