@@ -1,7 +1,7 @@
 use super::*;
-use tinymemory_api::conformance::ReferenceEngine;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use tinymemory_api::conformance::ReferenceEngine;
 
 fn message(sender: &str, content: &str, at: &str) -> ThreadMessage {
     ThreadMessage::new(sender, content, at)
@@ -135,11 +135,12 @@ impl ThreadSource for TestThreadSource {
         }
     }
 
-    async fn messages(
-        &self,
-        thread_id: &str,
-    ) -> std::result::Result<Vec<ThreadMessage>, String> {
-        if self.unreadable.iter().any(|unreadable| unreadable == thread_id) {
+    async fn messages(&self, thread_id: &str) -> std::result::Result<Vec<ThreadMessage>, String> {
+        if self
+            .unreadable
+            .iter()
+            .any(|unreadable| unreadable == thread_id)
+        {
             return Err("thread messages failed".to_string());
         }
         Ok(self.messages.get(thread_id).cloned().unwrap_or_default())
@@ -222,10 +223,8 @@ impl MemoryEngine for TestListingEngine {
         }
         // Deliberately ignore the filter to prove the cursor validates the
         // returned item's kind, namespace, agent, thread and tag itself.
-        let mut unfiltered = tinymemory_api::ListRequest::new(
-            tinymemory_api::MetaFilter::default(),
-            request.limit,
-        );
+        let mut unfiltered =
+            tinymemory_api::ListRequest::new(tinymemory_api::MetaFilter::default(), request.limit);
         unfiltered.cursor = request.cursor;
         let mut page = self.inner.list(unfiltered).await?;
         if let Some(first) = page.items.first().cloned() {
@@ -265,11 +264,7 @@ fn indexed_source_messages(count: usize) -> Vec<ThreadMessage> {
     (0..count)
         .flat_map(|index| {
             [
-                ThreadMessage::new(
-                    "user",
-                    format!("user {index}"),
-                    "2026-09-01T10:00:00Z",
-                ),
+                ThreadMessage::new("user", format!("user {index}"), "2026-09-01T10:00:00Z"),
                 ThreadMessage::new(
                     "assistant",
                     format!("answer {index}"),
@@ -307,7 +302,13 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
     // Turn one is only partly visible: a user item alone must not make the
     // cursor skip the missing assistant item. Listing duplicates are also
     // injected, and must not masquerade as the missing role.
-    for item in turn_items(&layout, MAIN_AGENT, "thread", 1, &turn("question", "answer")) {
+    for item in turn_items(
+        &layout,
+        MAIN_AGENT,
+        "thread",
+        1,
+        &turn("question", "answer"),
+    ) {
         if item.meta().turns.unwrap().first == 2 {
             engine.store(item).await.unwrap();
         }
@@ -371,15 +372,18 @@ async fn stale_running_backfill_reports_interrupted_without_a_live_slot() {
     let mut file = BackfillFile::default();
     file.state.phase = ImportPhase::Running;
     let store = Arc::new(TestCounterStore(Mutex::new(file)));
-    let backfiller = backfiller(
-        engine.clone(),
-        TestThreadSource::default(),
-        store.clone(),
-    );
+    let backfiller = backfiller(engine.clone(), TestThreadSource::default(), store.clone());
 
     let stopped = backfiller.status(false).await.unwrap();
     assert_eq!(stopped.state.phase, ImportPhase::Error);
-    assert!(stopped.state.error.as_deref().unwrap().contains("interrupted"));
+    assert!(
+        stopped
+            .state
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("interrupted")
+    );
 
     let live = backfiller.status(true).await.unwrap();
     assert_eq!(live.state.phase, ImportPhase::Running);
@@ -401,10 +405,7 @@ async fn cursor_stops_at_a_gap_and_paginates_all_backfill_items() {
     }
     let source = TestThreadSource {
         threads: vec!["thread".to_string()],
-        messages: BTreeMap::from([(
-            "thread".to_string(),
-            indexed_source_messages(240),
-        )]),
+        messages: BTreeMap::from([("thread".to_string(), indexed_source_messages(240))]),
         ..Default::default()
     };
     let backfiller = backfiller(engine, source, Arc::new(TestCounterStore::default()));
@@ -446,14 +447,16 @@ async fn listing_failure_is_fatal_but_an_unreadable_thread_is_skipped() {
         fail_listing: true,
         ..Default::default()
     };
-    assert!(backfiller(
-        engine.clone(),
-        failing_list,
-        Arc::new(TestCounterStore::default())
-    )
-    .status(false)
-    .await
-    .is_err());
+    assert!(
+        backfiller(
+            engine.clone(),
+            failing_list,
+            Arc::new(TestCounterStore::default())
+        )
+        .status(false)
+        .await
+        .is_err()
+    );
 
     let source = TestThreadSource {
         threads: vec!["unreadable".to_string(), "readable".to_string()],
@@ -496,7 +499,10 @@ async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
         .status(false)
         .await
         .unwrap();
-    assert_eq!(view.pending_turns, 1, "the stored count is used as fallback");
+    assert_eq!(
+        view.pending_turns, 1,
+        "the stored count is used as fallback"
+    );
 
     for error in [
         tinymemory_api::Error::Unauthorized("bad credential".to_string()),
@@ -507,10 +513,12 @@ async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
             fail: Some(error),
             waits: Arc::default(),
         });
-        assert!(backfiller(engine, source.clone(), store.clone())
-            .status(false)
-            .await
-            .is_err());
+        assert!(
+            backfiller(engine, source.clone(), store.clone())
+                .status(false)
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -537,7 +545,10 @@ async fn backfiller_waits_for_accepted_batches_then_the_last_batch_to_be_visible
     assert_eq!(state.items_stored, 52);
     assert_eq!(
         *engine.waits.lock().unwrap(),
-        [tinymemory_api::WaitFor::Accepted, tinymemory_api::WaitFor::Visible]
+        [
+            tinymemory_api::WaitFor::Accepted,
+            tinymemory_api::WaitFor::Visible
+        ]
     );
     assert_eq!(store.load().state, state);
 }

@@ -233,7 +233,10 @@ fn store_only_resume_failure_preserves_checkpoint_and_failed_items() {
 
     let saved = store.load();
     assert_eq!(saved.state.phase, ImportPhase::Done);
-    assert_eq!(saved.state.error.as_deref(), Some("the retry could not resume: cannot reach engine; press Retry again"));
+    assert_eq!(
+        saved.state.error.as_deref(),
+        Some("the retry could not resume: cannot reach engine; press Retry again")
+    );
     assert!(!saved.retrying);
     assert_eq!(saved.checkpoint, expected_checkpoint);
     assert_eq!(saved.failed, expected_failed);

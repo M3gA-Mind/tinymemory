@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use tinymemory_api::MemoryEngine;
 
-use super::super::job::{Trigger, run};
 use super::super::copy::Engines;
 use super::super::job::{LayoutHost, LegacyClaim};
+use super::super::job::{Trigger, run};
 use super::super::map::Placement;
 use super::super::state::{MigrationState, MigrationStateStore};
 use super::super::test_host::{FakeHost, count, fact};
@@ -98,8 +98,7 @@ impl MigrationStateStore for CountingStore {
     }
 
     fn save(&self, state: &MigrationState) -> crate::layout_migration::Result<()> {
-        self.saves
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.saves.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         *self.state.lock().unwrap() = state.clone();
         Ok(())
     }
@@ -251,11 +250,7 @@ impl LayoutHost for CountingHost {
     }
 }
 
-fn migration_service<G, S>(
-    slots: RunSlots<PathBuf>,
-    gate: G,
-    spawner: S,
-) -> MigrationService<G, S>
+fn migration_service<G, S>(slots: RunSlots<PathBuf>, gate: G, spawner: S) -> MigrationService<G, S>
 where
     G: StartGate,
     S: MigrationSpawner,
@@ -358,10 +353,8 @@ fn filesystem_claim_normalizes_endpoints_and_preserves_first_winner() {
 
     let tmp = tempfile::tempdir().unwrap();
     let first = FsLegacyClaim::new(tmp.path(), " HTTP://127.0.0.1:3141/ ", "user:first");
-    let same_endpoint =
-        FsLegacyClaim::new(tmp.path(), "http://127.0.0.1:3141", "user:second");
-    let different_endpoint =
-        FsLegacyClaim::new(tmp.path(), "http://127.0.0.1:3142", "user:second");
+    let same_endpoint = FsLegacyClaim::new(tmp.path(), "http://127.0.0.1:3141", "user:second");
+    let different_endpoint = FsLegacyClaim::new(tmp.path(), "http://127.0.0.1:3142", "user:second");
     assert_eq!(first.marker_path(), same_endpoint.marker_path());
     assert_ne!(first.marker_path(), different_endpoint.marker_path());
     assert!(!first.held_by_other().unwrap());
@@ -418,25 +411,16 @@ async fn separate_services_share_slots_and_dropped_tasks_release_them() {
     let host = Arc::new(CountingHost::new(1, false).await);
     let key = PathBuf::from("workspace-a");
 
-    assert!(first.start(
-        key.clone(),
-        host.clone(),
-        || false,
-        Trigger::Auto,
-        || false,
-    ));
-    assert!(!second.start(
-        key.clone(),
-        host,
-        || false,
-        Trigger::Auto,
-        || false,
-    ));
+    assert!(first.start(key.clone(), host.clone(), || false, Trigger::Auto, || false,));
+    assert!(!second.start(key.clone(), host, || false, Trigger::Auto, || false,));
     assert!(slots.is_running(&key));
     assert!(second_spawner.is_empty());
 
     drop(first_spawner.take());
-    assert!(!slots.is_running(&key), "dropping a queued task releases its slot");
+    assert!(
+        !slots.is_running(&key),
+        "dropping a queued task releases its slot"
+    );
 }
 
 #[tokio::test]
@@ -450,13 +434,7 @@ async fn rejected_spawn_records_one_failure_and_releases_its_slot() {
     let host = Arc::new(CountingHost::new(1, false).await);
     let key = PathBuf::from("workspace-rejected");
 
-    assert!(!service.start(
-        key.clone(),
-        host.clone(),
-        || false,
-        Trigger::Auto,
-        || false,
-    ));
+    assert!(!service.start(key.clone(), host.clone(), || false, Trigger::Auto, || false,));
 
     let state = host.store.load().unwrap();
     assert_eq!(host.store.saves.load(Ordering::SeqCst), 1);
@@ -476,29 +454,20 @@ async fn run_failure_records_once_and_cancelling_an_accepted_task_releases_its_s
     );
     let host = Arc::new(CountingHost::new(1, true).await);
     let key = PathBuf::from("workspace-failed");
-    assert!(service.start(
-        key.clone(),
-        host.clone(),
-        || false,
-        Trigger::Auto,
-        || false,
-    ));
+    assert!(service.start(key.clone(), host.clone(), || false, Trigger::Auto, || false,));
 
     spawner.take().await;
 
     let state = host.store.load().unwrap();
     assert_eq!(host.store.saves.load(Ordering::SeqCst), 1);
     assert_eq!(state.phase, Phase::Paused);
-    assert_eq!(state.error.as_deref(), Some("memory is off: engine unavailable"));
+    assert_eq!(
+        state.error.as_deref(),
+        Some("memory is off: engine unavailable")
+    );
     assert!(!slots.is_running(&key));
 
-    assert!(service.start(
-        key.clone(),
-        host,
-        || false,
-        Trigger::Auto,
-        || false,
-    ));
+    assert!(service.start(key.clone(), host, || false, Trigger::Auto, || false,));
     drop(spawner.take());
     assert!(!slots.is_running(&key));
 }
@@ -519,13 +488,7 @@ async fn cancelling_a_pending_migration_releases_the_slot_without_recording_fail
     persisted.phase = Phase::Copying;
     host.store.save(&persisted).unwrap();
 
-    assert!(service.start(
-        key.clone(),
-        host.clone(),
-        || false,
-        Trigger::Auto,
-        || false,
-    ));
+    assert!(service.start(key.clone(), host.clone(), || false, Trigger::Auto, || false,));
     let handle = tokio::spawn(spawner.take());
     entered.await.unwrap();
     handle.abort();
@@ -581,13 +544,7 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
 
     let host = Arc::new(CountingHost::new(1, false).await);
     let key = PathBuf::from("workspace-running");
-    assert!(service.start(
-        key.clone(),
-        host.clone(),
-        || false,
-        Trigger::Auto,
-        || false,
-    ));
+    assert!(service.start(key.clone(), host.clone(), || false, Trigger::Auto, || false,));
     let running_task = spawner.take();
     assert!(!service.tick(
         key.clone(),
@@ -595,7 +552,10 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
         || panic!("already-running migrations do not check peer state"),
         || false,
     ));
-    assert!(spawner.is_empty(), "an unpaused running tick starts no second run");
+    assert!(
+        spawner.is_empty(),
+        "an unpaused running tick starts no second run"
+    );
     assert!(slots.is_running(&key));
     drop(running_task);
 
@@ -665,7 +625,9 @@ async fn shared_start_gate_serializes_import_and_migration_reservations() {
     // The event is sent immediately before it blocks on the import's lock.
     let second_gate_call = events_rx.recv().unwrap();
     release_tx.send(()).unwrap();
-    let remaining: Vec<_> = std::iter::from_fn(|| events_rx.recv().ok()).take(2).collect();
+    let remaining: Vec<_> = std::iter::from_fn(|| events_rx.recv().ok())
+        .take(2)
+        .collect();
     import.join().unwrap();
     let migration_started = migration.join().unwrap();
 
@@ -674,7 +636,13 @@ async fn shared_start_gate_serializes_import_and_migration_reservations() {
     }
 
     assert_eq!(second_gate_call, GateEvent::GateCalled);
-    assert_eq!(remaining, [GateEvent::MigrationChecked(true), GateEvent::MigrationStarted(false)]);
+    assert_eq!(
+        remaining,
+        [
+            GateEvent::MigrationChecked(true),
+            GateEvent::MigrationStarted(false)
+        ]
+    );
     assert!(!migration_started);
     assert!(spawner.is_empty());
     assert!(import_running.load(Ordering::SeqCst));
