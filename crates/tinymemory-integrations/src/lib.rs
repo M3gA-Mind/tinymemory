@@ -35,7 +35,8 @@
 //!         EngineCredential::Dynamic(Arc::new(StaticBearer::new("tiny_live_..."))),
 //!         Policy::default(),
 //!     )
-//!     .engine()?;
+//!     .engine()?
+//!     .engine;
 //!
 //! let meta = MemoryMeta::from_source(SourceKind::Folder, Some("notes".into()));
 //! engine.store(StoreItem::document("Ownership moves values.", meta)).await?;

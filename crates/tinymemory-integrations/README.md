@@ -95,7 +95,8 @@ let engine = EngineBinder::default()
         EngineCredential::Dynamic(Arc::new(StaticBearer::new("tiny_live_..."))),
         Policy::default(),
     )
-    .engine()?;
+    .engine()?
+    .engine;
 assert_eq!(engine.descriptor().id, "tinyhumans");
 # Ok(())
 # }

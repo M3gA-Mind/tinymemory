@@ -28,7 +28,8 @@ thiserror = { version = "2", optional = true }
 log = { version = "0.4", optional = true }
 
 # --- safety ---
-# The scrubbers: `safety` adds only `scrub_item` over a `StoreItem`.
+# Local secret and PII scrubbing, the `ScrubbingEngine` and `TimedEngine`
+# decorators, and the safe engine-composition path used by the registry.
 tinyredact = { path = "../tinyredact", optional = true }
 
 # --- brain ---
