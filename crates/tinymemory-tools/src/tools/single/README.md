@@ -20,11 +20,13 @@ Read-only scopes reject learn and forget before consulting the sink.
 
 ## Pending write adapter
 
-Learn and forget require a WriteSink. PendingWriteSink adapts one existing
-PendingWrites queue using the host's ListStore, Binding and WriteGate. It
-derives the persisted scope root from trusted reach.at, falling back to place
-for an unrestricted single-tenant scope. A successful Ack means only that the
-operation is durable locally.
+Learn and forget require a WriteSink, the host's prequeue policy hook.
+PendingWriteSink adapts one existing PendingWrites queue using the host's
+ListStore, Binding and WriteGate. It derives the persisted scope root from
+trusted reach.at, falling back to place for an unrestricted single-tenant
+scope. The adapter does not scrub learning content or apply host policy; the
+host must wrap it with existing scrub and policy checks before forwarding
+writes. A successful Ack means only that the operation is durable locally.
 
 The host owns the queue partition, drain scheduler and executor, engine events,
 settled callbacks such as cache invalidation, and the exclusive owner barrier

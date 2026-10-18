@@ -632,6 +632,28 @@ async fn recall_caps_utf8_evidence_without_splitting_a_line() {
 }
 
 #[tokio::test]
+async fn recall_keeps_ranked_entries_then_whole_lines_and_reports_the_omitted_count() {
+    let evidence = evidence_of(30, 4, 200);
+    let engine = Arc::new(ControlledRecallEngine::new(evidence.clone()));
+    let result = SingleTool::new("memory", MemoryTools::with_scope(engine, scope()))
+        .call(
+            json!({ "action": "recall", "question": "entry" }),
+            CallContext::default(),
+        )
+        .await
+        .expect("evidence result");
+    let capped = result["evidence"].as_str().expect("evidence text");
+
+    assert_whole_evidence_lines(&evidence, capped);
+    assert!(capped.contains("entry 11 line 3"));
+    assert!(capped.contains("entry 12 line 0"));
+    assert!(!capped.contains("entry 12 line 1"));
+    assert!(capped.find("entry 11 line 3").unwrap() < capped.find("entry 12 line 0").unwrap());
+    assert!(capped.contains("\n[…]"));
+    assert!(capped.contains("(17 more memory entries left out, the last one shortened,"));
+}
+
+#[tokio::test]
 async fn an_oversized_first_evidence_line_is_kept_whole() {
     let first_line = format!("entry zero {}", "x".repeat(10_500));
     let engine = Arc::new(ControlledRecallEngine::new(format!(
@@ -648,6 +670,31 @@ async fn an_oversized_first_evidence_line_is_kept_whole() {
     assert!(evidence.starts_with(&first_line));
     assert!(!evidence.contains("entry one"));
     assert!(evidence.contains("[…]"));
+}
+
+fn evidence_of(entries: usize, lines: usize, width: usize) -> String {
+    (0..entries)
+        .map(|entry| {
+            (0..lines)
+                .map(|line| {
+                    let head = format!("[2023-05-21 01:33 UTC] [user] entry {entry} line {line} ");
+                    format!("{head}{}", "x".repeat(width.saturating_sub(head.len())))
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n---\n\n")
+}
+
+fn assert_whole_evidence_lines(evidence: &str, capped: &str) {
+    let source: std::collections::HashSet<&str> = evidence.lines().collect();
+    for line in capped.lines() {
+        assert!(
+            source.contains(line) || line == "[…]" || line.starts_with('('),
+            "a line was cut: {line:?}"
+        );
+    }
 }
 
 #[tokio::test]

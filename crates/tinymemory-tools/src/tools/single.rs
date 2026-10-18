@@ -69,10 +69,13 @@ pub struct SingleToolSpec {
     pub parameters: Value,
 }
 
-/// A runtime-neutral boundary for accepting a validated memory write.
+/// A host prequeue policy hook for accepting a validated memory write.
 ///
-/// Implementations return only after the write is durable locally. They do
-/// not report an engine write as complete.
+/// Hosts can wrap [`PendingWriteSink`] with their existing scrub and policy
+/// checks before delegating. The adapter itself only queues the operation;
+/// it does not scrub or apply host-specific policy. Implementations return
+/// only after the write is durable locally and do not report an engine write
+/// as complete.
 pub trait WriteSink: Send + Sync {
     /// Durably queues one operation under the trusted scope.
     ///
@@ -91,7 +94,9 @@ pub trait WriteSink: Send + Sync {
 /// The caller supplies one queue, active owner binding, and write gate. The
 /// scope root comes from trusted reach.at, or place for an unrestricted
 /// single-tenant scope. This adapter does not create a drain task or provide
-/// the host's exclusive in-flight erase barrier.
+/// the host's exclusive in-flight erase barrier. It also does not scrub or
+/// enforce host-specific prequeue policy; wrap it in a [`WriteSink`] that
+/// applies those checks before forwarding the operation.
 pub struct PendingWriteSink<S: ListStore<Entry> + 'static> {
     queue: Arc<PendingWrites<S>>,
     gate: Arc<WriteGate>,

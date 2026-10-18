@@ -90,9 +90,12 @@ a time with the engine cursor. A mismatched prompt window falls back to
 excluding the whole current thread. When no current thread is set in the
 trusted scope, no thread is excluded.
 
-Writes require a WriteSink. PendingWriteSink adapts the existing
-PendingWrites queue, its ListStore, Binding and WriteGate; it does not add a
-second queue implementation. An acknowledgement means the operation is
+Writes require a WriteSink, which is the host's prequeue policy hook.
+PendingWriteSink adapts the existing PendingWrites queue, its ListStore,
+Binding and WriteGate; it does not add a second queue implementation or scrub
+learning content. The host must wrap it with the existing scrub and policy
+checks before forwarding a write, so rejected or scrubbed learning content is
+handled before local persistence. An acknowledgement means the operation is
 durable in the local queue, not that the engine has applied it. The host keeps
 the queue partition, gate and binding, schedules and executes drains, sends
 settled notifications, and owns the exclusive barrier that makes an erase
