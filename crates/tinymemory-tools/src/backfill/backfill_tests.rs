@@ -554,7 +554,7 @@ async fn backfiller_waits_for_accepted_batches_then_the_last_batch_to_be_visible
 }
 
 #[tokio::test]
-async fn cursor_ignores_foreign_namespace_agent_tag_kind_and_thread_hits() {
+async fn cursor_ignores_foreign_hits_but_honors_an_owned_live_turn() {
     let engine = Arc::new(TestListingEngine {
         inner: ReferenceEngine::new(),
         fail: None,
@@ -562,18 +562,44 @@ async fn cursor_ignores_foreign_namespace_agent_tag_kind_and_thread_hits() {
     });
     let layout = MemoryLayout::default();
     let source_turn = turn("question", "answer");
+    let assistant_index_zero = |thread_id: &str| {
+        turn_items(&layout, MAIN_AGENT, thread_id, 0, &source_turn)
+            .into_iter()
+            .filter(|item| item.meta().turns.unwrap().first == 1)
+            .collect::<Vec<_>>()
+    };
 
-    let mut foreign_agent = turn_items(&layout, MAIN_AGENT, "thread", 0, &source_turn);
-    for item in &mut foreign_agent {
+    // The actual backfill has only stored the user half of turn zero.
+    let backfill_user = turn_items(&layout, MAIN_AGENT, "thread", 0, &source_turn)
+        .into_iter()
+        .find(|item| item.meta().turns.unwrap().first == 0)
+        .unwrap();
+    engine.store(backfill_user).await.unwrap();
+
+    // These hits independently violate namespace, agent, kind or thread.
+    // Include tagged and untagged conversation hits where relevant: none may
+    // complete the backfill pair or falsely move the live cutoff to turn zero.
+    let mut wrong_namespace_tagged = assistant_index_zero("thread");
+    let mut wrong_namespace_live = assistant_index_zero("thread");
+    for item in wrong_namespace_tagged
+        .iter_mut()
+        .chain(&mut wrong_namespace_live)
+    {
         item.meta_mut().namespace = "agent:other".parse().unwrap();
-        item.meta_mut().agent_id = Some("other".to_string());
     }
-    let mut wrong_tag = turn_items(&layout, MAIN_AGENT, "thread", 0, &source_turn);
-    for item in &mut wrong_tag {
+    for item in &mut wrong_namespace_live {
         item.meta_mut().tags.clear();
     }
-    let mut wrong_thread = turn_items(&layout, MAIN_AGENT, "elsewhere", 0, &source_turn);
-    let mut wrong_kind = vec![StoreItem::learning(
+    let mut wrong_agent_tagged = assistant_index_zero("thread");
+    let mut wrong_agent_live = assistant_index_zero("thread");
+    for item in wrong_agent_tagged.iter_mut().chain(&mut wrong_agent_live) {
+        item.meta_mut().agent_id = Some("other".to_string());
+    }
+    for item in &mut wrong_agent_live {
+        item.meta_mut().tags.clear();
+    }
+    let mut wrong_thread = assistant_index_zero("elsewhere");
+    let wrong_kind = vec![StoreItem::learning(
         "not a conversation",
         tinymemory_api::LearningKind::Fact,
         0.5,
@@ -585,11 +611,20 @@ async fn cursor_ignores_foreign_namespace_agent_tag_kind_and_thread_hits() {
             ..MemoryMeta::default()
         },
     )];
-    for item in foreign_agent
+    // This is a valid, owned live turn. It defines the cutoff at turn one;
+    // pending older turn zero must still be reported.
+    let mut owned_live = turn_items(&layout, MAIN_AGENT, "thread", 1, &turn("later", "live"));
+    for item in &mut owned_live {
+        item.meta_mut().tags.clear();
+    }
+    for item in wrong_namespace_tagged
         .drain(..)
-        .chain(wrong_tag)
+        .chain(wrong_namespace_live.drain(..))
+        .chain(wrong_agent_tagged.drain(..))
+        .chain(wrong_agent_live.drain(..))
         .chain(wrong_thread.drain(..))
-        .chain(wrong_kind.drain(..))
+        .chain(wrong_kind)
+        .chain(owned_live)
     {
         engine.store(item).await.unwrap();
     }
@@ -598,7 +633,7 @@ async fn cursor_ignores_foreign_namespace_agent_tag_kind_and_thread_hits() {
         threads: vec!["thread".to_string()],
         messages: BTreeMap::from([(
             "thread".to_string(),
-            source_messages(&[("question", "answer")]),
+            source_messages(&[("question", "answer"), ("later", "live")]),
         )]),
         ..Default::default()
     };
