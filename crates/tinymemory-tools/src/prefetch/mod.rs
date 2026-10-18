@@ -21,6 +21,10 @@ use std::time::{Duration, Instant};
 
 use futures::future::{BoxFuture, Either, select};
 
+mod turn_cache;
+
+pub use turn_cache::{TurnCache, TurnCacheRegistry};
+
 /// The executor a [`Prefetcher`] runs its workers on.
 pub trait PrefetchRuntime: Send + Sync {
     /// Runs `task` in the background, with whatever scope the host needs
@@ -408,7 +412,3 @@ impl<K: Clone + Hash + Eq, V> Drop for Worker<K, V> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "turn_cache_tests.rs"]
-mod turn_cache_tests;
