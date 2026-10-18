@@ -16,6 +16,9 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
   compaction. `BackgroundJob` carries the belief builds those calls hand back.
   See [`docs/architecture/lifecycle.md`](../../docs/architecture/lifecycle.md)
   and the runnable `examples/agent_loop.rs` and `examples/brain.rs`.
+- **`ops`**: validated host request builders, explorer paths, common read
+  limits, learning metadata shaping and deletion helpers. `MemoryOps` applies
+  a concrete `Confinement` policy before a request reaches an engine.
 
 The crate has no tool-runtime dependency (no MCP, no `tinytools`). A host
 adapts `ToolSpec` to whatever runtime it uses; see
@@ -36,7 +39,8 @@ written up in [`docs/architecture/tools.md`](../../docs/architecture/tools.md).
 
 Details:
 
-- `limit` is `1..=50`, default `10`. `ids` lists `1..=200` ids.
+- `limit` is `1..=100`, default `10`, across recall, fetch and list. Explore
+  defaults to `50` buckets and accepts `1..=500`. `ids` lists `1..=200` ids.
 - `memory_fetch`'s `mode` enum lists exactly the engine's
   `EngineDescriptor::fetch_modes`; with no mode named, `hybrid` is used when
   served, otherwise the engine's first mode. An engine serving no mode gets no

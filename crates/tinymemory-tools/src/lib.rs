@@ -75,6 +75,7 @@ pub mod layout;
 pub mod layout_migration;
 pub mod lifecycle;
 pub mod list_store;
+pub mod ops;
 pub mod pending;
 pub mod prefetch;
 pub mod queue;
