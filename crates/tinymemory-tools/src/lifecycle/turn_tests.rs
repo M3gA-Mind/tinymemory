@@ -4,8 +4,9 @@ use serde_json::json;
 use tinymemory_api::{TimeHint, ToolCallRef, chrono::NaiveDate};
 
 use super::turn::{
-    LoggedToolCall, MAX_TOOL_LINE_CHARS, logged_reply, parse_range, user_turn_index,
+    LoggedToolCall, MAX_TOOL_LINE_CHARS, logged_reply, user_turn_index,
 };
+use super::date_hint::parse_range;
 use super::window::InPromptFrom;
 use super::{PreTurn, RecallPolicy};
 

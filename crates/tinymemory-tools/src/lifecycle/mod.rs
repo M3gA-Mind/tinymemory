@@ -72,7 +72,9 @@
 
 mod types;
 
+pub mod date_hint;
 pub mod turn;
+pub mod window;
 
 use std::future::Future;
 use std::sync::Arc;
@@ -360,7 +362,8 @@ impl AgentMemory {
     /// [`Error::InvalidRequest`] for a blank thread id or text. Engine
     /// failures never fail the call.
     pub async fn pre_turn(&self, turn: PreTurn) -> Result<TurnContext> {
-        self.pre_turn_with(turn, false, None).await
+        let resumed = turn.resumed;
+        self.pre_turn_with(turn, resumed, None).await
     }
 
     /// [`AgentMemory::pre_turn`] for a session that resumes this thread after
@@ -374,7 +377,15 @@ impl AgentMemory {
     ///
     /// As [`AgentMemory::pre_turn`].
     pub async fn pre_turn_resumed(&self, turn: PreTurn) -> Result<TurnContext> {
-        self.pre_turn_with(turn, true, None).await
+        self.pre_turn_with(
+            PreTurn {
+                resumed: true,
+                ..turn
+            },
+            true,
+            None,
+        )
+        .await
     }
 
     /// [`AgentMemory::pre_turn`] (or, `resumed`,
@@ -393,7 +404,11 @@ impl AgentMemory {
         resumed: bool,
         hint: impl Future<Output = Option<TimeHint>> + Send,
     ) -> Result<TurnContext> {
-        self.pre_turn_with(turn, resumed, Some(Box::pin(hint)))
+        self.pre_turn_with(
+            PreTurn { resumed, ..turn },
+            resumed,
+            Some(Box::pin(hint)),
+        )
             .await
     }
 

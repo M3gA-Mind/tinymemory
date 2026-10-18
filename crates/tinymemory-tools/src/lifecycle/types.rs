@@ -46,6 +46,23 @@ impl Default for RecallPolicy {
     }
 }
 
+impl RecallPolicy {
+    /// Keeps conversation logging enabled while omitting every recall section.
+    ///
+    /// The budget and belief-build cadence stay configured; only retrieval
+    /// limits are cleared.
+    #[must_use]
+    pub fn log_only(&self) -> Self {
+        Self {
+            learnings_limit: 0,
+            brain_limit: 0,
+            history_limit: 0,
+            team_limit: 0,
+            ..self.clone()
+        }
+    }
+}
+
 /// A session starting or resuming.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStart {
@@ -68,6 +85,14 @@ pub struct PreTurn {
     pub turn_index: u32,
     /// What the user said.
     pub user_text: String,
+    /// Whether this is the first turn after a compaction. A resumed turn gets
+    /// the earlier turns of this thread at the head of its memory pack.
+    ///
+    /// This public field is additive for serialized requests (missing values
+    /// default to `false`), but it requires struct-literal callers to add the
+    /// field or use `..PreTurn::new(...)`.
+    #[serde(default)]
+    pub resumed: bool,
     /// The first turn of this thread still in the host's prompt; turns from
     /// here on are left out of the pack, since the model already sees them.
     /// `0` (the default) leaves the whole thread out.
@@ -102,6 +127,7 @@ impl PreTurn {
             thread_id: thread_id.into(),
             turn_index,
             user_text: user_text.into(),
+            resumed: false,
             in_prompt_from: 0,
             at: None,
             observed_actor: None,

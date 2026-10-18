@@ -22,9 +22,10 @@ use tinymemory_api::{
 };
 
 use super::turn::{
-    CitationSink, Clock, CompactionOptions, DateHintModel, EngineResolver, JobsSink,
-    PreTurnOptions, TurnHooks, TurnPack,
+    CitationSink, Clock, CompactionOptions, EngineResolver, JobsSink, PreTurnOptions, TurnHooks,
+    TurnPack,
 };
+use super::date_hint::DateHintModel;
 use super::{AgentMemory, Compaction, PostTurn, PreTurn, RecallPolicy};
 
 #[derive(Clone)]
