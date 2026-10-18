@@ -1219,3 +1219,6 @@ async fn cancelling_an_in_flight_drain_leaves_the_unsettled_entry_durable() {
     assert_eq!(*retried.lock().expect("retry settled once"), 1);
     assert!(queue.entries().expect("retry clears the entry").is_empty());
 }
+
+#[path = "single_tools_padded_action_tests.rs"]
+mod padded_action_tests;
