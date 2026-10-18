@@ -189,7 +189,7 @@ fn unconfined_learning_uses_default_and_preserves_effective_namespace() {
         host_overlaid.meta().channel.as_deref(),
         Some("host-channel")
     );
-    assert_eq!(item.meta().channel.as_deref(), Some("host-channel"));
+    assert_eq!(item.meta().channel.as_deref(), None);
 
     assert!(
         ops.learning_item(LearningOptions {
