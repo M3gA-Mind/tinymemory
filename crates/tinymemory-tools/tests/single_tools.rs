@@ -877,6 +877,7 @@ struct ControlledRecallEngine {
     inner: ReferenceEngine,
     descriptor: EngineDescriptor,
     recall_answer: String,
+    recall_citations: Vec<tinymemory_api::Citation>,
     recall_requests: Mutex<Vec<RecallRequest>>,
     fetch_requests: Mutex<Vec<FetchRequest>>,
 }
@@ -897,6 +898,7 @@ impl ControlledRecallEngine {
             inner,
             descriptor,
             recall_answer: recall_answer.into(),
+            recall_citations: Vec::new(),
             recall_requests: Mutex::new(Vec::new()),
             fetch_requests: Mutex::new(Vec::new()),
         }
@@ -923,7 +925,7 @@ impl MemoryEngine for ControlledRecallEngine {
             .push(request);
         Ok(tinymemory_api::RecallAnswer {
             answer: self.recall_answer.clone(),
-            citations: Vec::new(),
+            citations: self.recall_citations.clone(),
             model: None,
         })
     }
@@ -1222,3 +1224,6 @@ async fn cancelling_an_in_flight_drain_leaves_the_unsettled_entry_durable() {
 
 #[path = "single_tools_padded_action_tests.rs"]
 mod padded_action_tests;
+
+#[path = "single_tools_detailed_call_tests.rs"]
+mod detailed_call_tests;
