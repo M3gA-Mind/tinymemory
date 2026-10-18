@@ -16,6 +16,146 @@ async fn move_all(host: &FakeHost) {
     run(host, Trigger::Auto, || async { false }).await.unwrap();
 }
 
+#[derive(Clone)]
+struct MutexStartGate(Arc<Mutex<()>>);
+
+impl crate::run_slots::StartGate for MutexStartGate {
+    fn with_gate(&self, reserve: &mut dyn FnMut() -> bool) -> bool {
+        let _gate = self.0.lock().unwrap();
+        reserve()
+    }
+}
+
+#[derive(Clone, Default)]
+struct CapturingSpawner(Arc<Mutex<Option<MigrationTask>>>);
+
+impl MigrationSpawner for CapturingSpawner {
+    fn spawn(&self, task: MigrationTask) -> Result<(), String> {
+        *self.0.lock().unwrap() = Some(task);
+        Ok(())
+    }
+}
+
+impl CapturingSpawner {
+    fn take(&self) -> MigrationTask {
+        self.0.lock().unwrap().take().expect("a task was accepted")
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.lock().unwrap().is_none()
+    }
+}
+
+#[derive(Default)]
+struct RejectingSpawner;
+
+impl MigrationSpawner for RejectingSpawner {
+    fn spawn(&self, task: MigrationTask) -> Result<(), String> {
+        drop(task);
+        Err("executor refused migration".to_string())
+    }
+}
+
+struct CountingStore {
+    state: Mutex<MigrationState>,
+    saves: std::sync::atomic::AtomicUsize,
+}
+
+impl Default for CountingStore {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(MigrationState::default()),
+            saves: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+
+impl MigrationStateStore for CountingStore {
+    fn load(&self) -> crate::layout_migration::Result<MigrationState> {
+        Ok(self.state.lock().unwrap().clone())
+    }
+
+    fn save(&self, state: &MigrationState) -> crate::layout_migration::Result<()> {
+        self.saves
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *self.state.lock().unwrap() = state.clone();
+        Ok(())
+    }
+}
+
+struct CountingHost {
+    inner: FakeHost,
+    store: CountingStore,
+    fail_engines: bool,
+}
+
+impl CountingHost {
+    async fn new(learnings: usize, fail_engines: bool) -> Self {
+        Self {
+            inner: FakeHost::with(learnings).await,
+            store: CountingStore::default(),
+            fail_engines,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl LayoutHost for CountingHost {
+    fn store(&self) -> &dyn MigrationStateStore {
+        &self.store
+    }
+
+    fn engines(&self) -> crate::layout_migration::Result<Engines> {
+        if self.fail_engines {
+            Err(crate::layout_migration::Error::Off(
+                "engine unavailable".to_string(),
+            ))
+        } else {
+            self.inner.engines()
+        }
+    }
+
+    fn placement(&self) -> crate::layout_migration::Result<Placement> {
+        self.inner.placement()
+    }
+
+    fn is_switched(&self) -> bool {
+        self.inner.is_switched()
+    }
+
+    async fn switch(&self) -> crate::layout_migration::Result<()> {
+        self.inner.switch().await
+    }
+
+    async fn free_now(&self) -> bool {
+        self.inner.free_now().await
+    }
+
+    fn legacy_claim(&self) -> crate::layout_migration::Result<Option<Box<dyn LegacyClaim>>> {
+        self.inner.legacy_claim()
+    }
+
+    fn listed_unconfirmed(&self) -> bool {
+        self.inner.listed_unconfirmed()
+    }
+
+    async fn wait_for_listing(&self) {
+        self.inner.wait_for_listing().await
+    }
+}
+
+fn migration_service<G, S>(
+    slots: RunSlots<PathBuf>,
+    gate: G,
+    spawner: S,
+) -> MigrationService<G, S>
+where
+    G: StartGate,
+    S: MigrationSpawner,
+{
+    MigrationService::new(slots, gate, spawner)
+}
+
 #[tokio::test]
 async fn scan_finds_legacy_memory_and_nothing_after_the_move() {
     let host = FakeHost::with(3).await;
