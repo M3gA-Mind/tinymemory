@@ -223,7 +223,10 @@ async fn single_reads_use_host_defaults_and_overwrite_model_reach() {
     let recalls = engine.recall_requests.lock().expect("recorded recalls");
     assert_eq!(recalls.len(), 2);
     for request in recalls.iter() {
-        assert_eq!(request.limit, 10, "the host's default limit overrides the model");
+        assert_eq!(
+            request.limit, 10,
+            "the host's default limit overrides the model"
+        );
         assert_eq!(request.filter.reach, scope.reach);
         assert_eq!(request.filter.channel.as_deref(), Some("discord"));
         assert_eq!(request.filter.language.as_deref(), Some("en"));
@@ -581,9 +584,9 @@ async fn an_oversized_first_evidence_line_is_kept_whole() {
 #[tokio::test]
 async fn the_partly_searched_closing_note_survives_the_evidence_cap() {
     let engine = Arc::new(ControlledRecallEngine::new(format!(
-            "entry {}\n\n(Memory was only partly searched: one scope did not answer in time.)",
-            "x".repeat(10_500)
-        )));
+        "entry {}\n\n(Memory was only partly searched: one scope did not answer in time.)",
+        "x".repeat(10_500)
+    )));
     let tool = SingleTool::new("memory", MemoryTools::with_scope(engine, scope()));
     let result = tool
         .call(
@@ -610,7 +613,10 @@ struct ControlledRecallEngine {
 
 impl ControlledRecallEngine {
     fn new(recall_answer: impl Into<String>) -> Self {
-        Self::with_modes(recall_answer, ReferenceEngine::new().descriptor().fetch_modes.clone())
+        Self::with_modes(
+            recall_answer,
+            ReferenceEngine::new().descriptor().fetch_modes.clone(),
+        )
     }
 
     fn with_modes(recall_answer: impl Into<String>, fetch_modes: Vec<FetchMode>) -> Self {
