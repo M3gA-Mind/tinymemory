@@ -151,7 +151,7 @@ impl Backfiller {
     /// as interrupted when `running` says no task owns its run slot.
     pub async fn status(&self, running: bool) -> Result<BackfillView> {
         let file = self.store.load();
-        let mut state = file.state;
+        let mut state = file.state.clone();
         if state.phase == BackfillPhase::Running && !running {
             state.phase = BackfillPhase::Error;
             state.error = Some("the sync was interrupted; start it again to resume".to_string());
@@ -226,6 +226,10 @@ impl Backfiller {
     }
 
     async fn plan(&self, file: &BackfillFile) -> Result<Vec<ThreadPlan>> {
+        // Fail before planning or persisting if this layout cannot represent
+        // the selected agent. `conversations_filter` deliberately falls back
+        // to a broad root filter when its optional agent cannot be resolved.
+        self.layout.conversations(&self.agent_id)?;
         let listed = self
             .source
             .list_threads()

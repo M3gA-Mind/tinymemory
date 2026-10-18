@@ -41,5 +41,8 @@ pub use map::{
     FLOWS_TAG, FlowPlacement, Placement, brain_node_with, file_into, files_source,
     github_collection, legacy_brain_node,
 };
-pub use service::{MigrationStatus, ScanView, is_finished, record_failure, retry, scan, status};
+pub use service::{
+    MigrationService, MigrationSpawner, MigrationStatus, MigrationTask, ScanView, is_finished,
+    record_failure, retry, scan, status,
+};
 pub use state::{Failure, MemoryStateStore, MigrationState, MigrationStateStore, Phase};
