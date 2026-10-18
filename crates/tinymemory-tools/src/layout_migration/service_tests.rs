@@ -1,9 +1,14 @@
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 
 use tinymemory_api::MemoryEngine;
 
 use super::super::job::{Trigger, run};
-use super::super::state::MigrationStateStore;
+use super::super::copy::Engines;
+use super::super::job::{LayoutHost, LegacyClaim};
+use super::super::map::Placement;
+use super::super::state::{MigrationState, MigrationStateStore};
 use super::super::test_host::{FakeHost, count, fact};
 use super::*;
 
