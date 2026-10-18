@@ -120,6 +120,7 @@ pub struct TurnPack {
     /// The memory engine that answered.
     pub engine: String,
     /// The hits corresponding to `refs`, in citation order.
+    #[serde(skip)]
     pub citations: Vec<Hit>,
     /// A stable account-wide refusal code when recall was refused.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -166,14 +167,14 @@ impl TurnPack {
             });
         }
 
-        let refs: Vec<String> = pack.refs.iter().map(ToString::to_string).collect();
         let citations = pack
             .sections
             .iter()
             .flat_map(|section| section.hits.iter())
-            .filter(|hit| refs.iter().any(|id| id == &hit.id.to_string()))
+            .filter(|hit| pack.refs.contains(&hit.id))
             .cloned()
             .collect();
+        let refs: Vec<String> = pack.refs.iter().map(ToString::to_string).collect();
         Some(Self {
             markdown: pack.markdown,
             tokens: pack.tokens,
@@ -431,5 +432,34 @@ pub fn logged_reply(text: &str, calls: &[LoggedToolCall]) -> String {
         text.trim().to_string()
     } else {
         format!("{}\n\nTools:\n{}", text.trim(), lines.join("\n"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_direct_account_wide_error_uses_the_same_refusal_notice() {
+        let pack = TurnPack::from_outcome(
+            Err(Error::Unavailable("private transport detail".into())),
+            true,
+            "test-engine",
+        )
+        .expect("account-wide direct errors should create a refusal notice");
+        assert_eq!(pack.refusal, Some("UNAVAILABLE"));
+        assert_eq!(pack.engine, "test-engine");
+        assert!(pack.markdown.contains("could not be reached"));
+        assert!(!pack.markdown.contains("private transport detail"));
+    }
+
+    #[test]
+    fn a_direct_non_account_wide_error_degrades_to_no_pack() {
+        assert!(TurnPack::from_outcome(
+            Err(Error::Engine("private engine detail".into())),
+            true,
+            "test-engine",
+        )
+        .is_none());
     }
 }
