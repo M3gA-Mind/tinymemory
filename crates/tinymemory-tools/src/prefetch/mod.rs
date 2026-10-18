@@ -408,3 +408,7 @@ impl<K: Clone + Hash + Eq, V> Drop for Worker<K, V> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "turn_cache_tests.rs"]
+mod turn_cache_tests;
