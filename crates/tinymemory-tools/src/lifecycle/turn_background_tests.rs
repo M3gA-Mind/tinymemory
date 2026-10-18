@@ -3,7 +3,7 @@
 use super::*;
 
 struct ReleasedEngine {
-    inner: ReferenceEngine,
+    inner: Arc<ReferenceEngine>,
     release: Mutex<Option<oneshot::Receiver<()>>>,
     reads_started: AtomicUsize,
 }
@@ -52,7 +52,7 @@ impl MemoryEngine for ReleasedEngine {
 }
 
 async fn released_fixture(clock: FakeClock) -> (Fixture, Arc<ReleasedEngine>, oneshot::Sender<()>) {
-    let inner = ReferenceEngine::new();
+    let inner = Arc::new(ReferenceEngine::new());
     Brain::new(inner.clone(), MemoryLayout::default())
         .ingest(BrainDocument::new(
             BrainSource::Markdown,
