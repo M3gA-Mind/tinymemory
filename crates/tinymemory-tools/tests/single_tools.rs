@@ -209,7 +209,11 @@ async fn single_reads_use_host_defaults_and_overwrite_model_reach() {
                     "action": "recall",
                     "question": "tea",
                     "limit": 100,
-                    "filter": { "reach": supplied_reach }
+                    "filter": {
+                        "channel": "discord",
+                        "language": "en",
+                        "reach": supplied_reach
+                    }
                 }),
                 CallContext::default(),
             )
@@ -221,6 +225,8 @@ async fn single_reads_use_host_defaults_and_overwrite_model_reach() {
     for request in recalls.iter() {
         assert_eq!(request.limit, 10, "the host's default limit overrides the model");
         assert_eq!(request.filter.reach, scope.reach);
+        assert_eq!(request.filter.channel.as_deref(), Some("discord"));
+        assert_eq!(request.filter.language.as_deref(), Some("en"));
     }
     drop(recalls);
 
@@ -255,6 +261,16 @@ async fn single_reads_use_host_defaults_and_overwrite_model_reach() {
         .call("memory_fetch", json!({ "query": "tea" }))
         .await
         .expect("the seven-tool fetch path retains its hybrid default");
+    assert!(
+        named
+            .call(
+                "memory_fetch",
+                json!({ "query": "tea", "filter": { "channel": "discord" } }),
+            )
+            .await
+            .is_err(),
+        "the seven-tool strict filter schema is unchanged"
+    );
     assert_eq!(
         engine.fetch_requests.lock().expect("recorded fetches")[1].mode,
         FetchMode::Hybrid
@@ -321,6 +337,40 @@ async fn learn_stamps_trusted_scope_and_acknowledges_only_durable_queueing() {
         Some("call-1")
     );
     assert_eq!(meta.source.kind, SourceKind::Agent);
+}
+
+#[tokio::test]
+async fn learn_uses_the_configured_name_only_when_scope_has_no_call_reference() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let queue = queue(4);
+    let mut tool_scope = scope();
+    tool_scope.tool_call = None;
+    let tool = SingleTool::new(
+        "fallback_memory",
+        MemoryTools::with_scope(engine, tool_scope),
+    )
+    .with_write_sink(Arc::new(PendingWriteSink::new(
+        queue.clone(),
+        Arc::new(WriteGate::new("process-fallback")),
+        Binding("workspace-owner-v1".into()),
+    )));
+
+    tool.call(
+        json!({ "action": "learn", "text": "fallback metadata" }),
+        CallContext::default(),
+    )
+    .await
+    .expect("queued learn");
+    let entries = queue.entries().expect("queued write");
+    let WriteOperation::Learn {
+        item: StoreItem::Learning { meta, .. },
+    } = &entries[0].operation
+    else {
+        panic!("learn action must queue a learning operation")
+    };
+    let call = meta.tool_call.as_ref().expect("tool call fallback");
+    assert_eq!(call.name, "fallback_memory");
+    assert_eq!(call.id, None);
 }
 
 #[tokio::test]
