@@ -376,15 +376,15 @@ impl SingleTool {
     }
 
     fn learn_meta(&self) -> MemoryMeta {
-        let call_id = self
+        let call = self
             .tools
             .scope
-                .tool_call
-                .clone()
-                .unwrap_or_else(|| ToolCallRef {
-                    name: self.name.clone(),
-                    id: None,
-                });
+            .tool_call
+            .clone()
+            .unwrap_or_else(|| ToolCallRef {
+                name: self.name.clone(),
+                id: None,
+            });
         MemoryMeta {
             namespace: self.tools.scope.place.clone(),
             workspace: self.tools.scope.workspace.clone(),
