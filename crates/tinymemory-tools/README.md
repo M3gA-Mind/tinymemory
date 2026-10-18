@@ -13,7 +13,11 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
   memory lifecycle. `MemoryLayout` is the standard tree: brain documents by
   source, per-agent conversations, and learnings. `Brain` ingests documents.
   `AgentMemory` serves session start, pre-turn context, post-turn logging and
-  compaction. `BackgroundJob` carries the belief builds those calls hand back.
+  compaction. `TurnHooks` composes those calls with host-supplied clock,
+  engine, model, jobs, and citation ports. It starts no tasks; its owned
+  pre-turn future can run in the existing bounded `Prefetcher`. `InPromptFrom`
+  tracks the live prompt window, and `date_hint` parses optional model date
+  ranges. `BackgroundJob` carries the belief builds those calls hand back.
   See [`docs/architecture/lifecycle.md`](../../docs/architecture/lifecycle.md)
   and the runnable `examples/agent_loop.rs` and `examples/brain.rs`.
 - **`ops`**: validated host request builders, explorer paths, common read
