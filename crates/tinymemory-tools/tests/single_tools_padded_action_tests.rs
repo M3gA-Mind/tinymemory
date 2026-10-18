@@ -71,7 +71,7 @@ async fn single_call_accepts_padded_action_for_learn() {
         .await
         .expect("padded learn action is accepted");
 
-    assert_eq!(result["status"], LEARN_QUEUED);
+    assert_eq!(result["status"], "queued; not yet saved to memory");
     assert_eq!(queue.entries().expect("queued learn").len(), 1);
 }
 
@@ -95,9 +95,10 @@ async fn single_call_accepts_padded_action_for_forget() {
         .await
         .expect("padded forget action is accepted");
 
-    assert_eq!(result["status"], FORGET_QUEUED);
+    assert_eq!(result["status"], "queued; not yet removed from memory");
+    let entries = queue.entries().expect("queued forget");
     assert!(matches!(
-        queue.entries().expect("queued forget")[0].operation,
+        &entries[0].operation,
         WriteOperation::Forget { .. }
     ));
 }
