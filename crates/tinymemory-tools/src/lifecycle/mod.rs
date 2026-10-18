@@ -95,8 +95,8 @@ use crate::recall::{
 use crate::tools::MemoryTools;
 
 pub use types::{
-    AgentCount, Compaction, DEFAULT_TURN_BUDGET_TOKENS, PostTurn, PostTurnReport, PreTurn,
-    Preview, PreviewMode, RecallPolicy, RecallSettings, SessionStart, TurnContext,
+    AgentCount, Compaction, DEFAULT_TURN_BUDGET_TOKENS, PostTurn, PostTurnReport, PreTurn, Preview,
+    PreviewMode, RecallPolicy, RecallSettings, SessionStart, TurnContext,
 };
 
 /// Heading of the learnings section.
@@ -334,7 +334,11 @@ impl AgentMemory {
     ///
     /// [`Error::InvalidRequest`] when the preview request or policy is
     /// invalid.
-    pub async fn preview(&self, query: Option<&str>, thread_id: Option<&str>) -> Result<types::Preview> {
+    pub async fn preview(
+        &self,
+        query: Option<&str>,
+        thread_id: Option<&str>,
+    ) -> Result<types::Preview> {
         let query = query.filter(|query| !query.trim().is_empty());
         let (mode, pack) = match query {
             Some(query) => (types::PreviewMode::Turn, self.recall(query).await?),

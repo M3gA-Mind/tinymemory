@@ -55,10 +55,9 @@ fn recall_settings_default_serialize_and_ignore_unknown_toml_fields() {
     assert_eq!(defaults.compaction_timeout_ms, 8_000);
     assert_eq!(defaults.build_delay_secs, 300);
 
-    let partial: RecallSettings = toml::from_str(
-        "budget_tokens = 500\nfuture_setting = 'ignored by older readers'\n",
-    )
-    .unwrap();
+    let partial: RecallSettings =
+        toml::from_str("budget_tokens = 500\nfuture_setting = 'ignored by older readers'\n")
+            .unwrap();
     assert_eq!(partial.budget_tokens, 500);
     assert_eq!(partial.learnings_limit, defaults.learnings_limit);
     assert_eq!(partial.pre_turn_timeout_ms, defaults.pre_turn_timeout_ms);
@@ -131,10 +130,12 @@ fn recall_settings_schema_matches_defaulted_config_shape() {
     ] {
         assert!(properties.contains_key(field), "schema is missing {field}");
     }
-    assert!(schema
-        .get("required")
-        .and_then(serde_json::Value::as_array)
-        .map_or(true, Vec::is_empty));
+    assert!(
+        schema
+            .get("required")
+            .and_then(serde_json::Value::as_array)
+            .map_or(true, Vec::is_empty)
+    );
 }
 
 #[test]
@@ -354,10 +355,12 @@ async fn preview_preserves_host_modes_thread_context_and_read_only_behavior() {
         .unwrap();
     let turn_wire = serde_json::to_value(&turn).unwrap();
     assert_eq!(turn_wire["mode"], "turn");
-    assert!(turn_wire["pack"]["markdown"]
-        .as_str()
-        .unwrap()
-        .contains("Refunds take five business days."));
+    assert!(
+        turn_wire["pack"]["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("Refunds take five business days.")
+    );
 
     let session = support
         .preview(Some("  \n"), Some("thread-1"))
@@ -367,15 +370,20 @@ async fn preview_preserves_host_modes_thread_context_and_read_only_behavior() {
     assert_eq!(session_wire["mode"], "session");
     let markdown = session_wire["pack"]["markdown"].as_str().unwrap();
     assert!(markdown.contains("Earlier in this thread"), "{markdown}");
-    assert!(markdown.contains("The refund was approved yesterday."), "{markdown}");
+    assert!(
+        markdown.contains("The refund was approved yesterday."),
+        "{markdown}"
+    );
 
     let no_thread = support.preview(None, Some(" \t ")).await.unwrap();
     let no_thread_wire = serde_json::to_value(&no_thread).unwrap();
     assert_eq!(no_thread_wire["mode"], "session");
-    assert!(!no_thread_wire["pack"]["markdown"]
-        .as_str()
-        .unwrap()
-        .contains("Earlier in this thread"));
+    assert!(
+        !no_thread_wire["pack"]["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("Earlier in this thread")
+    );
 
     let after = engine
         .list(ListRequest::new(
@@ -394,17 +402,10 @@ async fn preview_keeps_typed_engine_failures_in_skipped_sections_and_returns_val
     let engine_error = tinymemory_api::Error::Unavailable("ranked reads are down".into());
     let engine = Arc::new(ExploreSpy::new(Some(engine_error.clone()), None));
     let support = AgentMemory::new(engine, MemoryLayout::default(), "support-01").unwrap();
-    let preview = support
-        .preview(Some("refunds"), None)
-        .await
-        .unwrap();
-    assert!(preview
-        .pack
-        .skipped
-        .iter()
-        .any(|section| {
-            section.reason == crate::recall::SkipReason::Engine(engine_error.clone())
-        }));
+    let preview = support.preview(Some("refunds"), None).await.unwrap();
+    assert!(preview.pack.skipped.iter().any(|section| {
+        section.reason == crate::recall::SkipReason::Engine(engine_error.clone())
+    }));
 
     let no_budget = support.clone().with_policy(RecallPolicy {
         budget_tokens: 0,
@@ -538,10 +539,7 @@ impl MemoryEngine for ExploreSpy {
     }
 
     async fn explore(&self, request: ExploreRequest) -> Result<ExplorePage> {
-        self.explore_requests
-            .lock()
-            .unwrap()
-            .push(request.clone());
+        self.explore_requests.lock().unwrap().push(request.clone());
         if let Some(error) = &self.explore_error {
             return Err(error.clone());
         }
