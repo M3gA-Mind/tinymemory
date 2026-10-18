@@ -402,7 +402,9 @@ async fn preview_keeps_typed_engine_failures_in_skipped_sections_and_returns_val
         .pack
         .skipped
         .iter()
-        .any(|section| section.reason == crate::recall::SkipReason::Engine(engine_error)));
+        .any(|section| {
+            section.reason == crate::recall::SkipReason::Engine(engine_error.clone())
+        }));
 
     let no_budget = support.clone().with_policy(RecallPolicy {
         budget_tokens: 0,
