@@ -484,8 +484,10 @@ async fn cancelling_a_pending_migration_releases_the_slot_without_recording_fail
     let (host, entered) = CountingHost::with_blocked_legacy().await;
     let host = Arc::new(host);
     let key = PathBuf::from("workspace-cancelled");
-    let mut persisted = MigrationState::default();
-    persisted.phase = Phase::Copying;
+    let persisted = MigrationState {
+        phase: Phase::Copying,
+        ..MigrationState::default()
+    };
     host.store.save(&persisted).unwrap();
 
     assert!(service.start(key.clone(), host.clone(), || false, Trigger::Auto, || false,));
@@ -518,8 +520,10 @@ async fn tick_checks_finished_then_pause_then_running_before_starting() {
         spawner.clone(),
     );
     let finished_host = Arc::new(CountingHost::new(0, false).await);
-    let mut finished = MigrationState::default();
-    finished.phase = Phase::Cleaned;
+    let finished = MigrationState {
+        phase: Phase::Cleaned,
+        ..MigrationState::default()
+    };
     finished_host.store.save(&finished).unwrap();
     let paused_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let paused_count = Arc::clone(&paused_calls);
