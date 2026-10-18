@@ -6,17 +6,21 @@ permission class and concurrency class to the host tool runtime.
 
 ## Scope and reads
 
-MemoryTools supplies the engine and trusted ToolScope. Reads reuse the
-seven-tool argument validation and request shaping. Recall runs in evidence
-mode, caps rendered evidence near 2,500 tokens at line boundaries, and leaves
-the current thread's prompt window out. A missing or mismatched window falls
-back to excluding the whole current thread. Fetch is fixed to five items per
-page and preserves the engine cursor.
+MemoryTools supplies the engine and trusted ToolScope. Reads share the
+seven-tool request shaping and host defaults. SingleTool accepts the full
+TinyMemory MetaFilter and replaces its reach with the trusted scope; the
+seven-tool facade retains its stricter filter parser. Recall runs in evidence
+mode, ignores model-supplied instructions and limits, caps rendered evidence
+near 2,500 tokens at line boundaries, and leaves the current thread's prompt
+window out. A missing or mismatched window falls back to excluding the whole
+current thread. Fetch is fixed to five items per page and preserves the engine
+cursor while defaulting to the first engine-declared mode.
 
 ToolScope carries trusted workspace, thread, agent and tool-call attribution.
-Learn ignores model-supplied metadata and stamps the configured tool name,
-trusted call id, SourceKind::Agent, namespace and other available scope facts.
-Read-only scopes reject learn and forget before consulting the sink.
+Learn ignores model-supplied metadata and stamps the trusted ToolCallRef,
+SourceKind::Agent, namespace and other available scope facts. It uses the
+configured tool name only when the scope has no tool-call reference. Read-only
+scopes reject learn and forget before consulting the sink.
 
 ## Pending write adapter
 
