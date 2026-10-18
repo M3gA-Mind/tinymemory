@@ -168,10 +168,9 @@ impl RunBudget {
                 else {
                     return Err(Refusal::Denied(DenialReason::TrackingFull));
                 };
-                let evicted = runs
-                    .order
-                    .remove(oldest_idle)
-                    .expect("the selected idle run is in the order");
+                let Some(evicted) = runs.order.remove(oldest_idle) else {
+                    return Err(Refusal::Denied(DenialReason::TrackingFull));
+                };
                 runs.states.remove(&evicted);
             }
             runs.order.push_back(run_id.to_string());
