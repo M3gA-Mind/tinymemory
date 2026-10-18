@@ -72,6 +72,10 @@
 
 mod types;
 
+pub mod date_hint;
+pub mod turn;
+pub mod window;
+
 use std::future::Future;
 use std::sync::Arc;
 
@@ -358,7 +362,8 @@ impl AgentMemory {
     /// [`Error::InvalidRequest`] for a blank thread id or text. Engine
     /// failures never fail the call.
     pub async fn pre_turn(&self, turn: PreTurn) -> Result<TurnContext> {
-        self.pre_turn_with(turn, false, None).await
+        let resumed = turn.resumed;
+        self.pre_turn_with(turn, resumed, None).await
     }
 
     /// [`AgentMemory::pre_turn`] for a session that resumes this thread after
@@ -372,7 +377,15 @@ impl AgentMemory {
     ///
     /// As [`AgentMemory::pre_turn`].
     pub async fn pre_turn_resumed(&self, turn: PreTurn) -> Result<TurnContext> {
-        self.pre_turn_with(turn, true, None).await
+        self.pre_turn_with(
+            PreTurn {
+                resumed: true,
+                ..turn
+            },
+            true,
+            None,
+        )
+        .await
     }
 
     /// [`AgentMemory::pre_turn`] (or, `resumed`,
@@ -391,7 +404,7 @@ impl AgentMemory {
         resumed: bool,
         hint: impl Future<Output = Option<TimeHint>> + Send,
     ) -> Result<TurnContext> {
-        self.pre_turn_with(turn, resumed, Some(Box::pin(hint)))
+        self.pre_turn_with(PreTurn { resumed, ..turn }, resumed, Some(Box::pin(hint)))
             .await
     }
 
@@ -411,6 +424,7 @@ impl AgentMemory {
                 ..Turn::new(Role::User, text)
             },
             turn.observed_actor.clone(),
+            turn.channel.clone(),
         );
         let id = tinymemory_api::ItemId::new(item.fingerprint());
         let window = ThreadWindow {
@@ -475,6 +489,7 @@ impl AgentMemory {
                 ..Turn::new(Role::Assistant, text)
             },
             None,
+            turn.channel.clone(),
         );
         let receipt = self
             .engine
@@ -674,6 +689,7 @@ impl AgentMemory {
         index: u32,
         turn: Turn,
         observed_actor: Option<ObservedActor>,
+        channel: Option<String>,
     ) -> StoreItem {
         StoreItem::Conversation {
             meta: MemoryMeta {
@@ -688,6 +704,7 @@ impl AgentMemory {
                     kind: SourceKind::Conversation,
                     id: Some(thread_id.to_string()),
                 },
+                channel,
                 observed_at: turn.at,
                 observed_actor,
                 ..MemoryMeta::default()
@@ -734,3 +751,11 @@ fn gist(turns: &[Turn]) -> Option<String> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "turn_tests.rs"]
+mod turn_tests;
+
+#[cfg(test)]
+#[path = "turn_runtime_tests.rs"]
+mod turn_runtime_tests;
