@@ -1,4 +1,5 @@
 use super::*;
+use tinymemory_tools::{RecallDetails, SingleToolOutcome};
 
 fn citation(id: &str, snippet: &str, scope: &ToolScope) -> tinymemory_api::Citation {
     tinymemory_api::Citation {
@@ -57,7 +58,7 @@ async fn single_call_with_details_returns_raw_question_full_citations_and_same_v
     assert_eq!(requests_after_legacy.len(), 1);
     assert_eq!(requests_after_legacy[0].question, question);
 
-    let outcome = tool
+    let outcome: SingleToolOutcome = tool
         .call_with_details(args, CallContext::default())
         .await
         .expect("call with details");
@@ -113,7 +114,7 @@ async fn call_with_details_marks_empty_recall_but_not_fetch_or_writes() {
     );
     assert_eq!(
         empty_recall.recall,
-        Some(tinymemory_tools::tools::single::RecallDetails {
+        Some(RecallDetails {
             question: "nothing relevant".into(),
             citations: Vec::new(),
         })
@@ -228,7 +229,19 @@ fn single_tool_pure_action_classifiers_match_instance_methods() {
             false,
         ),
         (
+            json!({ "action": " fetch " }),
+            PermissionClass::Write,
+            ConcurrencyClass::Exclusive,
+            false,
+        ),
+        (
             json!({ "action": " learn " }),
+            PermissionClass::Write,
+            ConcurrencyClass::Exclusive,
+            true,
+        ),
+        (
+            json!({ "action": " forget " }),
             PermissionClass::Write,
             ConcurrencyClass::Exclusive,
             true,
@@ -241,6 +254,12 @@ fn single_tool_pure_action_classifiers_match_instance_methods() {
         ),
         (
             json!({ "action": 4 }),
+            PermissionClass::Write,
+            ConcurrencyClass::Exclusive,
+            false,
+        ),
+        (
+            json!({ "action": null }),
             PermissionClass::Write,
             ConcurrencyClass::Exclusive,
             false,
