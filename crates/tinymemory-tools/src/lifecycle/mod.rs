@@ -81,9 +81,9 @@ use std::sync::Arc;
 
 use futures::future::join;
 use tinymemory_api::{
-    ConsolidateRequest, Error, ItemKind, MemoryEngine, MemoryMeta, MetaFilter, Namespace,
-    ObservedActor, Reach, Result, Role, SourceKind, SourceRef, StoreItem, StoreReceipt, TimeHint,
-    Turn, TurnRange, WriteOptions,
+    ConsolidateRequest, Error, ExploreRequest, Facet, ItemKind, MemoryEngine, MemoryMeta,
+    MetaFilter, Namespace, ObservedActor, Reach, Result, Role, SourceKind, SourceRef, StoreItem,
+    StoreReceipt, TimeHint, Turn, TurnRange, WriteOptions,
 };
 
 use crate::background::{BackgroundJob, BackgroundRunner, JobReport, builds_on_its_own};
@@ -95,8 +95,8 @@ use crate::recall::{
 use crate::tools::MemoryTools;
 
 pub use types::{
-    Compaction, DEFAULT_TURN_BUDGET_TOKENS, PostTurn, PostTurnReport, PreTurn, RecallPolicy,
-    SessionStart, TurnContext,
+    AgentCount, Compaction, DEFAULT_TURN_BUDGET_TOKENS, PostTurn, PostTurnReport, PreTurn, Preview,
+    PreviewMode, RecallPolicy, RecallSettings, SessionStart, TurnContext,
 };
 
 /// Heading of the learnings section.
@@ -321,6 +321,68 @@ impl AgentMemory {
     #[must_use]
     pub fn background(&self) -> BackgroundRunner {
         BackgroundRunner::new(self.engine.clone(), self.layout.clone())
+    }
+
+    /// The pack a turn or session would receive, without writing a turn.
+    ///
+    /// A nonblank `query` previews a query-ranked turn and ignores `thread_id`.
+    /// A missing or blank query previews a session start or resume; a blank
+    /// `thread_id` is treated as absent. Engine failures remain available as
+    /// typed skipped-section reasons in the returned pack.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] when the preview request or policy is
+    /// invalid.
+    pub async fn preview(
+        &self,
+        query: Option<&str>,
+        thread_id: Option<&str>,
+    ) -> Result<types::Preview> {
+        let query = query.filter(|query| !query.trim().is_empty());
+        let (mode, pack) = match query {
+            Some(query) => (types::PreviewMode::Turn, self.recall(query).await?),
+            None => {
+                let thread_id = thread_id
+                    .filter(|thread_id| !thread_id.trim().is_empty())
+                    .map(str::to_string);
+                (
+                    types::PreviewMode::Session,
+                    self.start_session(SessionStart {
+                        thread_id,
+                        focus: None,
+                    })
+                    .await?,
+                )
+            }
+        };
+        Ok(types::Preview { mode, pack })
+    }
+
+    /// Agents with conversations below this memory layout's root, most turns
+    /// first.
+    ///
+    /// # Errors
+    ///
+    /// Any error returned by the memory engine's agent-facet exploration.
+    pub async fn agents(&self) -> Result<Vec<types::AgentCount>> {
+        let page = self
+            .engine
+            .explore(ExploreRequest {
+                facet: Facet::Agent,
+                filter: self.layout.conversations_filter(None),
+                limit: 200,
+                scan_limit: 20_000,
+            })
+            .await?;
+        Ok(page
+            .buckets
+            .into_iter()
+            .map(|bucket| types::AgentCount {
+                agent_id: bucket.value,
+                turns: bucket.count,
+            })
+            .collect())
     }
 
     /// The model-facing memory tools for this agent: writes land at its node,
