@@ -10,7 +10,7 @@
 use serde_json::Value;
 use tinymemory_api::{
     Error, ExploreRequest, FetchPage, FetchRequest, GetRequest, Hit, ItemId, ListRequest,
-    MemoryEngine, RecallAnswer, RecallMode, RecallRequest, Result, ThreadWindow,
+    MemoryEngine, MetaFilter, RecallAnswer, RecallMode, RecallRequest, Result, ThreadWindow,
 };
 
 use super::ToolScope;
@@ -48,12 +48,26 @@ pub(crate) async fn recall_answer(
     limit: Option<usize>,
     exclude_thread: Option<ThreadWindow>,
 ) -> Result<RecallAnswer> {
+    recall_answer_with_filter(engine, scope, value, None, mode, limit, exclude_thread).await
+}
+
+/// Runs a recall after replacing the model-facing filter with a host-parsed
+/// filter. The scope's reach remains authoritative.
+pub(crate) async fn recall_answer_with_filter(
+    engine: &dyn MemoryEngine,
+    scope: &ToolScope,
+    value: &Value,
+    filter: Option<MetaFilter>,
+    mode: RecallMode,
+    limit: Option<usize>,
+    exclude_thread: Option<ThreadWindow>,
+) -> Result<RecallAnswer> {
     let args = Args::parse(
         MEMORY_RECALL,
         value,
         &["question", "filter", "limit", "instructions", "refers_to"],
     )?;
-    let mut filter = meta_filter(&args, "filter")?;
+    let mut filter = filter.unwrap_or(meta_filter(&args, "filter")?);
     scope.confine(&mut filter);
     let request = RecallRequest {
         question: args.required_string("question")?,
@@ -96,7 +110,7 @@ pub(crate) async fn fetch_page(
     limit: Option<usize>,
     exclude_thread: Option<ThreadWindow>,
 ) -> Result<FetchPage> {
-    fetch_page_inner(engine, scope, value, limit, exclude_thread, false).await
+    fetch_page_inner(engine, scope, value, None, limit, exclude_thread, false).await
 }
 
 /// Runs the single-name fetch with the first-declared mode as its default.
@@ -111,13 +125,26 @@ pub(crate) async fn fetch_page_first(
     limit: Option<usize>,
     exclude_thread: Option<ThreadWindow>,
 ) -> Result<FetchPage> {
-    fetch_page_inner(engine, scope, value, limit, exclude_thread, true).await
+    fetch_page_inner(engine, scope, value, None, limit, exclude_thread, true).await
+}
+
+/// Runs the single-name fetch with a full API filter parsed by the caller.
+pub(crate) async fn fetch_page_first_with_filter(
+    engine: &dyn MemoryEngine,
+    scope: &ToolScope,
+    value: &Value,
+    filter: Option<MetaFilter>,
+    limit: Option<usize>,
+    exclude_thread: Option<ThreadWindow>,
+) -> Result<FetchPage> {
+    fetch_page_inner(engine, scope, value, filter, limit, exclude_thread, true).await
 }
 
 async fn fetch_page_inner(
     engine: &dyn MemoryEngine,
     scope: &ToolScope,
     value: &Value,
+    filter: Option<MetaFilter>,
     limit: Option<usize>,
     exclude_thread: Option<ThreadWindow>,
     first_declared_default: bool,
@@ -139,7 +166,7 @@ async fn fetch_page_inner(
         value,
         &["query", "mode", "filter", "limit", "cursor", "refers_to"],
     )?;
-    let mut filter = meta_filter(&args, "filter")?;
+    let mut filter = filter.unwrap_or(meta_filter(&args, "filter")?);
     scope.confine(&mut filter);
     let request = FetchRequest {
         query: args.required_string("query")?,

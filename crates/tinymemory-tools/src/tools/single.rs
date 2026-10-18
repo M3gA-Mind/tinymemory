@@ -13,8 +13,8 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use tinymemory_api::{
-    Error, FetchMode, FetchPage, LearningKind, MemoryMeta, Namespace, Reach, RecallMode,
-    SourceKind, SourceRef, StoreItem, ThreadWindow, ToolCallRef,
+    Error, FetchMode, FetchPage, LearningKind, MemoryMeta, MetaFilter, Namespace, Reach,
+    RecallMode, SourceKind, SourceRef, StoreItem, ThreadWindow, ToolCallRef,
 };
 
 use crate::confine::{Confinement, Policy};
@@ -245,11 +245,17 @@ impl SingleTool {
     }
 
     async fn recall(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
-        let value = without_model_limit(action_args(value, false)?);
-        let answer = super::read::recall_answer(
+        let mut value = action_args(value, false)?;
+        let filter = take_filter(&mut value)?;
+        let mut value = without_model_limit(value);
+        if let Value::Object(object) = &mut value {
+            object.remove("instructions");
+        }
+        let answer = super::read::recall_answer_with_filter(
             self.tools.engine.as_ref(),
             &self.tools.scope,
             &value,
+            filter,
             RecallMode::Evidence,
             None,
             calling_thread(&self.tools.scope, context),
@@ -266,11 +272,14 @@ impl SingleTool {
     }
 
     async fn fetch(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
-        let value = without_model_limit(action_args(value, false)?);
-        let page = super::read::fetch_page_first(
+        let mut value = action_args(value, false)?;
+        let filter = take_filter(&mut value)?;
+        let value = without_model_limit(value);
+        let page = super::read::fetch_page_first_with_filter(
             self.tools.engine.as_ref(),
             &self.tools.scope,
             &value,
+            filter,
             Some(FETCH_TOP),
             calling_thread(&self.tools.scope, context),
         )
@@ -412,10 +421,20 @@ fn action_args(value: &Value, drop_meta: bool) -> tinymemory_api::Result<Value> 
     if drop_meta {
         object.remove("meta");
     }
-    if let Some(Value::Object(filter)) = object.get_mut("filter") {
-        filter.remove("reach");
-    }
     Ok(Value::Object(object))
+}
+
+fn take_filter(value: &mut Value) -> tinymemory_api::Result<Option<MetaFilter>> {
+    let filter = value
+        .as_object_mut()
+        .and_then(|object| object.remove("filter"))
+        .filter(|filter| !filter.is_null());
+    filter
+        .map(|filter| {
+            serde_json::from_value(filter)
+                .map_err(|_| Args::invalid(TOOL_NAME, "filter has an invalid shape"))
+        })
+        .transpose()
 }
 
 fn without_model_limit(mut value: Value) -> Value {
@@ -452,12 +471,18 @@ fn pending_error(error: PendingError) -> Error {
 }
 
 fn schema(fetch_modes: &[FetchMode]) -> Value {
+    let mut recall = super::spec::schema::recall();
+    recall["properties"]
+        .as_object_mut()
+        .map(|properties| properties.remove("instructions"));
     let mut fetch = super::spec::schema::fetch(fetch_modes);
     if let Some(default) = fetch_modes.first() {
         fetch["properties"]["mode"]["default"] = json!(default.as_str());
     }
+    replace_filter_schema(&mut recall);
+    replace_filter_schema(&mut fetch);
     let branches = [
-        branch("recall", super::spec::schema::recall()),
+        branch("recall", recall),
         branch("fetch", fetch),
         branch("learn", learn_schema()),
         branch("forget", forget_schema()),
@@ -489,6 +514,15 @@ fn schema(fetch_modes: &[FetchMode]) -> Value {
         "oneOf": branches,
         "additionalProperties": false
     })
+}
+
+fn replace_filter_schema(parameters: &mut Value) {
+    if parameters["properties"].get("filter").is_some() {
+        parameters["properties"]["filter"] = json!({
+            "type": "object",
+            "description": "Metadata filters supported by the TinyMemory API."
+        });
+    }
 }
 
 fn branch(action: &str, parameters: Value) -> Value {
