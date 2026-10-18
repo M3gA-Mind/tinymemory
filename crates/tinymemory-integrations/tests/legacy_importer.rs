@@ -240,6 +240,65 @@ fn store_only_resume_failure_preserves_checkpoint_and_failed_items() {
 }
 
 #[test]
+fn import_resume_failure_clears_credits_pause_and_preserves_progress() {
+    let mut file = ImportFile::default();
+    file.state.phase = ImportPhase::Error;
+    file.paused_for_credits = true;
+    file.checkpoint.documents = Some("saved-document".to_string());
+    file.failed.push(FailedItem {
+        id: "memory_docs:bad-item".to_string(),
+        reason: "too large".to_string(),
+    });
+    let expected_checkpoint = file.checkpoint.clone();
+    let expected_failed = file.failed.clone();
+    let store = MemoryCheckpointStore::new(file);
+
+    record_resume_failure(&store, "account is signed out");
+
+    let saved = store.load();
+    assert_eq!(saved.state.phase, ImportPhase::Error);
+    assert_eq!(
+        saved.state.error.as_deref(),
+        Some("the import could not resume: account is signed out")
+    );
+    assert!(!saved.paused_for_credits);
+    assert_eq!(saved.checkpoint, expected_checkpoint);
+    assert_eq!(saved.failed, expected_failed);
+}
+
+struct RejectingCheckpointStore {
+    file: Mutex<ImportFile>,
+    attempts: AtomicUsize,
+}
+
+impl CheckpointStore for RejectingCheckpointStore {
+    fn load(&self) -> ImportFile {
+        self.file.lock().unwrap().clone()
+    }
+
+    fn save(&self, _file: &ImportFile) -> Result<(), String> {
+        self.attempts.fetch_add(1, Ordering::SeqCst);
+        Err("checkpoint is read-only".to_string())
+    }
+}
+
+#[test]
+fn store_only_resume_failure_logs_a_rejected_save_without_mutating_loaded_state() {
+    let mut file = ImportFile::default();
+    file.state.phase = ImportPhase::Running;
+    file.checkpoint.documents = Some("last-known-checkpoint".to_string());
+    let store = RejectingCheckpointStore {
+        file: Mutex::new(file.clone()),
+        attempts: AtomicUsize::new(0),
+    };
+
+    record_resume_failure(&store, "engine unavailable");
+
+    assert_eq!(store.attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(store.load(), file, "a failed save cannot appear persisted");
+}
+
+#[test]
 fn an_import_without_consent_does_not_begin() {
     let dir = legacy();
     let rig = rig(dir.path(), Scripted::new(Mode::Healthy), false);

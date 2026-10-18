@@ -98,3 +98,59 @@ async fn a_failed_run_is_recorded_as_paused_with_its_reason() {
     assert_eq!(state.phase, Phase::Paused);
     assert_eq!(state.error.as_deref(), Some("memory is off: sign in"));
 }
+
+#[cfg(feature = "fs-claim")]
+#[test]
+fn filesystem_claim_normalizes_endpoints_and_preserves_first_winner() {
+    use crate::layout_migration::{FsLegacyClaim, LegacyClaim};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let first = FsLegacyClaim::new(tmp.path(), " HTTP://127.0.0.1:3141/ ", "user:first");
+    let same_endpoint =
+        FsLegacyClaim::new(tmp.path(), "http://127.0.0.1:3141", "user:second");
+    let different_endpoint =
+        FsLegacyClaim::new(tmp.path(), "http://127.0.0.1:3142", "user:second");
+    assert_eq!(first.marker_path(), same_endpoint.marker_path());
+    assert_ne!(first.marker_path(), different_endpoint.marker_path());
+    assert!(!first.held_by_other().unwrap());
+    assert!(first.take().unwrap());
+    assert!(first.take().unwrap(), "the owner can safely take it again");
+    assert!(same_endpoint.held_by_other().unwrap());
+    assert!(!same_endpoint.take().unwrap());
+    assert!(!first.held_by_other().unwrap());
+    assert!(first.marker_path().is_file());
+}
+
+#[cfg(feature = "fs-claim")]
+#[test]
+fn filesystem_claim_race_has_one_winner_and_torn_markers_are_errors() {
+    use crate::layout_migration::{FsLegacyClaim, LegacyClaim};
+    use std::sync::Arc;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let first = Arc::new(FsLegacyClaim::new(
+        tmp.path(),
+        "http://127.0.0.1:3141",
+        "user:a",
+    ));
+    let second = Arc::new(FsLegacyClaim::new(
+        tmp.path(),
+        "http://127.0.0.1:3141",
+        "user:b",
+    ));
+    let a = Arc::clone(&first);
+    let b = Arc::clone(&second);
+    let first_result = std::thread::spawn(move || a.take().unwrap());
+    let second_result = std::thread::spawn(move || b.take().unwrap());
+    let took_first = first_result.join().unwrap();
+    let took_second = second_result.join().unwrap();
+    assert_ne!(took_first, took_second, "hard-link creation has one winner");
+
+    let winner = if took_first { first } else { second };
+    let torn = FsLegacyClaim::new(tmp.path(), "http://127.0.0.1:3142", "user:torn");
+    std::fs::create_dir_all(torn.marker_path().parent().unwrap()).unwrap();
+    std::fs::write(torn.marker_path(), b"{ torn").unwrap();
+    assert!(torn.held_by_other().is_err());
+    assert!(torn.take().is_err());
+    assert!(!winner.held_by_other().unwrap());
+}
