@@ -4,7 +4,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll, Waker};
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -23,15 +23,8 @@ use tinymemory_tools::tools::single::{
 };
 use tinymemory_tools::tools::{MemoryTools, ToolScope};
 
-struct NoopWake;
-
-impl Wake for NoopWake {
-    fn wake(self: Arc<Self>) {}
-}
-
 fn poll_once<F: Future>(mut future: Pin<&mut F>) -> Poll<F::Output> {
-    let waker = Waker::from(Arc::new(NoopWake));
-    let mut context = Context::from_waker(&waker);
+    let mut context = Context::from_waker(Waker::noop());
     future.as_mut().poll(&mut context)
 }
 
@@ -234,20 +227,24 @@ async fn single_reads_use_host_defaults_and_overwrite_model_reach() {
             .await
             .expect("the host replaces a model reach");
     }
-    let recalls = engine.recall_requests.lock().expect("recorded recalls");
-    assert_eq!(recalls.len(), 2);
-    for request in recalls.iter() {
-        assert_eq!(request.mode, tinymemory_api::RecallMode::Evidence);
-        assert!(request.instructions.is_none());
-        assert_eq!(
-            request.limit, 10,
-            "the host's default limit overrides the model"
-        );
-        assert_eq!(request.filter.reach, scope.reach);
-        assert_eq!(request.filter.channel.as_deref(), Some("discord"));
-        assert_eq!(request.filter.language.as_deref(), Some("en"));
+    {
+        let recalls = engine
+            .recall_requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(recalls.len(), 2);
+        for request in recalls.iter() {
+            assert_eq!(request.mode, tinymemory_api::RecallMode::Evidence);
+            assert!(request.instructions.is_none());
+            assert_eq!(
+                request.limit, 10,
+                "the host's default limit overrides the model"
+            );
+            assert_eq!(request.filter.reach, scope.reach);
+            assert_eq!(request.filter.channel.as_deref(), Some("discord"));
+            assert_eq!(request.filter.language.as_deref(), Some("en"));
+        }
     }
-    drop(recalls);
 
     single
         .call(
@@ -260,11 +257,15 @@ async fn single_reads_use_host_defaults_and_overwrite_model_reach() {
         )
         .await
         .expect("fetch uses the first declared engine mode");
-    let fetches = engine.fetch_requests.lock().expect("recorded fetches");
-    assert_eq!(fetches[0].mode, FetchMode::Keyword);
-    assert_eq!(fetches[0].limit, 5);
-    assert_eq!(fetches[0].filter.reach, scope.reach);
-    drop(fetches);
+    {
+        let fetches = engine
+            .fetch_requests
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(fetches[0].mode, FetchMode::Keyword);
+        assert_eq!(fetches[0].limit, 5);
+        assert_eq!(fetches[0].filter.reach, scope.reach);
+    }
 
     let named = MemoryTools::with_scope(engine.clone(), scope);
     let old_fetch = named
@@ -765,7 +766,7 @@ impl MemoryEngine for ControlledRecallEngine {
     ) -> tinymemory_api::Result<tinymemory_api::RecallAnswer> {
         self.recall_requests
             .lock()
-            .expect("recall request recorder")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(request);
         Ok(tinymemory_api::RecallAnswer {
             answer: self.recall_answer.clone(),
@@ -780,7 +781,7 @@ impl MemoryEngine for ControlledRecallEngine {
     ) -> tinymemory_api::Result<tinymemory_api::FetchPage> {
         self.fetch_requests
             .lock()
-            .expect("fetch request recorder")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(request.clone());
         self.inner.fetch(request).await
     }
@@ -992,7 +993,10 @@ struct PendingExecutor(Mutex<bool>);
 #[async_trait]
 impl WriteExecutor for PendingExecutor {
     async fn run(&self, _: &WriteOperation) -> std::result::Result<(), String> {
-        *self.0.lock().expect("executor start state") = true;
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = true;
         futures::future::pending().await
     }
 }
@@ -1003,7 +1007,10 @@ struct RetryExecutor(Mutex<usize>);
 #[async_trait]
 impl WriteExecutor for RetryExecutor {
     async fn run(&self, _: &WriteOperation) -> std::result::Result<(), String> {
-        *self.0.lock().expect("retry executor count") += 1;
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
         Ok(())
     }
 }
