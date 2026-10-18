@@ -1,7 +1,7 @@
 //! Validated memory request shaping shared by hosts and the agent tools.
 //!
-//! [`MemoryOps`] applies the host's [`Confinement`] consistently before a
-//! request reaches an engine. It also owns the common read limits, learning
+//! [`MemoryOps`] applies an optional host [`Confinement`] consistently before
+//! a request reaches an engine. It also owns the common read limits, learning
 //! metadata merge, explorer path rules, and deletion fallback used by hosts.
 //! It has no runtime dependency: asynchronous engine calls use
 //! [`tinymemory_api::MemoryEngine`] directly, and pending deletions are handed
@@ -161,23 +161,49 @@ pub struct LearningOptions {
     pub now: DateTime<Utc>,
 }
 
-/// Host-owned request shaping that applies one confinement policy everywhere.
+/// Host-owned request shaping that applies one confinement policy everywhere
+/// or, when explicitly constructed as unconfined, preserves caller scope.
 #[derive(Debug, Clone)]
 pub struct MemoryOps {
-    confinement: Confinement,
+    confinement: Option<Confinement>,
 }
 
 impl MemoryOps {
     /// Request shaping confined to the host-selected reach.
     #[must_use]
     pub fn new(confinement: Confinement) -> Self {
-        Self { confinement }
+        Self {
+            confinement: Some(confinement),
+        }
     }
 
-    /// The reach and policy this instance applies.
+    /// Request shaping without host-selected namespace confinement.
+    ///
+    /// Caller-supplied reaches and namespaces are preserved. Shared request
+    /// validation, metadata shaping, and limits still apply.
     #[must_use]
-    pub fn confinement(&self) -> &Confinement {
-        &self.confinement
+    pub fn unconfined() -> Self {
+        Self { confinement: None }
+    }
+
+    /// The confinement this instance applies, or `None` when unconfined.
+    #[must_use]
+    pub fn confinement(&self) -> Option<&Confinement> {
+        self.confinement.as_ref()
+    }
+
+    fn filter(&self, filter: Option<MetaFilter>) -> Result<MetaFilter> {
+        match &self.confinement {
+            Some(confinement) => confinement.filter(filter),
+            None => Ok(filter.unwrap_or_default()),
+        }
+    }
+
+    fn reach(&self, reach: Option<Reach>) -> Result<Option<Reach>> {
+        match &self.confinement {
+            Some(confinement) => Ok(Some(confinement.reach(reach)?)),
+            None => Ok(reach),
+        }
     }
 
     /// Builds and validates a confined recall request.
@@ -188,7 +214,7 @@ impl MemoryOps {
     pub fn recall_request(&self, options: RecallOptions) -> Result<RecallRequest> {
         let request = RecallRequest {
             question: options.question,
-            filter: self.confinement.filter(options.filter)?,
+            filter: self.filter(options.filter)?,
             limit: clamp_limit(options.limit),
             instructions: options.instructions,
             refers_to: options.refers_to,
@@ -226,7 +252,7 @@ impl MemoryOps {
         let request = FetchRequest {
             query: options.query,
             mode,
-            filter: self.confinement.filter(options.filter)?,
+            filter: self.filter(options.filter)?,
             limit: clamp_limit(options.limit),
             cursor: options.cursor,
             beliefs: 0,
@@ -247,7 +273,7 @@ impl MemoryOps {
     pub fn list_request(&self, options: ListOptions) -> Result<ListRequest> {
         let filter = narrowed(options.filter, &options.path)?;
         let request = ListRequest {
-            filter: self.confinement.filter(Some(filter))?,
+            filter: self.filter(Some(filter))?,
             limit: clamp_limit(options.limit),
             cursor: options.cursor,
         };
@@ -265,7 +291,7 @@ impl MemoryOps {
         let filter = narrowed(options.filter, &options.path)?;
         let mut request =
             ExploreRequest::new(options.facet, options.limit.unwrap_or(DEFAULT_BUCKETS));
-        request.filter = self.confinement.filter(Some(filter))?;
+        request.filter = self.filter(Some(filter))?;
         if let Some(scan_limit) = options.scan_limit {
             request.scan_limit = scan_limit;
         }
@@ -281,7 +307,7 @@ impl MemoryOps {
     pub fn items_get_request(&self, ids: Vec<ItemId>, reach: Option<Reach>) -> Result<GetRequest> {
         let request = GetRequest {
             ids,
-            reach: Some(self.confinement.reach(reach)?),
+            reach: self.reach(reach)?,
         };
         request.validate()?;
         Ok(request)
@@ -307,9 +333,17 @@ impl MemoryOps {
         if meta.observed_at.is_none() {
             meta.observed_at = Some(options.now);
         }
-        let meta = self
-            .confinement
-            .learn_meta(Some(meta), &options.default_namespace)?;
+        let meta = match &self.confinement {
+            Some(confinement) => {
+                confinement.learn_meta(Some(meta), &options.default_namespace)?
+            }
+            None => {
+                if meta.namespace.is_root() {
+                    meta.namespace = options.default_namespace;
+                }
+                meta
+            }
+        };
         let item = StoreItem::learning(
             options.text.trim(),
             options.kind.unwrap_or(LearningKind::Fact),
@@ -327,7 +361,9 @@ impl MemoryOps {
     ///
     /// Invalid item metadata or a refused namespace.
     pub fn store_item(&self, mut item: StoreItem) -> Result<StoreItem> {
-        self.confinement.item(&mut item)?;
+        if let Some(confinement) = &self.confinement {
+            confinement.item(&mut item)?;
+        }
         item.validate()?;
         Ok(item)
     }
@@ -412,12 +448,20 @@ impl MemoryOps {
                 "forget needs at least one id".to_string(),
             ));
         }
-        let reach = self.confinement.reach(reach)?;
-        let ids = within_reach(engine, ids, reach.clone()).await?;
-        if ids.is_empty() {
-            return Ok(ForgetReport::default());
+        let reach = match &self.confinement {
+            Some(confinement) => Some(confinement.reach(reach)?),
+            None => reach,
+        };
+        match reach {
+            Some(reach) => {
+                let ids = within_reach(engine, ids, reach.clone()).await?;
+                if ids.is_empty() {
+                    return Ok(ForgetReport::default());
+                }
+                engine.forget_within(ids, reach).await
+            }
+            None => engine.forget(ForgetTarget::Ids(ids)).await,
         }
-        engine.forget_within(ids, reach).await
     }
 
     /// Tries a pending deletion, queueing it once when memory is off or the
@@ -571,7 +615,7 @@ impl MemoryOps {
                 ..MetaFilter::default()
             },
         };
-        let filter = self.confinement.filter(Some(filter))?;
+        let filter = self.filter(Some(filter))?;
         Ok(engine.forget(ForgetTarget::Filter(filter)).await?.forgotten)
     }
 }
