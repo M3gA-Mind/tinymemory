@@ -17,7 +17,7 @@ use serde::Serialize;
 use tinymemory_api::{Error, Hit, TimeHint, ToolCallRef};
 
 use super::date_hint::{self, DateHintModel};
-use super::{AgentMemory, Compaction, PostTurn, PreTurn, RecallPolicy, SessionStart};
+use super::{AgentMemory, Compaction, PostTurn, PreTurn, SessionStart};
 use crate::background::BackgroundJob;
 
 /// Opening tag of an injected memory pack.

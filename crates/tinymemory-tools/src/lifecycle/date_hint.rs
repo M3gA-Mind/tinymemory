@@ -1,8 +1,5 @@
 //! Runtime-neutral date hints for turns whose text refers to a calendar date.
 
-use std::future::Future;
-use std::pin::Pin;
-
 use chrono::NaiveDate;
 use futures::future::BoxFuture;
 use tinymemory_api::TimeHint;
@@ -25,9 +22,6 @@ pub trait DateHintModel: Send + Sync {
         zone: String,
     ) -> BoxFuture<'static, Option<String>>;
 }
-
-/// Kept as a public alias for hosts that need to name the owned model future.
-pub type DateHintFuture = Pin<Box<dyn Future<Output = Option<String>> + Send + 'static>>;
 
 /// Parses a model answer into the engine's date-ranking hint.
 ///

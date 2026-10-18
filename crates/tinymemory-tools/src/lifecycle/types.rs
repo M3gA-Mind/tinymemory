@@ -94,6 +94,7 @@ pub struct PreTurn {
     #[serde(default)]
     pub resumed: bool,
     /// The messaging channel that owns this thread, when it came from one.
+    /// Struct-literal callers can use `..PreTurn::new(...)` to keep the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
     /// The first turn of this thread still in the host's prompt; turns from
@@ -162,6 +163,7 @@ pub struct PostTurn {
     /// What the assistant said.
     pub assistant_text: String,
     /// The messaging channel that owns this thread, when it came from one.
+    /// Struct-literal callers can use `..PostTurn::new(...)` to keep the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<String>,
     /// The tool calls the reply made.
