@@ -15,6 +15,7 @@ fn meta() -> MemoryMeta {
         commit: Some("abc".into()),
         url: Some("https://x.test".into()),
         thread_id: Some("t1".into()),
+        channel: Some("telegram".into()),
         turns: Some(TurnRange { first: 0, last: 3 }),
         agent_id: Some("a1".into()),
         tool_call: Some(crate::ToolCallRef {
@@ -30,6 +31,23 @@ fn meta() -> MemoryMeta {
         derive: None,
         observed_actor: None,
     }
+}
+
+#[test]
+fn channel_filters_are_exact_and_leave_other_channels_out() {
+    let filter = MetaFilter {
+        channel: Some("telegram".into()),
+        ..MetaFilter::default()
+    };
+    assert!(filter.matches(ItemKind::Learning, &meta()));
+
+    let mut another = meta();
+    another.channel = Some("discord".into());
+    assert!(!filter.matches(ItemKind::Learning, &another));
+
+    let mut unstamped = meta();
+    unstamped.channel = None;
+    assert!(!filter.matches(ItemKind::Learning, &unstamped));
 }
 
 #[test]

@@ -59,7 +59,9 @@ impl Scripted {
         match self.mode.lock().unwrap().clone() {
             Mode::Healthy => Ok(()),
             Mode::Unavailable => Err(Error::Unavailable("engine down".into())),
-            Mode::Credits => Err(Error::Engine("[USER_INSUFFICIENT_CREDITS] top up".into())),
+            Mode::Credits => Err(Error::InsufficientCredits(
+                "[USER_INSUFFICIENT_CREDITS] top up".into(),
+            )),
             Mode::Refuse(ids) => {
                 let bad = items
                     .iter()

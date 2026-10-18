@@ -21,6 +21,9 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
   partition's `ListStore`, maps its own owner and storage keys, and runs the
   engine executor. New owner epochs use a UUID so a recreated gate cannot
   mistake an older persisted fence epoch for its own.
+- **`ops`**: validated host request builders, explorer paths, common read
+  limits, learning metadata shaping and deletion helpers. `MemoryOps` applies
+  a concrete `Confinement` policy before a request reaches an engine.
 
 The crate has no tool-runtime dependency (no MCP, no `tinytools`). A host
 adapts `ToolSpec` to whatever runtime it uses; see
@@ -41,7 +44,8 @@ written up in [`docs/architecture/tools.md`](../../docs/architecture/tools.md).
 
 Details:
 
-- `limit` is `1..=50`, default `10`. `ids` lists `1..=200` ids.
+- `limit` is `1..=100`, default `10`, across recall, fetch and list. Explore
+  defaults to `50` buckets and accepts `1..=500`. `ids` lists `1..=200` ids.
 - `memory_fetch`'s `mode` enum lists exactly the engine's
   `EngineDescriptor::fetch_modes`; with no mode named, `hybrid` is used when
   served, otherwise the engine's first mode. An engine serving no mode gets no
@@ -215,6 +219,20 @@ trimmed first, then the last brief. A failing brief is skipped and logged, and
 an empty engine yields an empty document. `ContextSpec::reach` confines the
 brief to one agent's part of the tree. Details:
 [`docs/architecture/tools.md`](../../docs/architecture/tools.md#contextmd).
+
+## Memory identity and layout
+
+Hosts adapt their configuration into `IdentityPins` and resolve the acting
+`Identity` for each operation. Resolution preserves the documented precedence:
+host-wide pins, a definition pin, the agent's team, then the default root and
+agent id. With `IdentityPins::v3`, conversations are pooled at `ws:main` below
+the resolved root.
+
+`MemoryLayout::with_pooled_conversations` accepts an **absolute** namespace
+inside the layout root, such as `team:acme/ws:main`; it does not append the
+root. `pooled_conversations_node()` returns the same absolute namespace for
+host migration placement. Callers upgrading from the previous relative-node
+contract must include the layout root when constructing the node.
 
 ## Layout
 
