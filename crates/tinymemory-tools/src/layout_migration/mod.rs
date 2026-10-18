@@ -25,6 +25,8 @@
 pub mod cleanup;
 pub mod copy;
 pub mod error;
+#[cfg(feature = "fs-claim")]
+mod fs_claim;
 pub mod job;
 pub mod map;
 pub mod service;
@@ -36,6 +38,8 @@ pub(crate) mod test_host;
 pub use cleanup::cleanup;
 pub use copy::{Engines, PAGE, copy, legacy_present};
 pub use error::{Error, Result};
+#[cfg(feature = "fs-claim")]
+pub use fs_claim::FsLegacyClaim;
 pub use job::{LayoutHost, LegacyClaim, Outcome, Trigger, run};
 pub use map::{
     FLOWS_TAG, FlowPlacement, Placement, brain_node_with, file_into, files_source,
