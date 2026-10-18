@@ -110,8 +110,8 @@ pub use recall::{
 };
 pub use tools::budget::{Clock as BudgetClock, DenialReason, Refusal, RunBudget};
 pub use tools::single::{
-    CallContext, ConcurrencyClass, PendingWriteSink, PermissionClass, SingleTool, SingleToolSpec,
-    WriteSink,
+    CallContext, ConcurrencyClass, PendingWriteSink, PermissionClass, RecallDetails, SingleTool,
+    SingleToolOutcome, SingleToolSpec, WriteSink, concurrency_for, is_write_action, permission_for,
 };
 pub use tools::{
     MEMORY_EXPLORE, MEMORY_FETCH, MEMORY_FORGET, MEMORY_GET, MEMORY_LIST, MEMORY_RECALL,
