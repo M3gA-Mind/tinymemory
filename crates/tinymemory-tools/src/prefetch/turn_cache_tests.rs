@@ -90,6 +90,38 @@ async fn completed_turns_add_the_notice_once_and_preserve_delivery_fields() {
     assert_eq!(second.tokens, first.tokens, "notice tokens are counted once");
 }
 
+#[tokio::test]
+async fn turn_cache_admits_a_boundary_pack_and_rejects_an_oversized_citation_pack() {
+    let pool = WorkerPool::new(1);
+    let cache = cache::<&'static str>().with_workers(pool.clone());
+    assert!(cache.completed(&"thread").is_none(), "a cold cache is empty");
+
+    let mut citation_heavy = pack("small rendered text");
+    citation_heavy.citations = vec![hit(&"c".repeat(MAX_PACK_BYTES))];
+    cache.enqueue(
+        "thread",
+        Box::pin(async move { Some(citation_heavy) }),
+    );
+    wait_for_workers(&pool, 1).await;
+    assert!(
+        cache.completed(&"thread").is_none(),
+        "an oversized citation body is not admitted to the cache"
+    );
+
+    let empty_size = encoded_size(&pack(""));
+    let boundary = pack(&"x".repeat(MAX_PACK_BYTES - empty_size));
+    assert_eq!(encoded_size(&boundary), MAX_PACK_BYTES);
+    cache.enqueue(
+        "thread",
+        Box::pin(async move { Some(boundary) }),
+    );
+    wait_for_workers(&pool, 1).await;
+    assert!(
+        cache.completed(&"thread").is_some(),
+        "a pack at the byte limit is admitted"
+    );
+}
+
 #[test]
 fn pack_admission_accepts_exactly_sixty_four_kib_and_counts_skipped_citations() {
     let empty = pack("");
@@ -123,15 +155,18 @@ async fn registry_invalidates_matching_keys_across_live_caches() {
 
     first.enqueue("drop", Box::pin(async { Some(pack("first drop")) }));
     first.enqueue("keep", Box::pin(async { Some(pack("first keep")) }));
+    second.enqueue("drop", Box::pin(async { Some(pack("second drop")) }));
     second.enqueue("keep", Box::pin(async { Some(pack("second keep")) }));
     wait_for_workers(&pool, 4).await;
     assert!(first.completed(&"drop").is_some());
     assert!(first.completed(&"keep").is_some());
+    assert!(second.completed(&"drop").is_some());
     assert!(second.completed(&"keep").is_some());
 
     registry.invalidate_where(|key| *key == "drop");
     assert!(first.completed(&"drop").is_none());
     assert!(first.completed(&"keep").is_some());
+    assert!(second.completed(&"drop").is_none());
     assert!(second.completed(&"keep").is_some());
 
     registry.invalidate_all();
@@ -190,9 +225,13 @@ async fn registry_does_not_hold_its_lock_while_matching_cache_keys() {
     registry.register(&first);
     first.enqueue("invalidate", Box::pin(async { Some(pack("old")) }));
     late.enqueue("invalidate", Box::pin(async { Some(pack("new")) }));
-    wait_for_workers(&pool, 0).await;
+    wait_for_workers(&pool, 2).await;
 
     registry.invalidate_where(|key| {
+        assert!(
+            registry.caches.try_lock().is_ok(),
+            "the registry lock is released before evaluating a predicate"
+        );
         registry.register(&late);
         *key == "invalidate"
     });
