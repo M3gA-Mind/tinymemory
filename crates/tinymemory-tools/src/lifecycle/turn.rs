@@ -257,7 +257,11 @@ impl TurnHooks {
                 return None;
             }
             if options.logging && !options.recall {
-                memory = memory.clone().with_policy(memory.policy().log_only());
+                memory = memory
+                    .clone()
+                    .with_policy(memory.policy().log_only())
+                    .with_core(Vec::new())
+                    .ok()?;
             }
 
             let pack = if options.logging {
@@ -296,7 +300,11 @@ impl TurnHooks {
                 } else {
                     memory.pre_turn(turn).await.ok()?
                 };
-                TurnPack::from_context(context.pack, options.recall)
+                if options.recall {
+                    TurnPack::from_context(context.pack, true)
+                } else {
+                    None
+                }
             } else if options.recall {
                 let pack = if turn.resumed {
                     memory

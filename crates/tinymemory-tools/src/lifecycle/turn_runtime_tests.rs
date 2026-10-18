@@ -1145,6 +1145,10 @@ async fn citations_are_built_from_pack_refs_and_delivered_only_explicitly() {
             .iter()
             .all(|hit| pack.refs.contains(&hit.id.to_string()))
     );
+    assert!(serde_json::to_value(&pack)
+        .unwrap()
+        .get("citations")
+        .is_none());
     assert_eq!(fixture.citations.calls.load(Ordering::SeqCst), 0);
 
     fixture.hooks.deliver_citations(&pack);

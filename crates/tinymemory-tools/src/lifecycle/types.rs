@@ -47,7 +47,9 @@ impl Default for RecallPolicy {
 }
 
 impl RecallPolicy {
-    /// Keeps conversation logging enabled while omitting every recall section.
+    /// Keeps conversation logging enabled while omitting every policy-owned
+    /// recall section. A host that configured extra [`crate::CoreScope`]s
+    /// must clear those separately with [`crate::AgentMemory::with_core`].
     ///
     /// The budget and belief-build cadence stay configured; only retrieval
     /// limits are cleared.
