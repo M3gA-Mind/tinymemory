@@ -1737,6 +1737,7 @@ dependencies = [
  "thiserror",
  "tinymemory-api",
  "tokio",
+ "toml",
  "url",
  "uuid",
 ]
