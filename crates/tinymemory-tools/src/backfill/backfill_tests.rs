@@ -1,5 +1,6 @@
 use super::*;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tinymemory_api::conformance::ReferenceEngine;
 
@@ -181,6 +182,8 @@ struct TestListingEngine {
     inner: ReferenceEngine,
     fail: Option<tinymemory_api::Error>,
     waits: Arc<Mutex<Vec<tinymemory_api::WaitFor>>>,
+    fail_store_on: Option<usize>,
+    store_calls: AtomicUsize,
 }
 
 #[async_trait::async_trait]
@@ -220,6 +223,12 @@ impl MemoryEngine for TestListingEngine {
         options: tinymemory_api::WriteOptions,
     ) -> tinymemory_api::Result<Vec<tinymemory_api::StoreReceipt>> {
         self.waits.lock().unwrap().push(options.wait);
+        let call = self.store_calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if self.fail_store_on == Some(call) {
+            return Err(tinymemory_api::Error::Unavailable(
+                "scripted backfill store failure".to_string(),
+            ));
+        }
         self.inner.store_many_with(items, options).await
     }
 
