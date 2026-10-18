@@ -123,6 +123,19 @@ fn fingerprints_ignore_who_an_item_is_attributed_to() {
 }
 
 #[test]
+fn conversation_channel_is_metadata_not_turn_identity() {
+    let untagged = conversation(&["hello"]);
+    let mut tagged = untagged.clone();
+    tagged.meta_mut().channel = Some("telegram".into());
+    assert_eq!(untagged.fingerprint(), tagged.fingerprint());
+
+    let untagged_document = StoreItem::document("hello", MemoryMeta::default());
+    let mut tagged_document = untagged_document.clone();
+    tagged_document.meta_mut().channel = Some("telegram".into());
+    assert_ne!(untagged_document.fingerprint(), tagged_document.fingerprint());
+}
+
+#[test]
 fn retried_learning_ignores_the_provider_tool_call_id() {
     let mut first = StoreItem::learning(
         "Prefers tea",
