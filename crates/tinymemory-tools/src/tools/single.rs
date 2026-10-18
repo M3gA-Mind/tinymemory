@@ -13,15 +13,15 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use tinymemory_api::{
-    Error, FetchMode, FetchPage, LearningKind, MemoryMeta, MetaFilter, Namespace, Reach,
-    RecallMode, SourceKind, SourceRef, StoreItem, ThreadWindow, ToolCallRef,
+    Error, FetchMode, LearningKind, MemoryMeta, MetaFilter, Namespace, Reach, RecallMode,
+    SourceKind, SourceRef, StoreItem, ThreadWindow, ToolCallRef,
 };
 
 use crate::confine::{Confinement, Policy};
 use crate::list_store::ListStore;
 use crate::ops::{LearningOptions, MemoryOps};
 use crate::pending::{Ack, Binding, Entry, PendingError, PendingWrites, WriteGate, WriteOperation};
-use crate::tools::args::Args;
+use crate::tools::args::{self, Args};
 use crate::tools::spec::schema::{DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS};
 use crate::tools::{MemoryTools, ToolScope};
 
@@ -221,9 +221,9 @@ impl SingleTool {
     /// Invalid actions or arguments, reads rejected by the engine, writes
     /// rejected by the queue, and writes without an installed sink.
     pub async fn call(&self, args: Value, context: CallContext) -> tinymemory_api::Result<Value> {
-        let action = action(&args).ok_or_else(|| Args::invalid(TOOL_NAME, "action is required"))?;
+        let action = action(&args).ok_or_else(|| args::invalid(TOOL_NAME, "action is required"))?;
         if !ACTIONS.contains(&action) {
-            return Err(Args::invalid(
+            return Err(args::invalid(
                 TOOL_NAME,
                 &format!("unknown action {action}; use recall, fetch, learn or forget"),
             ));
@@ -238,7 +238,7 @@ impl SingleTool {
             "fetch" => self.fetch(&args, &context).await,
             "learn" => self.learn(&args),
             "forget" => self.forget(&args),
-            _ => Err(Args::invalid(TOOL_NAME, "unknown action")),
+            _ => Err(args::invalid(TOOL_NAME, "unknown action")),
         }
     }
 
@@ -420,7 +420,7 @@ fn action(value: &Value) -> Option<&str> {
 
 fn action_args(value: &Value, drop_meta: bool) -> tinymemory_api::Result<Value> {
     let Value::Object(mut object) = value.clone() else {
-        return Err(Args::invalid(TOOL_NAME, "arguments must be a json object"));
+        return Err(args::invalid(TOOL_NAME, "arguments must be a json object"));
     };
     object.remove("action");
     if drop_meta {
@@ -437,7 +437,7 @@ fn take_filter(value: &mut Value) -> tinymemory_api::Result<Option<MetaFilter>> 
     filter
         .map(|filter| {
             serde_json::from_value(filter)
-                .map_err(|_| Args::invalid(TOOL_NAME, "filter has an invalid shape"))
+                .map_err(|_| args::invalid(TOOL_NAME, "filter has an invalid shape"))
         })
         .transpose()
 }
