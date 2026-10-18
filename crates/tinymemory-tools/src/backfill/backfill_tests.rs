@@ -370,12 +370,12 @@ async fn a_user_only_turn_is_complete_when_its_expected_user_item_is_visible() {
 async fn stale_running_backfill_reports_interrupted_without_a_live_slot() {
     let engine: Arc<dyn MemoryEngine> = Arc::new(ReferenceEngine::new());
     let mut file = BackfillFile::default();
-    file.state.phase = ImportPhase::Running;
+    file.state.phase = BackfillPhase::Running;
     let store = Arc::new(TestCounterStore(Mutex::new(file)));
     let backfiller = backfiller(engine.clone(), TestThreadSource::default(), store.clone());
 
     let stopped = backfiller.status(false).await.unwrap();
-    assert_eq!(stopped.state.phase, ImportPhase::Error);
+    assert_eq!(stopped.state.phase, BackfillPhase::Error);
     assert!(
         stopped
             .state
@@ -386,7 +386,7 @@ async fn stale_running_backfill_reports_interrupted_without_a_live_slot() {
     );
 
     let live = backfiller.status(true).await.unwrap();
-    assert_eq!(live.state.phase, ImportPhase::Running);
+    assert_eq!(live.state.phase, BackfillPhase::Running);
 }
 
 #[tokio::test]
@@ -540,7 +540,7 @@ async fn backfiller_waits_for_accepted_batches_then_the_last_batch_to_be_visible
 
     let state = backfiller.run(run).await;
 
-    assert_eq!(state.phase, ImportPhase::Done);
+    assert_eq!(state.phase, BackfillPhase::Done);
     assert_eq!(state.turns_stored, 26);
     assert_eq!(state.items_stored, 52);
     assert_eq!(
