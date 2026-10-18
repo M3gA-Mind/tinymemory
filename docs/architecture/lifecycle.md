@@ -91,7 +91,8 @@ resumed-thread context part of `AgentMemory::pre_turn`. The legacy
 `pre_turn_resumed` helper still forces `true`; `pre_turn_dated` keeps its
 explicit `resumed` argument as the override. When recall is disabled but turn
 logging remains enabled, `RecallPolicy::log_only` clears read limits while
-preserving the configured budget and build cadence.
+preserving the configured budget and build cadence; `TurnHooks` also clears
+host-added core scopes so recall-off turns perform no memory reads.
 
 Channel hosts may set `PreTurn::channel` and `PostTurn::channel`. Both user
 and assistant conversation items then carry the same `MemoryMeta::channel`;

@@ -17,8 +17,8 @@ use futures::future::{BoxFuture, poll_fn};
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     EngineDescriptor, EngineHealth, Error, FetchPage, FetchRequest, ForgetReport, ForgetTarget,
-    Hit, ItemKind, LearningKind, ListPage, ListRequest, MemoryEngine, MemoryMeta, MetaFilter,
-    Namespace, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt, Turn,
+    Hit, ItemId, ItemKind, LearningKind, ListPage, ListRequest, MemoryEngine, MemoryMeta,
+    MetaFilter, Namespace, RecallAnswer, RecallRequest, Result, StoreItem, StoreReceipt, Turn,
 };
 
 use super::date_hint::DateHintModel;
@@ -472,6 +472,23 @@ async fn channel_turn_metadata_is_stamped_on_both_roles_and_retries_keep_identit
         rows.iter()
             .all(|row| row.meta.channel.as_deref() == Some("telegram"))
     );
+
+    let untagged_ids = channel_turn_ids(None).await;
+    let tagged_ids = channel_turn_ids(Some("telegram")).await;
+    assert_eq!(untagged_ids, tagged_ids);
+}
+
+async fn channel_turn_ids(channel: Option<&str>) -> (ItemId, ItemId) {
+    let engine = Arc::new(ReferenceEngine::new());
+    let memory = memory(engine);
+    let mut user = PreTurn::new("stable-thread", 4, "same user turn");
+    user.channel = channel.map(str::to_string);
+    let user_id = memory.pre_turn(user).await.unwrap().logged.unwrap().id;
+
+    let mut reply = PostTurn::new("stable-thread", 5, "same assistant turn");
+    reply.channel = channel.map(str::to_string);
+    let reply_id = memory.post_turn(reply).await.unwrap().receipt.id;
+    (user_id, reply_id)
 }
 
 #[tokio::test]

@@ -6,7 +6,7 @@ use tinymemory_api::{TimeHint, ToolCallRef, chrono::NaiveDate};
 use super::date_hint::parse_range;
 use super::turn::{LoggedToolCall, MAX_TOOL_LINE_CHARS, logged_reply, user_turn_index};
 use super::window::InPromptFrom;
-use super::{PreTurn, RecallPolicy};
+use super::{PostTurn, PreTurn, RecallPolicy};
 
 #[test]
 fn resumed_defaults_false_for_existing_serialized_turns() {
@@ -26,6 +26,27 @@ fn resumed_defaults_false_for_existing_serialized_turns() {
     }))
     .unwrap();
     assert!(resumed.resumed);
+}
+
+#[test]
+fn channel_defaults_preserve_existing_turn_requests() {
+    assert_eq!(PreTurn::new("thread", 0, "hello").channel, None);
+    assert_eq!(PostTurn::new("thread", 1, "hello").channel, None);
+
+    let old_pre: PreTurn = serde_json::from_value(json!({
+        "thread_id": "thread",
+        "turn_index": 0,
+        "user_text": "hello"
+    }))
+    .unwrap();
+    let old_post: PostTurn = serde_json::from_value(json!({
+        "thread_id": "thread",
+        "turn_index": 1,
+        "assistant_text": "hello"
+    }))
+    .unwrap();
+    assert_eq!(old_pre.channel, None);
+    assert_eq!(old_post.channel, None);
 }
 
 #[test]
