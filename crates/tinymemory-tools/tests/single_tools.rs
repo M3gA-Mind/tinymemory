@@ -3,6 +3,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
@@ -16,10 +17,10 @@ use tinymemory_api::{
 };
 use tinymemory_tools::list_store::{ListStore, MemoryListStore, StoreError};
 use tinymemory_tools::pending::{
-    Binding, Entry, Limits, PendingWrites, WriteExecutor, WriteGate, WriteOperation,
+    Ack, Binding, Entry, Limits, PendingWrites, WriteExecutor, WriteGate, WriteOperation,
 };
 use tinymemory_tools::tools::single::{
-    CallContext, ConcurrencyClass, PendingWriteSink, PermissionClass, SingleTool,
+    CallContext, ConcurrencyClass, PendingWriteSink, PermissionClass, SingleTool, WriteSink,
 };
 use tinymemory_tools::tools::{MemoryTools, ToolScope};
 
@@ -481,6 +482,91 @@ async fn readonly_scope_and_missing_sink_never_fall_back_to_engine_writes() {
             .is_err()
     );
     assert!(engine.is_empty());
+}
+
+#[tokio::test]
+async fn write_sink_preflight_and_policy_errors_preserve_host_error_types() {
+    let queue = queue(8);
+    let sink = Arc::new(PolicySink::new(
+        queue.clone(),
+        Some(Error::Off("memory is disabled".into())),
+        None,
+        false,
+    ));
+    let tool = SingleTool::new(
+        "memory",
+        MemoryTools::with_scope(Arc::new(ReferenceEngine::new()), scope()),
+    )
+    .with_write_sink(sink.clone());
+
+    tool.call(
+        json!({ "action": "recall", "question": "tea" }),
+        CallContext::default(),
+    )
+    .await
+    .expect("read calls do not run write preflight");
+    assert_eq!(sink.preflight_calls.load(Ordering::SeqCst), 0);
+
+    for malformed_write in [
+        json!({ "action": "learn" }),
+        json!({ "action": "forget", "ids": [] }),
+    ] {
+        assert_eq!(
+            tool.call(malformed_write, CallContext::default()).await,
+            Err(Error::Off("memory is disabled".into())),
+            "preflight keeps the host's error precedence for known writes"
+        );
+    }
+    assert_eq!(sink.preflight_calls.load(Ordering::SeqCst), 2);
+    assert!(queue.entries().expect("disabled queue stays empty").is_empty());
+
+    let policy_queue = queue(8);
+    let policy_sink = Arc::new(PolicySink::new(
+        policy_queue.clone(),
+        None,
+        Some(Error::InvalidRequest("host policy rejected write".into())),
+        false,
+    ));
+    let policy_tool = SingleTool::new(
+        "memory",
+        MemoryTools::with_scope(Arc::new(ReferenceEngine::new()), scope()),
+    )
+    .with_write_sink(policy_sink.clone());
+    assert_eq!(
+        policy_tool
+            .call(
+                json!({ "action": "learn", "text": "a valid learning" }),
+                CallContext::default(),
+            )
+            .await,
+        Err(Error::InvalidRequest("host policy rejected write".into()))
+    );
+    assert_eq!(policy_sink.preflight_calls.load(Ordering::SeqCst), 1);
+    assert!(policy_queue
+        .entries()
+        .expect("policy rejection happens before queueing")
+        .is_empty());
+
+    let scrubbed_queue = queue(8);
+    let scrubber = Arc::new(PolicySink::new(scrubbed_queue.clone(), None, None, true));
+    let scrubbed_tool = SingleTool::new(
+        "memory",
+        MemoryTools::with_scope(Arc::new(ReferenceEngine::new()), scope()),
+    )
+    .with_write_sink(scrubber);
+    let ack = scrubbed_tool
+        .call(
+            json!({ "action": "learn", "text": "secret token" }),
+            CallContext::default(),
+        )
+        .await
+        .expect("the policy wrapper delegates the scrubbed operation");
+    let entries = scrubbed_queue.entries().expect("scrubbed write queued");
+    let WriteOperation::Learn { item } = &entries[0].operation else {
+        panic!("learn action must queue a learning operation")
+    };
+    assert_eq!(item.as_learning_text(), Some("redacted token"));
+    assert_eq!(ack["id"], item.fingerprint());
 }
 
 #[tokio::test]
