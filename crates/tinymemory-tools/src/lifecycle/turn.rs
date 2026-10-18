@@ -128,6 +128,18 @@ pub struct TurnPack {
 }
 
 impl TurnPack {
+    fn from_outcome(
+        outcome: tinymemory_api::Result<super::super::recall::ContextPack>,
+        allow_refusal: bool,
+        engine: String,
+    ) -> Option<Self> {
+        match outcome {
+            Ok(pack) => Self::from_context(pack, allow_refusal),
+            Err(error) if allow_refusal => Self::refused(&error, engine),
+            Err(_) => None,
+        }
+    }
+
     fn from_context(pack: super::super::recall::ContextPack, allow_refusal: bool) -> Option<Self> {
         if pack.is_empty() {
             let error = allow_refusal
@@ -138,33 +150,13 @@ impl TurnPack {
                             super::super::recall::SkipReason::Engine(error)
                                 if error.is_account_wide() =>
                             {
-                                Some(error)
+                                Some((*error).clone())
                             }
                             _ => None,
                         })
                 })
                 .flatten()?;
-            let why = match error {
-                Error::Off(_) => "memory is disabled or no engine is configured",
-                Error::Unauthorized(_) => "the memory engine rejected the sign-in or API key",
-                Error::InsufficientCredits(_) => {
-                    "the account is out of credits; topping up restores it"
-                }
-                Error::Unavailable(_) => "the memory engine could not be reached",
-                _ => return None,
-            };
-            let markdown = format!(
-                "# Memory\n\nMemory could not be read for this turn: {why}. Nothing was recalled, which does not mean nothing is stored. If the user refers to something they told you before, say that memory is unavailable right now and why, instead of saying you do not know it."
-            );
-            let refusal = error.code();
-            return Some(Self {
-                tokens: crate::recall::estimate_tokens(&markdown),
-                markdown,
-                refs: Vec::new(),
-                engine: pack.engine,
-                citations: Vec::new(),
-                refusal: Some(refusal),
-            });
+            return Self::refused(&error, pack.engine);
         }
 
         let citations = pack
@@ -182,6 +174,32 @@ impl TurnPack {
             engine: pack.engine,
             citations,
             refusal: None,
+        })
+    }
+
+    fn refused(error: &Error, engine: String) -> Option<Self> {
+        if !error.is_account_wide() {
+            return None;
+        }
+        let why = match error {
+            Error::Off(_) => "memory is disabled or no engine is configured",
+            Error::Unauthorized(_) => "the memory engine rejected the sign-in or API key",
+            Error::InsufficientCredits(_) => {
+                "the account is out of credits; topping up restores it"
+            }
+            Error::Unavailable(_) => "the memory engine could not be reached",
+            _ => return None,
+        };
+        let markdown = format!(
+            "# Memory\n\nMemory could not be read for this turn: {why}. Nothing was recalled, which does not mean nothing is stored. If the user refers to something they told you before, say that memory is unavailable right now and why, instead of saying you do not know it."
+        );
+        Some(Self {
+            tokens: crate::recall::estimate_tokens(&markdown),
+            markdown,
+            refs: Vec::new(),
+            engine,
+            citations: Vec::new(),
+            refusal: Some(error.code()),
         })
     }
 
@@ -264,6 +282,7 @@ impl TurnHooks {
                     .with_core(Vec::new())
                     .ok()?;
             }
+            let engine_id = memory.engine().descriptor().id.to_string();
 
             let pack = if options.logging {
                 let hint = if options.recall && options.date_hint {
@@ -293,32 +312,31 @@ impl TurnHooks {
                     None
                 };
 
-                let context = if let Some(hint) = hint {
+                let outcome = if let Some(hint) = hint {
                     memory
                         .pre_turn_dated(turn.clone(), turn.resumed, hint)
                         .await
-                        .ok()?
+                        .map(|context| context.pack)
                 } else {
-                    memory.pre_turn(turn).await.ok()?
+                    memory.pre_turn(turn).await.map(|context| context.pack)
                 };
                 if options.recall {
-                    TurnPack::from_context(context.pack, true)
+                    TurnPack::from_outcome(outcome, true, engine_id)
                 } else {
                     None
                 }
             } else if options.recall {
-                let pack = if turn.resumed {
+                let outcome = if turn.resumed {
                     memory
                         .start_session(SessionStart {
                             thread_id: Some(turn.thread_id),
                             focus: Some(turn.user_text),
                         })
                         .await
-                        .ok()?
                 } else {
-                    memory.recall(&turn.user_text).await.ok()?
+                    memory.recall(&turn.user_text).await
                 };
-                TurnPack::from_context(pack, true)
+                TurnPack::from_outcome(outcome, true, engine_id)
             } else {
                 None
             };
@@ -385,8 +403,9 @@ impl TurnHooks {
             if clock.now() >= deadline {
                 return None;
             }
-            let pack = memory.recall_for_compaction(request).await.ok()?;
-            let pack = TurnPack::from_context(pack, false);
+            let engine_id = memory.engine().descriptor().id.to_string();
+            let outcome = memory.recall_for_compaction(request).await;
+            let pack = TurnPack::from_outcome(outcome, false, engine_id);
             (clock.now() < deadline).then_some(pack).flatten()
         };
         match select(Box::pin(operation), self.clock.sleep_until(deadline)).await {
@@ -436,30 +455,5 @@ pub fn logged_reply(text: &str, calls: &[LoggedToolCall]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_direct_account_wide_error_uses_the_same_refusal_notice() {
-        let pack = TurnPack::from_outcome(
-            Err(Error::Unavailable("private transport detail".into())),
-            true,
-            "test-engine",
-        )
-        .expect("account-wide direct errors should create a refusal notice");
-        assert_eq!(pack.refusal, Some("UNAVAILABLE"));
-        assert_eq!(pack.engine, "test-engine");
-        assert!(pack.markdown.contains("could not be reached"));
-        assert!(!pack.markdown.contains("private transport detail"));
-    }
-
-    #[test]
-    fn a_direct_non_account_wide_error_degrades_to_no_pack() {
-        assert!(TurnPack::from_outcome(
-            Err(Error::Engine("private engine detail".into())),
-            true,
-            "test-engine",
-        )
-        .is_none());
-    }
-}
+#[path = "turn_pack_tests.rs"]
+mod tests;

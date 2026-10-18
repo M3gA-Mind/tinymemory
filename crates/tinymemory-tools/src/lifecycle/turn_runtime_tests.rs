@@ -365,14 +365,10 @@ async fn recall_off_does_not_read_positive_core_scopes() {
         ))
         .await
         .unwrap();
-    let memory = AgentMemory::new(
-        engine.clone(),
-        MemoryLayout::new(root).unwrap(),
-        "agent",
-    )
-    .unwrap()
-    .with_core(vec![CoreScope::new(company, "Company")])
-    .unwrap();
+    let memory = AgentMemory::new(engine.clone(), MemoryLayout::new(root).unwrap(), "agent")
+        .unwrap()
+        .with_core(vec![CoreScope::new(company, "Company")])
+        .unwrap();
     let fixture = fixture_with_memory_and_advance(
         FakeClock::at(Duration::ZERO),
         false,
@@ -381,14 +377,16 @@ async fn recall_off_does_not_read_positive_core_scopes() {
         Duration::ZERO,
     );
 
-    assert!(fixture
-        .hooks
-        .pre_turn(
-            PreTurn::new("thread", 0, "when are renewals?"),
-            options(true, false),
-        )
-        .await
-        .is_none());
+    assert!(
+        fixture
+            .hooks
+            .pre_turn(
+                PreTurn::new("thread", 0, "when are renewals?"),
+                options(true, false),
+            )
+            .await
+            .is_none()
+    );
     assert_eq!(engine.reads.load(Ordering::SeqCst), 0);
 }
 
@@ -1145,10 +1143,12 @@ async fn citations_are_built_from_pack_refs_and_delivered_only_explicitly() {
             .iter()
             .all(|hit| pack.refs.contains(&hit.id.to_string()))
     );
-    assert!(serde_json::to_value(&pack)
-        .unwrap()
-        .get("citations")
-        .is_none());
+    assert!(
+        serde_json::to_value(&pack)
+            .unwrap()
+            .get("citations")
+            .is_none()
+    );
     assert_eq!(fixture.citations.calls.load(Ordering::SeqCst), 0);
 
     fixture.hooks.deliver_citations(&pack);
