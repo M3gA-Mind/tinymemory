@@ -23,15 +23,13 @@ use crate::ops::{LearningOptions, MemoryOps};
 use crate::pending::{Ack, Binding, Entry, PendingError, PendingWrites, WriteGate, WriteOperation};
 use crate::tools::args::Args;
 use crate::tools::spec::schema::{
-    DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS, MAX_IDS, MAX_LIMIT,
+    DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS, MAX_IDS,
 };
 use crate::tools::{MemoryTools, ToolScope};
 
 const TOOL_NAME: &str = "memory";
 const ACTIONS: [&str; 4] = ["recall", "fetch", "learn", "forget"];
 const FETCH_TOP: usize = 5;
-const EVIDENCE_TOKENS: usize = 2_500;
-const PARTLY_SEARCHED: &str = "\n\n(Memory was only partly searched";
 const LEARN_QUEUED: &str = "queued; not yet saved to memory";
 const FORGET_QUEUED: &str = "queued; not yet removed from memory";
 
@@ -253,7 +251,7 @@ impl SingleTool {
             &self.tools.scope,
             &value,
             RecallMode::Evidence,
-            Some(MAX_LIMIT),
+            None,
             calling_thread(&self.tools.scope, context),
         )
         .await?;
@@ -261,7 +259,7 @@ impl SingleTool {
             json!({ "evidence": "", "note": "Nothing relevant is stored in memory." })
         } else {
             json!({
-                "evidence": capped_evidence(&answer.answer),
+                "evidence": super::render::capped_evidence(&answer.answer),
                 "items": answer.citations.len()
             })
         })
@@ -278,7 +276,7 @@ impl SingleTool {
         )
         .await?;
         let mut result = json!({
-            "matches": fetch_matches(&page),
+            "matches": super::render::fetch_page_text(&page),
             "items": page.hits.len()
         });
         if let Some(cursor) = page.next_cursor {
@@ -336,15 +334,7 @@ impl SingleTool {
     }
 
     fn learning_item(&self, value: &Value) -> tinymemory_api::Result<StoreItem> {
-        let mut value = action_args(value, true)?;
-        let supplied_meta = value
-            .as_object_mut()
-            .and_then(|object| object.remove("meta"))
-            .filter(|meta| !meta.is_null());
-        if let Some(meta) = supplied_meta {
-            serde_json::from_value::<MemoryMeta>(meta)
-                .map_err(|_| Args::invalid(TOOL_NAME, "meta must be an object"))?;
-        }
+        let value = action_args(value, true)?;
         let args = Args::parse(
             TOOL_NAME,
             &value,
@@ -422,6 +412,9 @@ fn action_args(value: &Value, drop_meta: bool) -> tinymemory_api::Result<Value> 
     if drop_meta {
         object.remove("meta");
     }
+    if let Some(Value::Object(filter)) = object.get_mut("filter") {
+        filter.remove("reach");
+    }
     Ok(Value::Object(object))
 }
 
@@ -452,84 +445,6 @@ fn calling_thread(scope: &ToolScope, context: &CallContext) -> Option<ThreadWind
             .cloned()
             .unwrap_or_else(|| ThreadWindow::whole(thread_id)),
     )
-}
-
-fn fetch_matches(page: &FetchPage) -> String {
-    let mut output = match page.hits.len() {
-        0 => "Nothing in memory matches.".to_string(),
-        1 => "1 match.".to_string(),
-        count => format!("Top {count} matches, best first."),
-    };
-    for hit in &page.hits {
-        output.push_str("\n\n");
-        if let Some(at) = hit.meta.observed_at {
-            output.push_str(&format!("[{}] ", at.format("%Y-%m-%d %H:%M UTC")));
-        }
-        match hit.kind {
-            tinymemory_api::ItemKind::Learning => output.push_str("learning: "),
-            tinymemory_api::ItemKind::Document => output.push_str("document: "),
-            tinymemory_api::ItemKind::Conversation => {}
-        }
-        output.push_str(hit.text.trim());
-        output.push_str(&format!("\n(id {})", hit.id));
-    }
-    output
-}
-
-fn capped_evidence(evidence: &str) -> String {
-    const SEPARATOR: &str = "\n\n---\n\n";
-    let budget = EVIDENCE_TOKENS * 4;
-    if evidence.len() <= budget {
-        return evidence.to_string();
-    }
-    let (body, closing) = match evidence.rfind(PARTLY_SEARCHED) {
-        Some(at) => (&evidence[..at], &evidence[at..]),
-        None => (evidence, ""),
-    };
-    let entries: Vec<&str> = body.split(SEPARATOR).collect();
-    let mut output = String::new();
-    let mut whole = 0;
-    let mut cut_short = false;
-    for entry in &entries {
-        let joint = if output.is_empty() { "" } else { SEPARATOR };
-        if output.len() + joint.len() + entry.len() <= budget {
-            output.push_str(joint);
-            output.push_str(entry);
-            whole += 1;
-            continue;
-        }
-        let mut lines = 0;
-        for line in entry.split('\n') {
-            let piece = (if lines == 0 { joint.len() } else { 1 }) + line.len();
-            if output.len() + piece > budget && !output.is_empty() {
-                break;
-            }
-            output.push_str(if lines == 0 { joint } else { "\n" });
-            output.push_str(line);
-            lines += 1;
-        }
-        if lines == entry.split('\n').count() {
-            whole += 1;
-        } else if lines > 0 {
-            output.push_str("\n[…]");
-            cut_short = true;
-        }
-        break;
-    }
-    let left = entries.len() - whole - usize::from(cut_short);
-    if left > 0 || cut_short {
-        let shortened = if cut_short {
-            ", the last one shortened,"
-        } else {
-            ""
-        };
-        output.push_str(&format!(
-            "\n\n({left} more memory entries left out{shortened} to keep this under about \
-             {EVIDENCE_TOKENS} tokens; search again with more specific words to see others.)"
-        ));
-    }
-    output.push_str(closing);
-    output
 }
 
 fn pending_error(error: PendingError) -> Error {
