@@ -103,10 +103,7 @@ impl<K> Default for TurnCacheRegistry<K> {
 
 impl<K> std::fmt::Debug for TurnCacheRegistry<K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let caches = self
-            .caches
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let caches = self.caches.lock().unwrap_or_else(PoisonError::into_inner);
         f.debug_struct("TurnCacheRegistry")
             .field(
                 "live_caches",
@@ -128,10 +125,7 @@ where
     /// Re-registering the same cache is a no-op. Dead entries are pruned.
     pub fn register(&self, cache: &Arc<TurnCache<K>>) {
         let weak = Arc::downgrade(cache);
-        let mut caches = self
-            .caches
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut caches = self.caches.lock().unwrap_or_else(PoisonError::into_inner);
         caches.retain(|known| known.strong_count() > 0);
         if !caches.iter().any(|known| known.ptr_eq(&weak)) {
             caches.push(weak);
@@ -161,10 +155,7 @@ where
     }
 
     fn live_caches(&self) -> Vec<Arc<TurnCache<K>>> {
-        let mut caches = self
-            .caches
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut caches = self.caches.lock().unwrap_or_else(PoisonError::into_inner);
         caches.retain(|cache| cache.strong_count() > 0);
         caches.iter().filter_map(Weak::upgrade).collect()
     }

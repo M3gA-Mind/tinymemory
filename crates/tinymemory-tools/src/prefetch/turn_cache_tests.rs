@@ -4,8 +4,8 @@ use super::*;
 
 use std::time::Duration;
 
-use futures::future::BoxFuture;
 use crate::lifecycle::turn::TurnPack;
+use futures::future::BoxFuture;
 use tinymemory_api::{Hit, ItemId, ItemKind, MemoryMeta};
 
 const MAX_PACK_BYTES: usize = 64 * 1024;
@@ -84,20 +84,32 @@ async fn completed_turns_add_the_notice_once_and_preserve_delivery_fields() {
     let second = cache.completed(&"thread").expect("same completed pack");
     let notice = "This is cached memory from a completed background lookup for an earlier turn. It may be incomplete or unrelated to the current question; use explicit memory recall or fetch when you need a current answer.\n\n";
     assert_eq!(first.markdown, format!("{notice}{}", source.markdown));
-    assert_eq!(first.tokens, source.tokens + crate::recall::estimate_tokens(notice));
+    assert_eq!(
+        first.tokens,
+        source.tokens + crate::recall::estimate_tokens(notice)
+    );
     assert_eq!(first.refs, source.refs);
     assert_eq!(first.engine, source.engine);
     assert_eq!(first.citations, citations);
     assert_eq!(first.refusal, source.refusal);
-    assert_eq!(second.markdown, first.markdown, "the notice is not prepended twice");
-    assert_eq!(second.tokens, first.tokens, "notice tokens are counted once");
+    assert_eq!(
+        second.markdown, first.markdown,
+        "the notice is not prepended twice"
+    );
+    assert_eq!(
+        second.tokens, first.tokens,
+        "notice tokens are counted once"
+    );
 }
 
 #[tokio::test]
 async fn turn_cache_admits_a_boundary_pack_and_rejects_an_oversized_citation_pack() {
     let pool = WorkerPool::new(1);
     let cache = cache::<&'static str>().with_workers(pool.clone());
-    assert!(cache.completed(&"thread").is_none(), "a cold cache is empty");
+    assert!(
+        cache.completed(&"thread").is_none(),
+        "a cold cache is empty"
+    );
 
     let mut citation_heavy = pack("small rendered text");
     citation_heavy.citations = vec![hit(&"c".repeat(MAX_PACK_BYTES))];
@@ -203,14 +215,25 @@ fn registry_keeps_only_weak_cache_references_and_prunes_dropped_entries() {
     let weak = Arc::downgrade(&dropped);
     registry.register(&dropped);
     registry.register(&dropped);
-    assert_eq!(registry.caches.lock().unwrap().len(), 1, "registration deduplicates");
+    assert_eq!(
+        registry.caches.lock().unwrap().len(),
+        1,
+        "registration deduplicates"
+    );
 
     drop(dropped);
-    assert!(weak.upgrade().is_none(), "the registry does not keep a cache alive");
+    assert!(
+        weak.upgrade().is_none(),
+        "the registry does not keep a cache alive"
+    );
 
     let live = Arc::new(cache::<&'static str>());
     registry.register(&live);
-    assert_eq!(registry.caches.lock().unwrap().len(), 1, "registration prunes dead caches");
+    assert_eq!(
+        registry.caches.lock().unwrap().len(),
+        1,
+        "registration prunes dead caches"
+    );
 }
 
 #[tokio::test]
