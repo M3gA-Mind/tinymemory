@@ -13,18 +13,18 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use tinymemory_api::{
-    Error, FetchMode, FetchPage, FetchRequest, LearningKind, MemoryMeta, Namespace, Reach,
-    RecallMode, SourceKind, SourceRef, StoreItem, ThreadWindow, ToolCallRef,
+    Error, FetchMode, FetchPage, LearningKind, MemoryMeta, Namespace, Reach, RecallMode,
+    SourceKind, SourceRef, StoreItem, ThreadWindow, ToolCallRef,
 };
 
 use crate::confine::{Confinement, Policy};
 use crate::list_store::ListStore;
 use crate::ops::{LearningOptions, MemoryOps};
-use crate::pending::{
-    Ack, Binding, Entry, PendingError, PendingWrites, WriteGate, WriteOperation,
+use crate::pending::{Ack, Binding, Entry, PendingError, PendingWrites, WriteGate, WriteOperation};
+use crate::tools::args::Args;
+use crate::tools::spec::schema::{
+    DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS, MAX_IDS, MAX_LIMIT,
 };
-use crate::tools::args::{Args, fetch_mode, meta_filter, time_hint};
-use crate::tools::spec::schema::{DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS, MAX_IDS, MAX_LIMIT, default_mode};
 use crate::tools::{MemoryTools, ToolScope};
 
 const TOOL_NAME: &str = "memory";
@@ -134,12 +134,8 @@ impl<S: ListStore<Entry> + 'static> WriteSink for PendingWriteSink<S> {
             .as_ref()
             .map(|reach| reach.at.clone())
             .unwrap_or_else(|| scope.place.clone());
-        self.queue.enqueue(
-            operation,
-            scope_root,
-            self.binding.clone(),
-            &self.gate,
-        )
+        self.queue
+            .enqueue(operation, scope_root, self.binding.clone(), &self.gate)
     }
 }
 
@@ -229,8 +225,7 @@ impl SingleTool {
     /// Invalid actions or arguments, reads rejected by the engine, writes
     /// rejected by the queue, and writes without an installed sink.
     pub async fn call(&self, args: Value, context: CallContext) -> tinymemory_api::Result<Value> {
-        let action = action(&args)
-            .ok_or_else(|| Args::invalid(TOOL_NAME, "action is required"))?;
+        let action = action(&args).ok_or_else(|| Args::invalid(TOOL_NAME, "action is required"))?;
         if !ACTIONS.contains(&action) {
             return Err(Args::invalid(
                 TOOL_NAME,
@@ -251,11 +246,7 @@ impl SingleTool {
         }
     }
 
-    async fn recall(
-        &self,
-        value: &Value,
-        context: &CallContext,
-    ) -> tinymemory_api::Result<Value> {
+    async fn recall(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
         let value = action_args(value, false)?;
         let answer = super::read::recall_answer(
             self.tools.engine.as_ref(),
@@ -276,11 +267,7 @@ impl SingleTool {
         })
     }
 
-    async fn fetch(
-        &self,
-        value: &Value,
-        context: &CallContext,
-    ) -> tinymemory_api::Result<Value> {
+    async fn fetch(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
         let value = action_args(value, false)?;
         let page = super::read::fetch_page(
             self.tools.engine.as_ref(),
@@ -301,9 +288,10 @@ impl SingleTool {
     }
 
     fn learn(&self, value: &Value) -> tinymemory_api::Result<Value> {
-        let sink = self.write_sink.as_ref().ok_or_else(|| {
-            Error::Unsupported("memory write queue is not configured".into())
-        })?;
+        let sink = self
+            .write_sink
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported("memory write queue is not configured".into()))?;
         let item = self.learning_item(value)?;
         match sink
             .enqueue(WriteOperation::Learn { item }, &self.tools.scope)
@@ -317,9 +305,10 @@ impl SingleTool {
     }
 
     fn forget(&self, value: &Value) -> tinymemory_api::Result<Value> {
-        let sink = self.write_sink.as_ref().ok_or_else(|| {
-            Error::Unsupported("memory write queue is not configured".into())
-        })?;
+        let sink = self
+            .write_sink
+            .as_ref()
+            .ok_or_else(|| Error::Unsupported("memory write queue is not configured".into()))?;
         let value = action_args(value, false)?;
         let args = Args::parse(TOOL_NAME, &value, &["ids"])?;
         let ids = super::read::item_ids(&args, "ids")?;
@@ -365,12 +354,15 @@ impl SingleTool {
             .string("kind")?
             .map(|kind| {
                 serde_json::from_value::<LearningKind>(Value::String(kind)).map_err(|_| {
-                    args.field_error("kind", &format!("must be one of {}", LEARNING_KINDS.join(", ")))
+                    args.field_error(
+                        "kind",
+                        &format!("must be one of {}", LEARNING_KINDS.join(", ")),
+                    )
                 })
             })
             .transpose()?;
-        let mut item = MemoryOps::new(confinement(&self.tools.scope)).learning_item(
-            LearningOptions {
+        let mut item =
+            MemoryOps::new(confinement(&self.tools.scope)).learning_item(LearningOptions {
                 text: args.required_string("text")?,
                 kind,
                 confidence: if args.has("confidence") {
@@ -382,8 +374,7 @@ impl SingleTool {
                 host_meta: Some(self.learn_meta()),
                 default_namespace: self.tools.scope.place.clone(),
                 now: Utc::now(),
-            },
-        )?;
+            })?;
         if let StoreItem::Learning {
             evidence: stored_evidence,
             ..
