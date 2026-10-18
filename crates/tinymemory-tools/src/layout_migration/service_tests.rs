@@ -491,13 +491,20 @@ async fn cancelling_a_pending_migration_releases_the_slot_without_recording_fail
     assert!(service.start(key.clone(), host.clone(), || false, Trigger::Auto, || false,));
     let handle = tokio::spawn(spawner.take());
     entered.await.unwrap();
+    let saves_before_cancel = host.store.saves.load(Ordering::SeqCst);
+    let state_before_cancel = host.store.load().unwrap();
+    assert_eq!(state_before_cancel.phase, Phase::Copying);
     handle.abort();
     assert!(handle.await.unwrap_err().is_cancelled());
 
     assert!(!slots.is_running(&key));
-    assert_eq!(host.store.saves.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        host.store.saves.load(Ordering::SeqCst),
+        saves_before_cancel,
+        "cancellation releases the slot without recording a new failure"
+    );
     let state = host.store.load().unwrap();
-    assert_eq!(state.phase, Phase::Copying);
+    assert_eq!(state, state_before_cancel);
     assert!(status(host.as_ref(), false).unwrap().interrupted);
 }
 
