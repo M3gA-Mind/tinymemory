@@ -134,7 +134,7 @@ fn recall_settings_schema_matches_defaulted_config_shape() {
         schema
             .get("required")
             .and_then(serde_json::Value::as_array)
-            .map_or(true, Vec::is_empty)
+            .is_none_or(Vec::is_empty)
     );
 }
 
