@@ -20,6 +20,10 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
   ranges. `BackgroundJob` carries the belief builds those calls hand back.
   See [`docs/architecture/lifecycle.md`](../../docs/architecture/lifecycle.md)
   and the runnable `examples/agent_loop.rs` and `examples/brain.rs`.
+- **`prefetch`**: bounded runtime-neutral background refreshes. Hosts can use
+  `TurnCache<K>` for completed lifecycle packs and `TurnCacheRegistry<K>` to
+  invalidate them across host-owned contexts. See the
+  [prefetch module guide](src/prefetch/README.md).
 - **`pending`**: a runtime-neutral durable FIFO for tool writes, plus weakly
   cached owner barriers and per-partition drain locks. The host supplies each
   partition's `ListStore`, maps its own owner and storage keys, and runs the
