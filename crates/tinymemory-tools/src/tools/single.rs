@@ -452,9 +452,13 @@ fn pending_error(error: PendingError) -> Error {
 }
 
 fn schema(fetch_modes: &[FetchMode]) -> Value {
+    let mut fetch = super::spec::schema::fetch(fetch_modes);
+    if let Some(default) = fetch_modes.first() {
+        fetch["properties"]["mode"]["default"] = json!(default.as_str());
+    }
     let branches = [
         branch("recall", super::spec::schema::recall()),
-        branch("fetch", super::spec::schema::fetch(fetch_modes)),
+        branch("fetch", fetch),
         branch("learn", learn_schema()),
         branch("forget", forget_schema()),
     ];
