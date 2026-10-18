@@ -22,9 +22,7 @@ use crate::list_store::ListStore;
 use crate::ops::{LearningOptions, MemoryOps};
 use crate::pending::{Ack, Binding, Entry, PendingError, PendingWrites, WriteGate, WriteOperation};
 use crate::tools::args::Args;
-use crate::tools::spec::schema::{
-    DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS, MAX_IDS,
-};
+use crate::tools::spec::schema::{DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS};
 use crate::tools::{MemoryTools, ToolScope};
 
 const TOOL_NAME: &str = "memory";
@@ -318,8 +316,15 @@ impl SingleTool {
             .ok_or_else(|| Error::Unsupported("memory write queue is not configured".into()))?;
         let value = action_args(value, false)?;
         let args = Args::parse(TOOL_NAME, &value, &["ids"])?;
-        let ids = super::read::item_ids(&args, "ids")?;
-        let mut ids: Vec<String> = ids.into_iter().map(|id| id.0).collect();
+        let raw_ids = args.strings("ids")?;
+        let mut ids: Vec<String> = raw_ids
+            .into_iter()
+            .map(|id| id.trim().to_owned())
+            .filter(|id| !id.is_empty())
+            .collect();
+        if ids.is_empty() {
+            return Err(args.field_error("ids", "must list at least one non-blank id"));
+        }
         ids.sort();
         ids.dedup();
         let reach = self
@@ -585,7 +590,6 @@ fn forget_schema() -> Value {
                 "type": "array",
                 "items": {"type": "string"},
                 "minItems": 1,
-                "maxItems": MAX_IDS,
                 "description": "The memory ids to remove."
             }
         },

@@ -127,6 +127,11 @@ async fn one_configurable_tool_dispatches_actions_and_classifies_each_action() {
     let fetch_schema = &spec.parameters["oneOf"][1]["properties"];
     assert!(fetch_schema.get("limit").is_none());
     assert_eq!(fetch_schema["mode"]["default"], "keyword");
+    assert!(
+        spec.parameters["oneOf"][3]["properties"]["ids"]
+            .get("maxItems")
+            .is_none()
+    );
     for (action, permission, concurrency) in [
         ("recall", PermissionClass::ReadOnly, ConcurrencyClass::Safe),
         ("fetch", PermissionClass::ReadOnly, ConcurrencyClass::Safe),
@@ -385,6 +390,59 @@ async fn learn_uses_the_configured_name_only_when_scope_has_no_call_reference() 
     let call = meta.tool_call.as_ref().expect("tool call fallback");
     assert_eq!(call.name, "fallback_memory");
     assert_eq!(call.id, None);
+}
+
+#[tokio::test]
+async fn forget_trims_drops_blank_sorts_and_deduplicates_unbounded_ids() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let queue = queue(4);
+    let tool = queued_tool(
+        engine,
+        scope(),
+        queue.clone(),
+        Arc::new(WriteGate::new("process-forget-normalization")),
+    );
+
+    tool.call(
+        json!({
+            "action": "forget",
+            "ids": [" z ", "", "alpha", "z", "  alpha  ", "   "]
+        }),
+        CallContext::default(),
+    )
+    .await
+    .expect("mixed blank and duplicate ids are normalized");
+    let entries = queue.entries().expect("queued normalized forget");
+    let WriteOperation::Forget { ids, .. } = &entries[0].operation else {
+        panic!("forget action must queue a forget operation")
+    };
+    assert_eq!(ids, &["alpha", "z"]);
+
+    let before = entries.len();
+    assert!(
+        tool.call(
+            json!({ "action": "forget", "ids": [" ", "\t"] }),
+            CallContext::default(),
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(queue.entries().expect("unchanged queue").len(), before);
+
+    let ids: Vec<String> = (0..=tinymemory_api::explore::MAX_GET_IDS)
+        .map(|index| format!("id-{index:03}"))
+        .collect();
+    tool.call(
+        json!({ "action": "forget", "ids": ids }),
+        CallContext::default(),
+    )
+    .await
+    .expect("forget is not constrained by the read/get batch cap");
+    let entries = queue.entries().expect("large forget queued");
+    let WriteOperation::Forget { ids, .. } = &entries[1].operation else {
+        panic!("forget action must queue a forget operation")
+    };
+    assert_eq!(ids.len(), tinymemory_api::explore::MAX_GET_IDS + 1);
 }
 
 #[tokio::test]
