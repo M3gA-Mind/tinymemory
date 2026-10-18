@@ -122,6 +122,7 @@ struct ThreadPlan {
 
 /// A planned backfill run, returned by [`Backfiller::begin`].
 #[must_use = "a planned backfill does nothing until it is run"]
+#[derive(Debug)]
 pub struct BackfillRun {
     file: BackfillFile,
     plans: Vec<ThreadPlan>,
