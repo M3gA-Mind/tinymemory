@@ -31,7 +31,7 @@ const TOOL_NAME: &str = "memory";
 const ACTIONS: [&str; 4] = ["recall", "fetch", "learn", "forget"];
 const FETCH_TOP: usize = 5;
 const EVIDENCE_TOKENS: usize = 2_500;
-const PARTLY_SEARCHED: &str = "(Memory was only partly searched";
+const PARTLY_SEARCHED: &str = "\n\n(Memory was only partly searched";
 const LEARN_QUEUED: &str = "queued; not yet saved to memory";
 const FORGET_QUEUED: &str = "queued; not yet removed from memory";
 
@@ -247,7 +247,7 @@ impl SingleTool {
     }
 
     async fn recall(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
-        let value = action_args(value, false)?;
+        let value = without_model_limit(action_args(value, false)?);
         let answer = super::read::recall_answer(
             self.tools.engine.as_ref(),
             &self.tools.scope,
@@ -268,7 +268,7 @@ impl SingleTool {
     }
 
     async fn fetch(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
-        let value = action_args(value, false)?;
+        let value = without_model_limit(action_args(value, false)?);
         let page = super::read::fetch_page(
             self.tools.engine.as_ref(),
             &self.tools.scope,
@@ -423,6 +423,13 @@ fn action_args(value: &Value, drop_meta: bool) -> tinymemory_api::Result<Value> 
         object.remove("meta");
     }
     Ok(Value::Object(object))
+}
+
+fn without_model_limit(mut value: Value) -> Value {
+    if let Value::Object(object) = &mut value {
+        object.remove("limit");
+    }
+    value
 }
 
 fn confinement(scope: &ToolScope) -> Confinement {
