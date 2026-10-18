@@ -126,7 +126,7 @@ async fn one_configurable_tool_dispatches_actions_and_classifies_each_action() {
     assert!(recall_schema.get("instructions").is_none());
     let fetch_schema = &spec.parameters["oneOf"][1]["properties"];
     assert!(fetch_schema.get("limit").is_none());
-    assert_eq!(fetch_schema["mode"]["default"], "hybrid");
+    assert_eq!(fetch_schema["mode"]["default"], "keyword");
     for (action, permission, concurrency) in [
         ("recall", PermissionClass::ReadOnly, ConcurrencyClass::Safe),
         ("fetch", PermissionClass::ReadOnly, ConcurrencyClass::Safe),
