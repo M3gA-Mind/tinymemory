@@ -124,7 +124,7 @@ fn unconfined_get_request_preserves_optional_inherited_and_service_reaches() {
 }
 
 #[test]
-fn unconfined_learning_preserves_explicit_namespaces_and_uses_default_for_root() {
+fn unconfined_learning_uses_default_and_preserves_effective_namespace() {
     let ops = MemoryOps::unconfined();
     let service = namespace("team:acme/service:workflow");
     let now = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
@@ -157,7 +157,26 @@ fn unconfined_learning_preserves_explicit_namespaces_and_uses_default_for_root()
                 namespace: explicit.clone(),
                 ..MemoryMeta::default()
             }),
+            host_meta: None,
+            default_namespace: namespace("team:acme"),
+            now,
+        })
+        .unwrap();
+    assert_eq!(item.meta().namespace, explicit);
+
+    let caller_namespace = namespace("team:other/agent:worker");
+    let host_namespace = namespace("team:acme/service:workflow");
+    let host_overlaid = ops
+        .learning_item(LearningOptions {
+            text: "host namespace wins overlay".into(),
+            kind: None,
+            confidence: None,
+            meta: Some(MemoryMeta {
+                namespace: caller_namespace,
+                ..MemoryMeta::default()
+            }),
             host_meta: Some(MemoryMeta {
+                namespace: host_namespace.clone(),
                 channel: Some("host-channel".into()),
                 ..MemoryMeta::default()
             }),
@@ -165,7 +184,11 @@ fn unconfined_learning_preserves_explicit_namespaces_and_uses_default_for_root()
             now,
         })
         .unwrap();
-    assert_eq!(item.meta().namespace, explicit);
+    assert_eq!(host_overlaid.meta().namespace, host_namespace);
+    assert_eq!(
+        host_overlaid.meta().channel.as_deref(),
+        Some("host-channel")
+    );
     assert_eq!(item.meta().channel.as_deref(), Some("host-channel"));
 
     assert!(
