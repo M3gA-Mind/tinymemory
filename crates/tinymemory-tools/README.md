@@ -48,6 +48,17 @@ filesystem marker implementation of `LegacyClaim` for shared local trees. It
 adds only the optional `url` and `tempfile` dependencies; the default build
 keeps the claim implementation behind the host port.
 
+The `schema` Cargo feature enables JSON Schema derives for host-facing types
+such as `lifecycle::RecallSettings`. It adds optional `schemars` support; the
+default build remains schema-free.
+
+`lifecycle::RecallSettings` carries defaulted host recall and lifecycle timing
+settings. It converts to `RecallPolicy` without applying the host's separate
+identity-level `enabled` flag; `RecallSettings::validate` checks the settings
+before a host applies them. `AgentMemory::preview` returns a typed turn/session
+mode and pack without logging, while `AgentMemory::agents` lists conversation
+counts within its layout root.
+
 ## The tools
 
 | Tool | Kind | Arguments | Result |
