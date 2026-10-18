@@ -78,7 +78,7 @@ pub(crate) async fn recall_answer_with_filter(
         exclude_thread,
         mode,
     };
-    Ok(engine.recall(request).await?)
+    engine.recall(request).await
 }
 
 /// `memory_fetch`.
@@ -164,7 +164,7 @@ async fn fetch_page_inner(
         max_scopes: None,
         exclude_thread,
     };
-    Ok(engine.fetch(request).await?)
+    engine.fetch(request).await
 }
 
 /// `memory_list`.
