@@ -4,9 +4,9 @@ use serde_json::json;
 use tinymemory_api::{TimeHint, ToolCallRef, chrono::NaiveDate};
 
 use super::turn::{
-    InPromptFrom, LoggedToolCall, MAX_TOOL_LINE_CHARS, logged_reply, parse_range,
-    user_turn_index,
+    LoggedToolCall, MAX_TOOL_LINE_CHARS, logged_reply, parse_range, user_turn_index,
 };
+use super::window::InPromptFrom;
 use super::{PreTurn, RecallPolicy};
 
 #[test]
@@ -36,7 +36,11 @@ fn log_only_policy_keeps_logging_possible_but_disables_every_recall_section() {
     assert_eq!(policy.brain_limit, 0);
     assert_eq!(policy.history_limit, 0);
     assert_eq!(policy.team_limit, 0);
-    assert_eq!(policy.build_beliefs_every, None);
+    assert_eq!(policy.budget_tokens, RecallPolicy::default().budget_tokens);
+    assert_eq!(
+        policy.build_beliefs_every,
+        RecallPolicy::default().build_beliefs_every
+    );
 }
 
 #[test]
@@ -103,18 +107,46 @@ fn logged_reply_keeps_one_bounded_line_per_tool_result() {
 }
 
 #[test]
-fn the_live_window_fingerprints_folds_and_respects_its_ceiling() {
-    let window = InPromptFrom::new(2, 20);
-    assert_eq!(window.advance_past(["a", "b"]), 6);
-    assert_eq!(window.advance_past(["c"]), 8);
-    assert_eq!(window.advance_past(["c"]), 8);
-    // A transcript folded again from the turn's original head counts from
-    // that head, not on top of the already advanced index.
-    assert_eq!(window.advance_past(["a", "b", "c"]), 8);
+fn the_live_window_starts_at_its_initial_value_and_is_clamped_to_the_turn() {
+    assert_eq!(InPromptFrom::new(6, 20).get(), 6);
     assert_eq!(InPromptFrom::new(30, 20).get(), 20);
+}
 
-    let capped = InPromptFrom::new(16, 20);
-    assert_eq!(capped.advance_past(["a", "b", "c"]), 20);
+#[test]
+fn a_fold_moves_two_positions_per_user_message() {
+    let window = InPromptFrom::new(6, 20);
+    assert_eq!(window.advance_past(["first", "second"]), 10);
+    assert_eq!(window.get(), 10);
+    assert_eq!(window.advance_past(["third"]), 12);
+    assert_eq!(window.advance_past(Vec::<String>::new()), 12);
+}
+
+#[test]
+fn identical_messages_in_one_fold_are_separate_turns() {
+    let window = InPromptFrom::new(0, 40);
+    assert_eq!(window.advance_past(["yes", "yes"]), 4);
+    assert_eq!(window.advance_past(["ok", "yes"]), 8);
+}
+
+#[test]
+fn replaying_the_same_fold_does_not_advance_again() {
+    let window = InPromptFrom::new(0, 40);
+    assert_eq!(window.advance_past(["a", "b"]), 4);
+    assert_eq!(window.advance_past(["c"]), 6);
+    assert_eq!(window.advance_past(["c"]), 6);
+}
+
+#[test]
+fn a_fold_from_the_turns_original_head_is_counted_from_there() {
+    let window = InPromptFrom::new(2, 40);
+    assert_eq!(window.advance_past(["a", "b"]), 6);
+    assert_eq!(window.advance_past(["a", "b", "c"]), 8);
+}
+
+#[test]
+fn a_fold_never_moves_past_the_turn_being_answered() {
+    let window = InPromptFrom::new(16, 20);
+    assert_eq!(window.advance_past(["a", "b", "c", "d", "e"]), 20);
 }
 
 #[test]
