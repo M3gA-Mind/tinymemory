@@ -3,10 +3,12 @@
 //! `TurnHooks` owns timeout and degradation decisions while the host owns
 //! engine resolution, executor scheduling, model inference, and delivery
 //! sinks. Its returned futures are ordinary owned futures: a host may pass
-//! `pre_turn_work` to the existing [`crate::prefetch::Prefetcher`] (whose
-//! [`crate::prefetch::PrefetchRuntime`] owns worker spawning and cancellation),
-//! or await `pre_turn` directly. This module starts no tasks and depends on no
-//! async runtime.
+//! `pre_turn_work` or `pre_turn_background_work` to the existing
+//! [`crate::prefetch::Prefetcher`] (whose [`crate::prefetch::PrefetchRuntime`]
+//! owns worker spawning and cancellation), or await `pre_turn` directly. The
+//! background work methods let a host cache results that finish after the
+//! hook's turn deadline. This module starts no tasks and depends on no async
+//! runtime.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -390,7 +392,9 @@ impl TurnHooks {
 
     /// Returns an owned task suitable for the host's existing prefetch worker.
     /// The worker's `PrefetchRuntime::spawn` remains the only spawner, and
-    /// cancellation of that worker drops this hook's engine/model work.
+    /// cancellation of that worker drops this hook's engine/model work. The
+    /// hook's pre-turn deadline still applies; use
+    /// [`Self::pre_turn_background_work`] to keep late engine results.
     pub fn pre_turn_work(
         self: &Arc<Self>,
         turn: PreTurn,
