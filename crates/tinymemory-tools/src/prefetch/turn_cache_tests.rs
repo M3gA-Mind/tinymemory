@@ -98,10 +98,7 @@ async fn turn_cache_admits_a_boundary_pack_and_rejects_an_oversized_citation_pac
 
     let mut citation_heavy = pack("small rendered text");
     citation_heavy.citations = vec![hit(&"c".repeat(MAX_PACK_BYTES))];
-    cache.enqueue(
-        "thread",
-        Box::pin(async move { Some(citation_heavy) }),
-    );
+    cache.enqueue("thread", Box::pin(async move { Some(citation_heavy) }));
     wait_for_workers(&pool, 1).await;
     assert!(
         cache.completed(&"thread").is_none(),
@@ -111,10 +108,7 @@ async fn turn_cache_admits_a_boundary_pack_and_rejects_an_oversized_citation_pac
     let empty_size = encoded_size(&pack(""));
     let boundary = pack(&"x".repeat(MAX_PACK_BYTES - empty_size));
     assert_eq!(encoded_size(&boundary), MAX_PACK_BYTES);
-    cache.enqueue(
-        "thread",
-        Box::pin(async move { Some(boundary) }),
-    );
+    cache.enqueue("thread", Box::pin(async move { Some(boundary) }));
     wait_for_workers(&pool, 1).await;
     assert!(
         cache.completed(&"thread").is_some(),
