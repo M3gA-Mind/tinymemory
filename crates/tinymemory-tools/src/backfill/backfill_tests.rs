@@ -279,7 +279,7 @@ impl MemoryEngine for TestListingEngine {
 fn backfiller(
     engine: Arc<dyn MemoryEngine>,
     source: TestThreadSource,
-    store: Arc<TestCounterStore>,
+    store: Arc<dyn CounterStore>,
 ) -> Backfiller {
     Backfiller::new(
         engine,
