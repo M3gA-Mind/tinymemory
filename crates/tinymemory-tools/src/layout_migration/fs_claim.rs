@@ -84,9 +84,8 @@ impl LegacyClaim for FsLegacyClaim {
             if let Some(dir) = self.marker.parent() {
                 std::fs::create_dir_all(dir)?;
             }
-            let temp = tempfile::NamedTempFile::new_in(
-                self.marker.parent().unwrap_or(Path::new(".")),
-            )?;
+            let temp =
+                tempfile::NamedTempFile::new_in(self.marker.parent().unwrap_or(Path::new(".")))?;
             let marker = Marker {
                 endpoint: self.endpoint.clone(),
                 owner: self.owner.clone(),

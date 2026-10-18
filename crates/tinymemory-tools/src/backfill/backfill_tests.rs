@@ -18,6 +18,22 @@ fn turn(user: &str, assistant: &str) -> PastTurn {
 }
 
 #[test]
+fn backfill_phase_keeps_the_existing_state_file_wire_values() {
+    for (phase, expected) in [
+        (BackfillPhase::Idle, "idle"),
+        (BackfillPhase::Running, "running"),
+        (BackfillPhase::Done, "done"),
+        (BackfillPhase::Error, "error"),
+    ] {
+        let state = BackfillState {
+            phase,
+            ..BackfillState::default()
+        };
+        assert_eq!(serde_json::to_value(state).unwrap()["phase"], expected);
+    }
+}
+
+#[test]
 fn messages_become_turns_like_the_chat_shows_them() {
     let messages = [
         message("agent", "Welcome!", "2026-09-01T09:59:00Z"),

@@ -108,10 +108,8 @@ where
         let task_host = Arc::clone(&host);
         let task = Box::pin(async move {
             let _run_guard = run_guard;
-            match super::job::run(task_host.as_ref(), trigger, || {
-                std::future::ready(paused())
-            })
-            .await
+            match super::job::run(task_host.as_ref(), trigger, || std::future::ready(paused()))
+                .await
             {
                 Ok(_) => {}
                 Err(error) => record_failure(task_host.as_ref(), &error),
@@ -157,13 +155,7 @@ where
         if paused() || self.is_running(&key) {
             return false;
         }
-        self.start(
-            key,
-            host,
-            peer_running,
-            super::job::Trigger::Auto,
-            paused,
-        )
+        self.start(key, host, peer_running, super::job::Trigger::Auto, paused)
     }
 }
 

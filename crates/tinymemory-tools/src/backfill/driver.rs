@@ -86,10 +86,7 @@ pub trait ThreadSource: Send + Sync {
     async fn list_threads(&self) -> std::result::Result<Vec<String>, String>;
 
     /// Reads one thread's messages in chronological order.
-    async fn messages(
-        &self,
-        thread_id: &str,
-    ) -> std::result::Result<Vec<ThreadMessage>, String>;
+    async fn messages(&self, thread_id: &str) -> std::result::Result<Vec<ThreadMessage>, String>;
 }
 
 /// Host-owned persistence for the backfill state file.
@@ -394,5 +391,9 @@ impl std::fmt::Debug for Backfiller {
 
 fn turn_index(index: usize, assistant: bool) -> u32 {
     let base = u32::try_from(index.saturating_mul(2)).unwrap_or(u32::MAX - 1);
-    if assistant { base.saturating_add(1) } else { base }
+    if assistant {
+        base.saturating_add(1)
+    } else {
+        base
+    }
 }
