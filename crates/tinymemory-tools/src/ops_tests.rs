@@ -147,7 +147,10 @@ fn recall_fetch_and_list_requests_apply_limits_and_confinement() {
         })
         .unwrap();
     assert_eq!(recall.limit, MAX_LIMIT);
-    assert_eq!(recall.filter.reach, Some(ops.confinement().allowed.clone()));
+    assert_eq!(
+        recall.filter.reach,
+        Some(ops.confinement().unwrap().allowed.clone())
+    );
     assert_eq!(recall.filter.workspace.as_deref(), Some("repo"));
 
     let descriptor = ReferenceEngine::new().descriptor().clone();
@@ -167,7 +170,10 @@ fn recall_fetch_and_list_requests_apply_limits_and_confinement() {
         .unwrap();
     assert_eq!(fetch.mode, *descriptor.fetch_modes.first().unwrap());
     assert_eq!(fetch.limit, DEFAULT_LIMIT);
-    assert_eq!(fetch.filter.reach, Some(ops.confinement().allowed.clone()));
+    assert_eq!(
+        fetch.filter.reach,
+        Some(ops.confinement().unwrap().allowed.clone())
+    );
 
     let list = ops
         .list_request(ListOptions {
@@ -178,7 +184,10 @@ fn recall_fetch_and_list_requests_apply_limits_and_confinement() {
         })
         .unwrap();
     assert_eq!(list.limit, MAX_LIMIT);
-    assert_eq!(list.filter.reach, Some(ops.confinement().allowed.clone()));
+    assert_eq!(
+        list.filter.reach,
+        Some(ops.confinement().unwrap().allowed.clone())
+    );
 }
 
 #[test]
@@ -257,7 +266,7 @@ fn explorer_paths_validate_and_confine_before_a_request_can_be_called() {
     assert_eq!(request.filter.kinds, [tinymemory_api::ItemKind::Document]);
     assert_eq!(
         request.filter.reach,
-        Some(ops.confinement().allowed.clone())
+        Some(ops.confinement().unwrap().allowed.clone())
     );
 
     for path in [
@@ -1018,3 +1027,6 @@ async fn thread_and_source_deletions_stay_inside_the_configured_reach() {
         );
     }
 }
+
+#[path = "ops_unconfined_tests.rs"]
+mod unconfined_tests;

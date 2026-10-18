@@ -3,10 +3,12 @@
 //! `TurnHooks` owns timeout and degradation decisions while the host owns
 //! engine resolution, executor scheduling, model inference, and delivery
 //! sinks. Its returned futures are ordinary owned futures: a host may pass
-//! `pre_turn_work` to the existing [`crate::prefetch::Prefetcher`] (whose
-//! [`crate::prefetch::PrefetchRuntime`] owns worker spawning and cancellation),
-//! or await `pre_turn` directly. This module starts no tasks and depends on no
-//! async runtime.
+//! `pre_turn_work` or `pre_turn_background_work` to the existing
+//! [`crate::prefetch::Prefetcher`] (whose [`crate::prefetch::PrefetchRuntime`]
+//! owns worker spawning and cancellation), or await `pre_turn` directly. The
+//! background work methods let a host cache results that finish after the
+//! hook's turn deadline. This module starts no tasks and depends on no async
+//! runtime.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +30,21 @@ pub const CLOSE_TAG: &str = "</memory-context>";
 pub const MAX_TOOL_LINE_CHARS: usize = 240;
 const MIN_TIMEOUT: Duration = Duration::from_millis(1);
 const DEFAULT_HINT_MARGIN: Duration = Duration::from_millis(100);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeadlinePolicy {
+    Bounded(Duration),
+    Background,
+}
+
+impl DeadlinePolicy {
+    fn deadline_from(self, started_at: Duration) -> Option<Duration> {
+        match self {
+            Self::Bounded(timeout) => Some(started_at.saturating_add(timeout.max(MIN_TIMEOUT))),
+            Self::Background => None,
+        }
+    }
+}
 
 /// A host clock whose values share one monotonic time base.
 pub trait Clock: Send + Sync {
@@ -69,8 +86,9 @@ pub struct PreTurnOptions {
     pub logging: bool,
     /// Whether to read memory for this turn.
     pub recall: bool,
-    /// The whole pre-turn work budget. Values below one millisecond clamp to
-    /// one millisecond.
+    /// The whole bounded pre-turn work budget. Background pre-turn work uses
+    /// this only to bound date-hint inference. Values below one millisecond
+    /// clamp to one millisecond.
     pub timeout: Duration,
     /// Whether to ask the model for a date hint alongside logging and recall.
     pub date_hint: bool,
@@ -259,6 +277,17 @@ impl TurnHooks {
     /// failures become a refusal notice so an empty pack is never presented
     /// as proof that nothing is stored.
     pub async fn pre_turn(&self, turn: PreTurn, options: PreTurnOptions) -> Option<TurnPack> {
+        let timeout = options.timeout;
+        self.pre_turn_with_policy(turn, options, DeadlinePolicy::Bounded(timeout))
+            .await
+    }
+
+    async fn pre_turn_with_policy(
+        &self,
+        turn: PreTurn,
+        options: PreTurnOptions,
+        deadline_policy: DeadlinePolicy,
+    ) -> Option<TurnPack> {
         if turn.thread_id.trim().is_empty()
             || turn.user_text.trim().is_empty()
             || (!options.logging && !options.recall)
@@ -266,17 +295,16 @@ impl TurnHooks {
             return None;
         }
 
-        let deadline = self
-            .clock
-            .now()
-            .saturating_add(options.timeout.max(MIN_TIMEOUT));
+        let started_at = self.clock.now();
+        let hint_budget_deadline = started_at.saturating_add(options.timeout.max(MIN_TIMEOUT));
+        let deadline = deadline_policy.deadline_from(started_at);
         let resolver = self.resolver.clone();
         let clock = self.clock.clone();
         let work_clock = clock.clone();
         let model = self.date_hint_model.clone();
         let operation = async move {
             let mut memory = resolver.resolve().ok()?;
-            if work_clock.now() >= deadline {
+            if deadline.is_some_and(|deadline| work_clock.now() >= deadline) {
                 return None;
             }
             if options.logging && !options.recall {
@@ -294,7 +322,7 @@ impl TurnHooks {
                         let user_text = turn.user_text.clone();
                         let zone = options.zone.clone().unwrap_or_else(|| "UTC".to_string());
                         let instruction = date_hint::INSTRUCTION.to_string();
-                        let hint_deadline = deadline
+                        let hint_deadline = hint_budget_deadline
                             .saturating_sub(options.date_hint_margin)
                             .max(clock.now());
                         let timer = clock.sleep_until(hint_deadline);
@@ -344,22 +372,29 @@ impl TurnHooks {
             } else {
                 None
             };
-            if work_clock.now() >= deadline {
+            if deadline.is_some_and(|deadline| work_clock.now() >= deadline) {
                 None
             } else {
                 pack
             }
         };
 
-        match select(Box::pin(operation), self.clock.sleep_until(deadline)).await {
-            Either::Left((pack, _)) => pack,
-            Either::Right(_) => None,
+        match deadline {
+            Some(deadline) => {
+                match select(Box::pin(operation), self.clock.sleep_until(deadline)).await {
+                    Either::Left((pack, _)) => pack,
+                    Either::Right(_) => None,
+                }
+            }
+            None => operation.await,
         }
     }
 
     /// Returns an owned task suitable for the host's existing prefetch worker.
     /// The worker's `PrefetchRuntime::spawn` remains the only spawner, and
-    /// cancellation of that worker drops this hook's engine/model work.
+    /// cancellation of that worker drops this hook's engine/model work. The
+    /// hook's pre-turn deadline still applies; use
+    /// [`Self::pre_turn_background_work`] to keep late engine results.
     pub fn pre_turn_work(
         self: &Arc<Self>,
         turn: PreTurn,
@@ -367,6 +402,27 @@ impl TurnHooks {
     ) -> BoxFuture<'static, Option<TurnPack>> {
         let hooks = self.clone();
         Box::pin(async move { hooks.pre_turn(turn, options).await })
+    }
+
+    /// Returns an owned pre-turn task for a host-managed background worker.
+    ///
+    /// Unlike [`Self::pre_turn`] and [`Self::pre_turn_work`], this work has no
+    /// overall hook deadline, so a slow engine result can still be cached for
+    /// a later turn. `options.timeout` continues to bound only the optional
+    /// date-hint model call. Dropping the future cancels in-flight engine and
+    /// model work. The host must call [`Self::deliver_citations`] only if it
+    /// chooses to show the returned pack.
+    pub fn pre_turn_background_work(
+        self: &Arc<Self>,
+        turn: PreTurn,
+        options: PreTurnOptions,
+    ) -> BoxFuture<'static, Option<TurnPack>> {
+        let hooks = self.clone();
+        Box::pin(async move {
+            hooks
+                .pre_turn_with_policy(turn, options, DeadlinePolicy::Background)
+                .await
+        })
     }
 
     /// Logs a committed assistant turn and sends its returned jobs to the
@@ -393,28 +449,65 @@ impl TurnHooks {
         request: Compaction,
         options: CompactionOptions,
     ) -> Option<TurnPack> {
-        if !options.recall || request.dropped.is_empty() || request.thread_id.trim().is_empty() {
+        self.compaction_with_policy(
+            request,
+            options.recall,
+            DeadlinePolicy::Bounded(options.timeout),
+        )
+        .await
+    }
+
+    /// Returns an owned compaction recall task for a host-managed background
+    /// worker. It has no overall hook deadline, allowing a slow engine result
+    /// to reach a cache that can serve a later compaction. Dropping the future
+    /// cancels in-flight engine work. A returned pack never delivers citations
+    /// until the host calls [`Self::deliver_citations`].
+    pub fn compaction_background_work(
+        self: &Arc<Self>,
+        request: Compaction,
+        recall: bool,
+    ) -> BoxFuture<'static, Option<TurnPack>> {
+        let hooks = self.clone();
+        Box::pin(async move {
+            hooks
+                .compaction_with_policy(request, recall, DeadlinePolicy::Background)
+                .await
+        })
+    }
+
+    async fn compaction_with_policy(
+        &self,
+        request: Compaction,
+        recall: bool,
+        deadline_policy: DeadlinePolicy,
+    ) -> Option<TurnPack> {
+        if !recall || request.dropped.is_empty() || request.thread_id.trim().is_empty() {
             return None;
         }
-        let deadline = self
-            .clock
-            .now()
-            .saturating_add(options.timeout.max(MIN_TIMEOUT));
+        let deadline = deadline_policy.deadline_from(self.clock.now());
         let resolver = self.resolver.clone();
         let clock = self.clock.clone();
         let operation = async move {
             let memory = resolver.resolve().ok()?;
-            if clock.now() >= deadline {
+            if deadline.is_some_and(|deadline| clock.now() >= deadline) {
                 return None;
             }
             let engine_id = memory.engine().descriptor().id.to_string();
             let outcome = memory.recall_for_compaction(request).await;
             let pack = TurnPack::from_outcome(outcome, false, engine_id);
-            (clock.now() < deadline).then_some(pack).flatten()
+            deadline
+                .is_none_or(|deadline| clock.now() < deadline)
+                .then_some(pack)
+                .flatten()
         };
-        match select(Box::pin(operation), self.clock.sleep_until(deadline)).await {
-            Either::Left((pack, _)) => pack,
-            Either::Right(_) => None,
+        match deadline {
+            Some(deadline) => {
+                match select(Box::pin(operation), self.clock.sleep_until(deadline)).await {
+                    Either::Left((pack, _)) => pack,
+                    Either::Right(_) => None,
+                }
+            }
+            None => operation.await,
         }
     }
 
