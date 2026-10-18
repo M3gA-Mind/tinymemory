@@ -404,11 +404,7 @@ impl AgentMemory {
         resumed: bool,
         hint: impl Future<Output = Option<TimeHint>> + Send,
     ) -> Result<TurnContext> {
-        self.pre_turn_with(
-            PreTurn { resumed, ..turn },
-            resumed,
-            Some(Box::pin(hint)),
-        )
+        self.pre_turn_with(PreTurn { resumed, ..turn }, resumed, Some(Box::pin(hint)))
             .await
     }
 
@@ -428,6 +424,7 @@ impl AgentMemory {
                 ..Turn::new(Role::User, text)
             },
             turn.observed_actor.clone(),
+            turn.channel.clone(),
         );
         let id = tinymemory_api::ItemId::new(item.fingerprint());
         let window = ThreadWindow {
@@ -492,6 +489,7 @@ impl AgentMemory {
                 ..Turn::new(Role::Assistant, text)
             },
             None,
+            turn.channel.clone(),
         );
         let receipt = self
             .engine
@@ -691,6 +689,7 @@ impl AgentMemory {
         index: u32,
         turn: Turn,
         observed_actor: Option<ObservedActor>,
+        channel: Option<String>,
     ) -> StoreItem {
         StoreItem::Conversation {
             meta: MemoryMeta {
@@ -705,6 +704,7 @@ impl AgentMemory {
                     kind: SourceKind::Conversation,
                     id: Some(thread_id.to_string()),
                 },
+                channel,
                 observed_at: turn.at,
                 observed_actor,
                 ..MemoryMeta::default()

@@ -93,6 +93,9 @@ pub struct PreTurn {
     /// field or use `..PreTurn::new(...)`.
     #[serde(default)]
     pub resumed: bool,
+    /// The messaging channel that owns this thread, when it came from one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
     /// The first turn of this thread still in the host's prompt; turns from
     /// here on are left out of the pack, since the model already sees them.
     /// `0` (the default) leaves the whole thread out.
@@ -128,6 +131,7 @@ impl PreTurn {
             turn_index,
             user_text: user_text.into(),
             resumed: false,
+            channel: None,
             in_prompt_from: 0,
             at: None,
             observed_actor: None,
@@ -157,6 +161,9 @@ pub struct PostTurn {
     pub turn_index: u32,
     /// What the assistant said.
     pub assistant_text: String,
+    /// The messaging channel that owns this thread, when it came from one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
     /// The tool calls the reply made.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCallRef>,
@@ -178,6 +185,7 @@ impl PostTurn {
             thread_id: thread_id.into(),
             turn_index,
             assistant_text: assistant_text.into(),
+            channel: None,
             tool_calls: Vec::new(),
             at: None,
         }

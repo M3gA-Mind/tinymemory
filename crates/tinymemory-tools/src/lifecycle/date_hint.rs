@@ -44,13 +44,7 @@ pub fn parse_range(answer: &str, zone: Option<&str>) -> Option<TimeHint> {
     let json = answer.get(answer.find('{')?..=answer.rfind('}')?)?;
     let range: Range = serde_json::from_str(json).ok()?;
     let from = range.from?;
-    time_hint(
-        Some(DateRange {
-            from,
-            to: range.to,
-        }),
-        zone,
-    )
-    .ok()
-    .flatten()
+    time_hint(Some(DateRange { from, to: range.to }), zone)
+        .ok()
+        .flatten()
 }

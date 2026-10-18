@@ -16,9 +16,9 @@ use futures::future::{BoxFuture, Either, select};
 use serde::Serialize;
 use tinymemory_api::{Error, Hit, TimeHint, ToolCallRef};
 
-use crate::background::BackgroundJob;
 use super::date_hint::{self, DateHintModel};
 use super::{AgentMemory, Compaction, PostTurn, PreTurn, RecallPolicy, SessionStart};
+use crate::background::BackgroundJob;
 
 /// Opening tag of an injected memory pack.
 pub const OPEN_TAG: &str = "<memory-context>";
@@ -131,33 +131,38 @@ impl TurnPack {
         if pack.is_empty() {
             let error = allow_refusal
                 .then(|| {
-                    pack.skipped.iter().find_map(|skipped| match &skipped.reason {
-                        super::super::recall::SkipReason::Engine(error)
-                            if error.is_account_wide() =>
-                        {
-                            Some(error)
-                        }
-                        _ => None,
-                    })
+                    pack.skipped
+                        .iter()
+                        .find_map(|skipped| match &skipped.reason {
+                            super::super::recall::SkipReason::Engine(error)
+                                if error.is_account_wide() =>
+                            {
+                                Some(error)
+                            }
+                            _ => None,
+                        })
                 })
                 .flatten()?;
             let why = match error {
                 Error::Off(_) => "memory is disabled or no engine is configured",
                 Error::Unauthorized(_) => "the memory engine rejected the sign-in or API key",
-                Error::InsufficientCredits(_) => "the account is out of credits; topping up restores it",
+                Error::InsufficientCredits(_) => {
+                    "the account is out of credits; topping up restores it"
+                }
                 Error::Unavailable(_) => "the memory engine could not be reached",
                 _ => return None,
             };
             let markdown = format!(
                 "# Memory\n\nMemory could not be read for this turn: {why}. Nothing was recalled, which does not mean nothing is stored. If the user refers to something they told you before, say that memory is unavailable right now and why, instead of saying you do not know it."
             );
+            let refusal = error.code();
             return Some(Self {
                 tokens: crate::recall::estimate_tokens(&markdown),
                 markdown,
                 refs: Vec::new(),
                 engine: pack.engine,
                 citations: Vec::new(),
-                refusal: Some(error.code()),
+                refusal: Some(refusal),
             });
         }
 
@@ -244,16 +249,18 @@ impl TurnHooks {
             .saturating_add(options.timeout.max(MIN_TIMEOUT));
         let resolver = self.resolver.clone();
         let clock = self.clock.clone();
+        let work_clock = clock.clone();
         let model = self.date_hint_model.clone();
         let operation = async move {
             let mut memory = resolver.resolve().ok()?;
+            if work_clock.now() >= deadline {
+                return None;
+            }
             if options.logging && !options.recall {
-                memory = memory
-                    .clone()
-                    .with_policy(memory.policy().log_only());
+                memory = memory.clone().with_policy(memory.policy().log_only());
             }
 
-            if options.logging {
+            let pack = if options.logging {
                 let hint = if options.recall && options.date_hint {
                     model.map(|model| {
                         let user_text = turn.user_text.clone();
@@ -305,6 +312,11 @@ impl TurnHooks {
                 TurnPack::from_context(pack, true)
             } else {
                 None
+            };
+            if work_clock.now() >= deadline {
+                None
+            } else {
+                pack
             }
         };
 
@@ -358,10 +370,15 @@ impl TurnHooks {
             .now()
             .saturating_add(options.timeout.max(MIN_TIMEOUT));
         let resolver = self.resolver.clone();
+        let clock = self.clock.clone();
         let operation = async move {
             let memory = resolver.resolve().ok()?;
+            if clock.now() >= deadline {
+                return None;
+            }
             let pack = memory.recall_for_compaction(request).await.ok()?;
-            TurnPack::from_context(pack, false)
+            let pack = TurnPack::from_context(pack, false);
+            (clock.now() < deadline).then_some(pack).flatten()
         };
         match select(Box::pin(operation), self.clock.sleep_until(deadline)).await {
             Either::Left((pack, _)) => pack,

@@ -21,11 +21,11 @@ use tinymemory_api::{
     Result, StoreItem, StoreReceipt, Turn,
 };
 
+use super::date_hint::DateHintModel;
 use super::turn::{
     CitationSink, Clock, CompactionOptions, EngineResolver, JobsSink, PreTurnOptions, TurnHooks,
     TurnPack,
 };
-use super::date_hint::DateHintModel;
 use super::{AgentMemory, Compaction, PostTurn, PreTurn, RecallPolicy};
 
 #[derive(Clone)]
@@ -392,6 +392,39 @@ async fn pre_turn_resumed_flag_and_legacy_overrides_have_defined_precedence() {
         forced_dated_resumed
             .markdown
             .contains("Earlier in this thread")
+    );
+}
+
+#[tokio::test]
+async fn channel_turn_metadata_is_stamped_on_both_roles_and_retries_keep_identity() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let memory = memory(engine.clone());
+    let mut user = PreTurn::new("channel-thread", 0, "hello from chat");
+    user.channel = Some("telegram".into());
+    let first_user = memory.pre_turn(user.clone()).await.unwrap().logged.unwrap();
+    let retry_user = memory.pre_turn(user).await.unwrap().logged.unwrap();
+    assert_eq!(first_user.id, retry_user.id);
+    assert!(retry_user.replayed);
+
+    let mut reply = PostTurn::new("channel-thread", 1, "hello back");
+    reply.channel = Some("telegram".into());
+    let first_reply = memory.post_turn(reply.clone()).await.unwrap().receipt;
+    let retry_reply = memory.post_turn(reply).await.unwrap().receipt;
+    assert_eq!(first_reply.id, retry_reply.id);
+    assert!(retry_reply.replayed);
+
+    let rows = engine
+        .list(ListRequest::new(
+            MetaFilter::kinds([ItemKind::Conversation]),
+            10,
+        ))
+        .await
+        .unwrap()
+        .items;
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows.iter()
+            .all(|row| row.meta.channel.as_deref() == Some("telegram"))
     );
 }
 
