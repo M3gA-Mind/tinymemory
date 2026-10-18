@@ -132,7 +132,10 @@ fn conversation_channel_is_metadata_not_turn_identity() {
     let untagged_document = StoreItem::document("hello", MemoryMeta::default());
     let mut tagged_document = untagged_document.clone();
     tagged_document.meta_mut().channel = Some("telegram".into());
-    assert_ne!(untagged_document.fingerprint(), tagged_document.fingerprint());
+    assert_ne!(
+        untagged_document.fingerprint(),
+        tagged_document.fingerprint()
+    );
 }
 
 #[test]

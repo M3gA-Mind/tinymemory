@@ -41,6 +41,10 @@ pub trait Clock: Send + Sync {
 /// Resolves the configured engine and identity to their lifecycle instance.
 pub trait EngineResolver: Send + Sync {
     /// Returns the configured memory instance for this host hook.
+    ///
+    /// # Errors
+    ///
+    /// Returns the host's engine or identity resolution failure.
     fn resolve(&self) -> tinymemory_api::Result<AgentMemory>;
 }
 

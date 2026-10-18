@@ -591,7 +591,7 @@ async fn account_wide_pre_turn_refusal_is_a_notice_not_an_empty_pack() {
         )
         .await
         .expect("account-wide failures must remain distinguishable");
-    assert_eq!(pack.refusal.as_deref(), Some("INSUFFICIENT_CREDITS"));
+    assert_eq!(pack.refusal, Some("INSUFFICIENT_CREDITS"));
     assert!(pack.markdown.contains("does not mean nothing is stored"));
     assert!(pack.citations.is_empty());
     assert!(!pack.markdown.contains("sensitive-payload"));
@@ -629,7 +629,7 @@ async fn every_typed_account_wide_skip_reason_maps_to_its_stable_refusal_code() 
             .pre_turn(PreTurn::new("thread", 0, "hello"), options(true, true))
             .await
             .expect("account-wide skipped reads should be distinguished");
-        assert_eq!(pack.refusal.as_deref(), Some(code));
+        assert_eq!(pack.refusal, Some(code));
         assert!(!pack.markdown.contains("private detail"));
     }
 }
@@ -648,7 +648,7 @@ async fn unreachable_recall_gets_an_account_wide_refusal_notice() {
         .pre_turn(PreTurn::new("thread", 0, "hello"), options(true, true))
         .await
         .expect("account-wide unavailable errors need a notice");
-    assert_eq!(pack.refusal.as_deref(), Some("UNAVAILABLE"));
+    assert_eq!(pack.refusal, Some("UNAVAILABLE"));
     assert!(pack.markdown.contains("could not be reached"));
     assert!(!pack.markdown.contains("sensitive-payload"));
 }
