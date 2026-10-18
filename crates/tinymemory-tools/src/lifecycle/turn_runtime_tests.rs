@@ -1223,3 +1223,7 @@ async fn owned_hook_work_runs_in_existing_prefetcher_without_delivering_citation
     assert!(cache.completed(&"thread").is_some());
     assert_eq!(fixture.citations.calls.load(Ordering::SeqCst), 0);
 }
+
+#[cfg(test)]
+#[path = "turn_background_tests.rs"]
+mod background_tests;
