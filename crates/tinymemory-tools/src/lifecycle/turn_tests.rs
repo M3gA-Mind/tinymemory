@@ -172,4 +172,8 @@ fn date_hint_range_parser_handles_prose_fences_single_days_and_bad_ranges() {
     ] {
         assert_eq!(parse_range(answer, Some("UTC")), None, "{answer}");
     }
+    assert_eq!(
+        parse_range("{\"from\":\"2026-10-03\"}", Some("not/a-zone")),
+        None
+    );
 }
