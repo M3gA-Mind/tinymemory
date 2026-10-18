@@ -178,6 +178,23 @@ impl CounterStore for TestCounterStore {
     }
 }
 
+#[derive(Default)]
+struct RejectingCounterStore {
+    file: Mutex<BackfillFile>,
+    save_attempts: AtomicUsize,
+}
+
+impl CounterStore for RejectingCounterStore {
+    fn load(&self) -> BackfillFile {
+        self.file.lock().unwrap().clone()
+    }
+
+    fn save(&self, _file: &BackfillFile) -> std::result::Result<(), String> {
+        self.save_attempts.fetch_add(1, Ordering::SeqCst);
+        Err("counter file is read-only".to_string())
+    }
+}
+
 struct TestListingEngine {
     inner: ReferenceEngine,
     fail: Option<tinymemory_api::Error>,
@@ -306,6 +323,8 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
         inner: ReferenceEngine::new(),
         fail: None,
         waits: Arc::default(),
+        fail_store_on: None,
+        store_calls: AtomicUsize::new(0),
     });
     let layout = MemoryLayout::default();
     // Turn zero is assistant-only, so its valid item has the odd turn index.
@@ -519,6 +538,8 @@ async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
             "listing is not supported".to_string(),
         )),
         waits: Arc::default(),
+        fail_store_on: None,
+        store_calls: AtomicUsize::new(0),
     });
     let view = backfiller(unsupported, source.clone(), store.clone())
         .status(false)
@@ -537,6 +558,8 @@ async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
             inner: ReferenceEngine::new(),
             fail: Some(error),
             waits: Arc::default(),
+            fail_store_on: None,
+            store_calls: AtomicUsize::new(0),
         });
         assert!(
             backfiller(engine, source.clone(), store.clone())
@@ -553,6 +576,8 @@ async fn backfiller_waits_for_accepted_batches_then_the_last_batch_to_be_visible
         inner: ReferenceEngine::new(),
         fail: None,
         waits: Arc::default(),
+        fail_store_on: None,
+        store_calls: AtomicUsize::new(0),
     });
     let source = TestThreadSource {
         threads: vec!["thread".to_string()],
@@ -579,11 +604,119 @@ async fn backfiller_waits_for_accepted_batches_then_the_last_batch_to_be_visible
 }
 
 #[tokio::test]
+async fn failed_visible_batch_keeps_only_completed_counters_and_replays_the_missing_turn() {
+    let engine = Arc::new(TestListingEngine {
+        inner: ReferenceEngine::new(),
+        fail: None,
+        waits: Arc::default(),
+        fail_store_on: Some(2),
+        store_calls: AtomicUsize::new(0),
+    });
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([("thread".to_string(), indexed_source_messages(26))]),
+        ..Default::default()
+    };
+    let store = Arc::new(TestCounterStore::default());
+    let backfiller = backfiller(engine.clone(), source, store.clone());
+
+    let failed = backfiller.run(backfiller.begin().await.unwrap()).await;
+
+    assert_eq!(failed.phase, BackfillPhase::Error);
+    assert!(
+        failed
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("scripted backfill store failure")
+    );
+    assert_eq!(failed.turns_stored, 25);
+    assert_eq!(failed.items_stored, 50);
+    assert_eq!(store.load().stored.get("thread"), Some(&25));
+    assert_eq!(
+        *engine.waits.lock().unwrap(),
+        [
+            tinymemory_api::WaitFor::Accepted,
+            tinymemory_api::WaitFor::Visible
+        ]
+    );
+
+    let resumed = backfiller.run(backfiller.begin().await.unwrap()).await;
+
+    assert_eq!(resumed.phase, BackfillPhase::Done);
+    assert_eq!(resumed.turns_stored, 1);
+    assert_eq!(resumed.items_stored, 2);
+    assert_eq!(store.load().stored.get("thread"), Some(&26));
+    assert_eq!(
+        *engine.waits.lock().unwrap(),
+        [
+            tinymemory_api::WaitFor::Accepted,
+            tinymemory_api::WaitFor::Visible,
+            tinymemory_api::WaitFor::Visible,
+        ]
+    );
+    let listed = engine
+        .inner
+        .list(tinymemory_api::ListRequest::new(
+            tinymemory_api::MetaFilter {
+                kinds: vec![tinymemory_api::ItemKind::Conversation],
+                tags_any: vec![BACKFILL_TAG.to_string()],
+                thread_id: Some("thread".to_string()),
+                ..Default::default()
+            },
+            100,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(listed.items.len(), 52, "the failed turn was replayed once");
+}
+
+#[tokio::test]
+async fn counter_store_save_failures_do_not_stop_the_backfill() {
+    let engine = Arc::new(TestListingEngine {
+        inner: ReferenceEngine::new(),
+        fail: None,
+        waits: Arc::default(),
+        fail_store_on: None,
+        store_calls: AtomicUsize::new(0),
+    });
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([("thread".to_string(), source_messages(&[("q", "a")]))]),
+        ..Default::default()
+    };
+    let store = Arc::new(RejectingCounterStore::default());
+    let backfiller = backfiller(engine.clone(), source, store.clone());
+
+    let state = backfiller.run(backfiller.begin().await.unwrap()).await;
+
+    assert_eq!(state.phase, BackfillPhase::Done);
+    assert!(store.save_attempts.load(Ordering::SeqCst) >= 3);
+    let listed = engine
+        .inner
+        .list(tinymemory_api::ListRequest::new(
+            tinymemory_api::MetaFilter {
+                kinds: vec![tinymemory_api::ItemKind::Conversation],
+                tags_any: vec![BACKFILL_TAG.to_string()],
+                thread_id: Some("thread".to_string()),
+                ..Default::default()
+            },
+            10,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(listed.items.len(), 2, "the driver continues storing items");
+    assert_eq!(store.load().state.phase, BackfillPhase::Idle);
+}
+
+#[tokio::test]
 async fn cursor_ignores_foreign_hits_but_honors_an_owned_live_turn() {
     let engine = Arc::new(TestListingEngine {
         inner: ReferenceEngine::new(),
         fail: None,
         waits: Arc::default(),
+        fail_store_on: None,
+        store_calls: AtomicUsize::new(0),
     });
     let layout = MemoryLayout::default();
     let source_turn = turn("question", "answer");
