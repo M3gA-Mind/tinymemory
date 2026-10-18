@@ -91,6 +91,12 @@ pub use layout::identity::{
     org_of_recorded, validate_root,
 };
 pub use layout::{BrainSource, CoreScope, DEFAULT_CORE_LIMIT, MemoryLayout};
+pub use lifecycle::date_hint::DateHintModel;
+pub use lifecycle::turn::{
+    CitationSink, Clock, CompactionOptions, EngineResolver, JobsSink, LoggedToolCall,
+    PreTurnOptions, TurnHooks, TurnPack, logged_reply, user_turn_index,
+};
+pub use lifecycle::window::InPromptFrom;
 pub use lifecycle::{
     AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, RecallPolicy, SessionStart,
     TurnContext,

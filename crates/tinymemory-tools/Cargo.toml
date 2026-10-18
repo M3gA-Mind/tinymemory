@@ -27,6 +27,12 @@ thiserror = "2"
 # A holistic recall reads its sections concurrently (`join_all`). Runtime
 # agnostic, so the crate still links no executor.
 futures = { version = "0.3", default-features = false, features = ["alloc", "std"] }
+# Owned guards let a host retain an owner barrier across an explicit erase
+# without depending on a particular async runtime.
+async-lock = "3"
+# Each newly created owner gate needs a process epoch that cannot ABA after
+# weak-registry eviction and recreation.
+uuid = { version = "1", features = ["v4"] }
 
 # `LayoutHost` is an async port.
 async-trait = "0.1"

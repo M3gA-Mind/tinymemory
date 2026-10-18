@@ -13,9 +13,18 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
   memory lifecycle. `MemoryLayout` is the standard tree: brain documents by
   source, per-agent conversations, and learnings. `Brain` ingests documents.
   `AgentMemory` serves session start, pre-turn context, post-turn logging and
-  compaction. `BackgroundJob` carries the belief builds those calls hand back.
+  compaction. `TurnHooks` composes those calls with host-supplied clock,
+  engine, model, jobs, and citation ports. It starts no tasks; its owned
+  pre-turn future can run in the existing bounded `Prefetcher`. `InPromptFrom`
+  tracks the live prompt window, and `date_hint` parses optional model date
+  ranges. `BackgroundJob` carries the belief builds those calls hand back.
   See [`docs/architecture/lifecycle.md`](../../docs/architecture/lifecycle.md)
   and the runnable `examples/agent_loop.rs` and `examples/brain.rs`.
+- **`pending`**: a runtime-neutral durable FIFO for tool writes, plus weakly
+  cached owner barriers and per-partition drain locks. The host supplies each
+  partition's `ListStore`, maps its own owner and storage keys, and runs the
+  engine executor. New owner epochs use a UUID so a recreated gate cannot
+  mistake an older persisted fence epoch for its own.
 - **`ops`**: validated host request builders, explorer paths, common read
   limits, learning metadata shaping and deletion helpers. `MemoryOps` applies
   a concrete `Confinement` policy before a request reaches an engine.
@@ -165,6 +174,26 @@ that. `MemoryTools::with_scope` takes a `ToolScope` directly.
   means across the contract.
 - Anything the engine returns.
 
+## Pending writes
+
+`pending::PendingWrites` bounds each durable partition independently using
+`Limits::max_entries` and `Limits::max_bytes`. Hosts may impose an additional
+limit on the number of on-disk partitions because naming and enumerating those
+files belongs to the storage adapter. `OwnerRegistry` holds weak references:
+active mutations and fences retain shared owner state, and idle owners are
+reclaimed on the next lookup. `PartitionLocks` applies the same lifetime rule
+to drain serialization, with a separate cancellation-safe async lock per
+partition key. `PendingPartitions` shares the in-memory `PendingWrites` queue
+for an active partition and recreates it from a host-supplied `ListStore`
+factory after eviction. Both partition registries accept exact `Eq + Hash`
+keys, including `PathBuf`, so the host does not need to stringify filesystem
+paths.
+
+The queue's `Entry` is the current persisted representation. A host that has
+older durable encodings should keep decoding them into `Entry` while those
+records may still exist; dropping a legacy decoder can make an accepted write
+unreadable after an upgrade.
+
 ## Adapting to a tool runtime
 
 `ToolSpec` is three fields: `name`, `description` and `parameters` (a JSON
@@ -229,6 +258,7 @@ contract must include the layout root when constructing the node.
 src/
 ├── lib.rs              # crate docs and re-exports
 ├── context/            # the context.md compiler
+├── pending/            # durable write FIFO, owner fences, partition locks
 └── tools/
     ├── mod.rs          # MemoryTools, ToolScope, dispatch
     ├── spec/           # ToolSpec, tool names, JSON Schemas, limits
