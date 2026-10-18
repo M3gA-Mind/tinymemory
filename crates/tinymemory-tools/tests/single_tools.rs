@@ -75,6 +75,66 @@ where
     SingleTool::new("memory", MemoryTools::with_scope(engine, scope)).with_write_sink(sink)
 }
 
+struct PolicySink {
+    pending: PendingWriteSink<MemoryListStore<Entry>>,
+    preflight_error: Option<Error>,
+    enqueue_error: Option<Error>,
+    scrub_learnings: bool,
+    preflight_calls: AtomicUsize,
+}
+
+impl PolicySink {
+    fn new(
+        queue: Queue,
+        preflight_error: Option<Error>,
+        enqueue_error: Option<Error>,
+        scrub_learnings: bool,
+    ) -> Self {
+        Self {
+            pending: PendingWriteSink::new(
+                queue,
+                Arc::new(WriteGate::new("process-policy")),
+                Binding("workspace-owner-v1".into()),
+            ),
+            preflight_error,
+            enqueue_error,
+            scrub_learnings,
+            preflight_calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl WriteSink for PolicySink {
+    fn preflight(&self, _: &ToolScope) -> tinymemory_api::Result<()> {
+        self.preflight_calls.fetch_add(1, Ordering::SeqCst);
+        match &self.preflight_error {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
+    }
+
+    fn enqueue(
+        &self,
+        mut operation: WriteOperation,
+        scope: &ToolScope,
+    ) -> tinymemory_api::Result<Ack> {
+        if let Some(error) = &self.enqueue_error {
+            return Err(error.clone());
+        }
+        if self.scrub_learnings {
+            if let WriteOperation::Learn {
+                item: StoreItem::Learning { text, .. },
+            } = &mut operation
+            {
+                *text = text.replace("secret", "redacted");
+            }
+        }
+        self.pending
+            .enqueue(operation, scope)
+            .map_err(|error| Error::Unavailable(error.to_string()))
+    }
+}
+
 fn tool(engine: Arc<ReferenceEngine>, scope: ToolScope) -> SingleTool {
     queued_tool(
         engine,
@@ -486,9 +546,9 @@ async fn readonly_scope_and_missing_sink_never_fall_back_to_engine_writes() {
 
 #[tokio::test]
 async fn write_sink_preflight_and_policy_errors_preserve_host_error_types() {
-    let queue = queue(8);
+    let off_queue = queue(8);
     let sink = Arc::new(PolicySink::new(
-        queue.clone(),
+        off_queue.clone(),
         Some(Error::Off("memory is disabled".into())),
         None,
         false,
@@ -518,7 +578,12 @@ async fn write_sink_preflight_and_policy_errors_preserve_host_error_types() {
         );
     }
     assert_eq!(sink.preflight_calls.load(Ordering::SeqCst), 2);
-    assert!(queue.entries().expect("disabled queue stays empty").is_empty());
+    assert!(
+        off_queue
+            .entries()
+            .expect("disabled queue stays empty")
+            .is_empty()
+    );
 
     let policy_queue = queue(8);
     let policy_sink = Arc::new(PolicySink::new(
@@ -542,10 +607,12 @@ async fn write_sink_preflight_and_policy_errors_preserve_host_error_types() {
         Err(Error::InvalidRequest("host policy rejected write".into()))
     );
     assert_eq!(policy_sink.preflight_calls.load(Ordering::SeqCst), 1);
-    assert!(policy_queue
-        .entries()
-        .expect("policy rejection happens before queueing")
-        .is_empty());
+    assert!(
+        policy_queue
+            .entries()
+            .expect("policy rejection happens before queueing")
+            .is_empty()
+    );
 
     let scrubbed_queue = queue(8);
     let scrubber = Arc::new(PolicySink::new(scrubbed_queue.clone(), None, None, true));
@@ -565,7 +632,10 @@ async fn write_sink_preflight_and_policy_errors_preserve_host_error_types() {
     let WriteOperation::Learn { item } = &entries[0].operation else {
         panic!("learn action must queue a learning operation")
     };
-    assert_eq!(item.as_learning_text(), Some("redacted token"));
+    let StoreItem::Learning { text, .. } = item else {
+        panic!("learn operation must hold a learning item")
+    };
+    assert_eq!(text, "redacted token");
     assert_eq!(ack["id"], item.fingerprint());
 }
 
