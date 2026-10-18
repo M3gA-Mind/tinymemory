@@ -108,8 +108,9 @@ toml = "1.1"
 default = ["cortex"]
 # `cortex::CortexEngine` over both wires (`cortexdb` direct `/v1/*`, and
 # `tinyhumans` behind the TinyHumans backend `/memory/*`), plus `registry`
-# (`list_engines`, `build_engine`) and `config` (`MemoryConfig`).
-cortex = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:reqwest", "dep:tokio", "dep:futures", "dep:sha2", "dep:log"]
+# (`list_engines`, `build_engine`, guarded `EngineBinder`) and `config`
+# (`MemoryConfig`). It implies `safety` so every binder result is scrubbed.
+cortex = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:reqwest", "dep:tokio", "dep:futures", "dep:sha2", "dep:log", "safety"]
 # `documents`: format sniffing and conversion to markdown, emitting
 # `StoreItem::Document`. Does no I/O.
 documents = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]
@@ -126,8 +127,9 @@ sources = ["documents", "dep:schemars", "dep:regex", "dep:walkdir", "dep:chrono"
 # The readers that fetch over the network — GitHub, RSS, web pages — and
 # `sources::fetch::fetch_url`, all behind the shared SSRF guard.
 sources-network = ["sources", "dep:reqwest", "dep:futures", "dep:tokio", "tokio/process", "tokio/io-util", "tokio/net"]
-# `safety`: secret and PII scrubbing for a `StoreItem` before it is stored.
-safety = ["dep:tinyredact"]
+# `safety`: item scrubbing plus the `ScrubbingEngine` and `TimedEngine`
+# decorators used by every binder result.
+safety = ["dep:tinyredact", "dep:log", "dep:async-trait"]
 # `import`: reads a legacy v1 (embedded TinyCortex) workspace and migrates it
 # into any engine, resumably.
 legacy-import = ["dep:rusqlite", "dep:serde", "dep:serde_json", "dep:thiserror", "dep:async-trait", "dep:log"]
@@ -173,6 +175,10 @@ required-features = ["legacy-import"]
 [[test]]
 name = "reader_dispatch"
 required-features = ["sources"]
+
+[[test]]
+name = "binder_timing"
+required-features = ["cortex"]
 
 [lints]
 workspace = true
