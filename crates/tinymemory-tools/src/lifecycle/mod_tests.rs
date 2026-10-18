@@ -442,9 +442,11 @@ async fn agents_returns_conversation_buckets_confined_to_its_layout_root() {
         .post_turn(PostTurn::new("o-1", 1, "Private conversation."))
         .await
         .unwrap();
-    let mut document_meta = MemoryMeta::default();
-    document_meta.namespace = writer.namespace().clone();
-    document_meta.agent_id = Some("writer".into());
+    let document_meta = MemoryMeta {
+        namespace: writer.namespace().clone(),
+        agent_id: Some("writer".into()),
+        ..MemoryMeta::default()
+    };
     engine
         .store(StoreItem::document("a document by writer", document_meta))
         .await
