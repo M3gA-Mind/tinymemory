@@ -187,7 +187,15 @@ async fn learn_stamps_trusted_scope_and_acknowledges_only_durable_queueing() {
     let engine = Arc::new(ReferenceEngine::new());
     let queue = queue(4);
     let gate = Arc::new(WriteGate::new("process-2"));
-    let tool = queued_tool(engine.clone(), scope(), queue.clone(), gate);
+    let tool = SingleTool::new(
+        "trusted_memory",
+        MemoryTools::with_scope(engine.clone(), scope()),
+    )
+    .with_write_sink(Arc::new(PendingWriteSink::new(
+        queue.clone(),
+        gate,
+        Binding("workspace-owner-v1".into()),
+    )));
     let ack = tool
         .call(
             json!({
@@ -227,7 +235,7 @@ async fn learn_stamps_trusted_scope_and_acknowledges_only_durable_queueing() {
     assert_eq!(meta.agent_id.as_deref(), Some("agent-writer"));
     assert_eq!(
         meta.tool_call.as_ref().map(|call| call.name.as_str()),
-        Some("memory")
+        Some("trusted_memory")
     );
     assert_eq!(
         meta.tool_call.as_ref().and_then(|call| call.id.as_deref()),
