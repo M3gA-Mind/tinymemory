@@ -129,9 +129,7 @@ impl WriteSink for PolicySink {
                 *text = text.replace("secret", "redacted");
             }
         }
-        self.pending
-            .enqueue(operation, scope)
-            .map_err(|error| Error::Unavailable(error.to_string()))
+        self.pending.enqueue(operation, scope)
     }
 }
 

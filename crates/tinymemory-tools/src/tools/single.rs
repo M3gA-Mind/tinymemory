@@ -20,7 +20,7 @@ use tinymemory_api::{
 use crate::confine::{Confinement, Policy};
 use crate::list_store::ListStore;
 use crate::ops::{LearningOptions, MemoryOps};
-use crate::pending::{Ack, Binding, Entry, PendingError, PendingWrites, WriteGate, WriteOperation};
+use crate::pending::{Ack, Binding, Entry, PendingWrites, WriteGate, WriteOperation};
 use crate::tools::args::{self, Args};
 use crate::tools::spec::schema::{DEFAULT_CONFIDENCE, DEFAULT_LEARNING_KIND, LEARNING_KINDS};
 use crate::tools::{MemoryTools, ToolScope};
@@ -77,16 +77,25 @@ pub struct SingleToolSpec {
 /// only after the write is durable locally and do not report an engine write
 /// as complete.
 pub trait WriteSink: Send + Sync {
+    /// Checks host write policy before the action arguments are parsed.
+    ///
+    /// Hosts can preserve refusal ordering here, such as reporting disabled
+    /// memory before a malformed write request.
+    ///
+    /// # Errors
+    ///
+    /// The host's typed memory refusal when the write must not proceed.
+    fn preflight(&self, _scope: &ToolScope) -> tinymemory_api::Result<()> {
+        Ok(())
+    }
+
     /// Durably queues one operation under the trusted scope.
     ///
     /// # Errors
     ///
-    /// The pending store is full or unavailable.
-    fn enqueue(
-        &self,
-        operation: WriteOperation,
-        scope: &ToolScope,
-    ) -> std::result::Result<Ack, PendingError>;
+    /// A host policy refusal, or [`Error::Unavailable`] when durable queueing
+    /// fails.
+    fn enqueue(&self, operation: WriteOperation, scope: &ToolScope) -> tinymemory_api::Result<Ack>;
 }
 
 /// A host-configured adapter from tool writes to PendingWrites.
@@ -125,11 +134,7 @@ impl<S: ListStore<Entry> + 'static> PendingWriteSink<S> {
 }
 
 impl<S: ListStore<Entry> + 'static> WriteSink for PendingWriteSink<S> {
-    fn enqueue(
-        &self,
-        operation: WriteOperation,
-        scope: &ToolScope,
-    ) -> std::result::Result<Ack, PendingError> {
+    fn enqueue(&self, operation: WriteOperation, scope: &ToolScope) -> tinymemory_api::Result<Ack> {
         let scope_root = scope
             .reach
             .as_ref()
@@ -137,6 +142,7 @@ impl<S: ListStore<Entry> + 'static> WriteSink for PendingWriteSink<S> {
             .unwrap_or_else(|| scope.place.clone());
         self.queue
             .enqueue(operation, scope_root, self.binding.clone(), &self.gate)
+            .map_err(|error| Error::Unavailable(error.to_string()))
     }
 }
 
@@ -302,11 +308,9 @@ impl SingleTool {
             .write_sink
             .as_ref()
             .ok_or_else(|| Error::Unsupported("memory write queue is not configured".into()))?;
+        sink.preflight(&self.tools.scope)?;
         let item = self.learning_item(value)?;
-        match sink
-            .enqueue(WriteOperation::Learn { item }, &self.tools.scope)
-            .map_err(pending_error)?
-        {
+        match sink.enqueue(WriteOperation::Learn { item }, &self.tools.scope)? {
             Ack::Learned { id } => Ok(json!({ "id": id, "status": LEARN_QUEUED })),
             Ack::Forgotten { .. } => Err(Error::Unavailable(
                 "memory queue returned an acknowledgement for the wrong operation".into(),
@@ -319,6 +323,7 @@ impl SingleTool {
             .write_sink
             .as_ref()
             .ok_or_else(|| Error::Unsupported("memory write queue is not configured".into()))?;
+        sink.preflight(&self.tools.scope)?;
         let value = action_args(value, false)?;
         let args = Args::parse(TOOL_NAME, &value, &["ids"])?;
         let raw_ids = args.strings("ids")?;
@@ -338,10 +343,7 @@ impl SingleTool {
             .reach
             .clone()
             .unwrap_or_else(|| Reach::subtree(Namespace::ROOT));
-        match sink
-            .enqueue(WriteOperation::Forget { ids, reach }, &self.tools.scope)
-            .map_err(pending_error)?
-        {
+        match sink.enqueue(WriteOperation::Forget { ids, reach }, &self.tools.scope)? {
             Ack::Forgotten { queued } => Ok(json!({
                 "queued": queued,
                 "status": FORGET_QUEUED
@@ -474,10 +476,6 @@ fn calling_thread(scope: &ToolScope, context: &CallContext) -> Option<ThreadWind
             .cloned()
             .unwrap_or_else(|| ThreadWindow::whole(thread_id)),
     )
-}
-
-fn pending_error(error: PendingError) -> Error {
-    Error::Unavailable(error.to_string())
 }
 
 fn schema(fetch_modes: &[FetchMode]) -> Value {
