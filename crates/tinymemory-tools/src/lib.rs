@@ -80,6 +80,7 @@ pub mod pending;
 pub mod prefetch;
 pub mod queue;
 pub mod recall;
+pub mod run_slots;
 pub mod tools;
 
 pub use background::{BackgroundJob, BackgroundRunner, JobOutcome, JobReport};

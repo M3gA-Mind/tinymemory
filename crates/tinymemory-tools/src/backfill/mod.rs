@@ -28,6 +28,13 @@ use tinymemory_api::{
 
 use crate::layout::MemoryLayout;
 
+mod driver;
+
+pub use driver::{
+    BackfillFile, BackfillPhase, BackfillRun, BackfillState, BackfillView, Backfiller,
+    CounterStore, ThreadSource,
+};
+
 /// The tag every backfilled conversation item carries.
 pub const BACKFILL_TAG: &str = "backfill";
 
