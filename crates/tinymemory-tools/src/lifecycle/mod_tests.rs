@@ -1,11 +1,13 @@
 //! The agent lifecycle against the reference engine and a write-broken one.
 
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
-    Consolidation, EngineDescriptor, EngineHealth, FetchPage, FetchRequest, ForgetReport,
-    ForgetTarget, LearningKind, ListPage, ListRequest, RecallAnswer, RecallRequest, StoreReceipt,
-    ToolCallRef,
+    Consolidation, EngineDescriptor, EngineHealth, ExplorePage, ExploreRequest, Facet, FetchPage,
+    FetchRequest, ForgetReport, ForgetTarget, LearningKind, ListPage, ListRequest, RecallAnswer,
+    RecallRequest, StoreReceipt, ToolCallRef,
 };
 
 use super::*;
@@ -75,6 +77,64 @@ fn recall_settings_default_serialize_and_ignore_unknown_toml_fields() {
     let saved = toml::to_string(&configured).unwrap();
     let restored: RecallSettings = toml::from_str(&saved).unwrap();
     assert_eq!(restored, configured);
+}
+
+#[test]
+fn recall_settings_json_defaults_partial_unknown_fields_and_round_trip() {
+    let defaults = RecallSettings::default();
+    let json_defaults: RecallSettings = serde_json::from_value(serde_json::json!({})).unwrap();
+    assert_eq!(json_defaults, defaults);
+
+    let partial: RecallSettings = serde_json::from_value(serde_json::json!({
+        "budget_tokens": 640,
+        "future_setting": "ignored by older readers"
+    }))
+    .unwrap();
+    assert_eq!(partial.budget_tokens, 640);
+    assert_eq!(partial.learnings_limit, defaults.learnings_limit);
+    assert_eq!(partial.pre_turn_timeout_ms, defaults.pre_turn_timeout_ms);
+
+    let configured = RecallSettings {
+        enabled: false,
+        budget_tokens: 1_500,
+        team_limit: 0,
+        build_beliefs_every: 0,
+        pre_turn_timeout_ms: 7_500,
+        date_hint: true,
+        compaction_timeout_ms: 11_000,
+        build_delay_secs: 600,
+        ..RecallSettings::default()
+    };
+    let encoded = serde_json::to_value(&configured).unwrap();
+    let decoded: RecallSettings = serde_json::from_value(encoded).unwrap();
+    assert_eq!(decoded, configured);
+}
+
+#[cfg(feature = "schema")]
+#[test]
+fn recall_settings_schema_matches_defaulted_config_shape() {
+    let schema = serde_json::to_value(schemars::schema_for!(RecallSettings)).unwrap();
+    assert_eq!(schema["type"], "object");
+    let properties = schema["properties"].as_object().unwrap();
+    for field in [
+        "enabled",
+        "budget_tokens",
+        "learnings_limit",
+        "brain_limit",
+        "history_limit",
+        "team_limit",
+        "build_beliefs_every",
+        "pre_turn_timeout_ms",
+        "date_hint",
+        "compaction_timeout_ms",
+        "build_delay_secs",
+    ] {
+        assert!(properties.contains_key(field), "schema is missing {field}");
+    }
+    assert!(schema
+        .get("required")
+        .and_then(serde_json::Value::as_array)
+        .map_or(true, Vec::is_empty));
 }
 
 #[test]
@@ -330,8 +390,33 @@ async fn preview_preserves_host_modes_thread_context_and_read_only_behavior() {
 }
 
 #[tokio::test]
+async fn preview_keeps_typed_engine_failures_in_skipped_sections_and_returns_validation_errors() {
+    let engine_error = tinymemory_api::Error::Unavailable("ranked reads are down".into());
+    let engine = Arc::new(ExploreSpy::new(Some(engine_error.clone()), None));
+    let support = AgentMemory::new(engine, MemoryLayout::default(), "support-01").unwrap();
+    let preview = support
+        .preview(Some("refunds"), None)
+        .await
+        .unwrap();
+    assert!(preview
+        .pack
+        .skipped
+        .iter()
+        .any(|section| section.reason == crate::recall::SkipReason::Engine(engine_error)));
+
+    let no_budget = support.clone().with_policy(RecallPolicy {
+        budget_tokens: 0,
+        ..RecallPolicy::default()
+    });
+    assert_eq!(
+        no_budget.preview(Some("refunds"), None).await.unwrap_err(),
+        tinymemory_api::Error::InvalidRequest("a recall budget must be positive".into())
+    );
+}
+
+#[tokio::test]
 async fn agents_returns_conversation_buckets_confined_to_its_layout_root() {
-    let engine = Arc::new(ReferenceEngine::new());
+    let engine = Arc::new(ExploreSpy::new(None, None));
     let company = MemoryLayout::new("team:acme".parse().unwrap()).unwrap();
     let writer = AgentMemory::new(engine.clone(), company.clone(), "writer").unwrap();
     let reviewer = AgentMemory::new(engine.clone(), company, "reviewer").unwrap();
@@ -354,6 +439,13 @@ async fn agents_returns_conversation_buckets_confined_to_its_layout_root() {
         .post_turn(PostTurn::new("o-1", 1, "Private conversation."))
         .await
         .unwrap();
+    let mut document_meta = MemoryMeta::default();
+    document_meta.namespace = writer.namespace().clone();
+    document_meta.agent_id = Some("writer".into());
+    engine
+        .store(StoreItem::document("a document by writer", document_meta))
+        .await
+        .unwrap();
 
     let agents = writer.agents().await.unwrap();
     assert_eq!(agents.len(), 2);
@@ -362,6 +454,14 @@ async fn agents_returns_conversation_buckets_confined_to_its_layout_root() {
     assert_eq!(agents[1].agent_id, "reviewer");
     assert_eq!(agents[1].turns, 1);
     assert!(agents.iter().all(|agent| agent.agent_id != "outsider"));
+
+    let requests = engine.explore_requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    let request = &requests[0];
+    assert_eq!(request.facet, Facet::Agent);
+    assert_eq!(request.filter, writer.layout().conversations_filter(None));
+    assert_eq!(request.limit, 200);
+    assert_eq!(request.scan_limit, 20_000);
 }
 
 #[tokio::test]
@@ -369,6 +469,82 @@ async fn agents_is_empty_when_the_layout_has_no_conversations() {
     let engine = Arc::new(ReferenceEngine::new());
     let memory = memory(&engine, "support-01");
     assert!(memory.agents().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn agents_returns_the_engine_error_without_wrapping_or_swallowing_it() {
+    let expected = tinymemory_api::Error::Unavailable("agent facet is down".into());
+    let engine = Arc::new(ExploreSpy::new(None, Some(expected.clone())));
+    let memory = AgentMemory::new(engine, MemoryLayout::default(), "support-01").unwrap();
+    assert_eq!(memory.agents().await.unwrap_err(), expected);
+}
+
+/// A reference engine that records agent exploration and can fail reads with
+/// a precise engine error.
+struct ExploreSpy {
+    inner: ReferenceEngine,
+    explore_requests: Mutex<Vec<ExploreRequest>>,
+    fetch_error: Option<tinymemory_api::Error>,
+    explore_error: Option<tinymemory_api::Error>,
+}
+
+impl ExploreSpy {
+    fn new(
+        fetch_error: Option<tinymemory_api::Error>,
+        explore_error: Option<tinymemory_api::Error>,
+    ) -> Self {
+        Self {
+            inner: ReferenceEngine::new(),
+            explore_requests: Mutex::new(Vec::new()),
+            fetch_error,
+            explore_error,
+        }
+    }
+}
+
+#[async_trait]
+impl MemoryEngine for ExploreSpy {
+    fn descriptor(&self) -> &EngineDescriptor {
+        self.inner.descriptor()
+    }
+
+    async fn health(&self) -> EngineHealth {
+        self.inner.health().await
+    }
+
+    async fn recall(&self, request: RecallRequest) -> Result<RecallAnswer> {
+        self.inner.recall(request).await
+    }
+
+    async fn fetch(&self, request: FetchRequest) -> Result<FetchPage> {
+        if let Some(error) = &self.fetch_error {
+            return Err(error.clone());
+        }
+        self.inner.fetch(request).await
+    }
+
+    async fn store(&self, item: StoreItem) -> Result<StoreReceipt> {
+        self.inner.store(item).await
+    }
+
+    async fn forget(&self, target: ForgetTarget) -> Result<ForgetReport> {
+        self.inner.forget(target).await
+    }
+
+    async fn list(&self, request: ListRequest) -> Result<ListPage> {
+        self.inner.list(request).await
+    }
+
+    async fn explore(&self, request: ExploreRequest) -> Result<ExplorePage> {
+        self.explore_requests
+            .lock()
+            .unwrap()
+            .push(request.clone());
+        if let Some(error) = &self.explore_error {
+            return Err(error.clone());
+        }
+        self.inner.explore(request).await
+    }
 }
 
 #[tokio::test]
