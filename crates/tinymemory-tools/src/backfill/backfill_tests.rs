@@ -161,6 +161,7 @@ impl CounterStore for TestCounterStore {
 struct TestListingEngine {
     inner: ReferenceEngine,
     fail: Option<tinymemory_api::Error>,
+    waits: Arc<Mutex<Vec<tinymemory_api::WaitFor>>>,
 }
 
 #[async_trait::async_trait]
@@ -192,6 +193,15 @@ impl MemoryEngine for TestListingEngine {
         item: tinymemory_api::StoreItem,
     ) -> tinymemory_api::Result<tinymemory_api::StoreReceipt> {
         self.inner.store(item).await
+    }
+
+    async fn store_many_with(
+        &self,
+        items: Vec<tinymemory_api::StoreItem>,
+        options: tinymemory_api::WriteOptions,
+    ) -> tinymemory_api::Result<Vec<tinymemory_api::StoreReceipt>> {
+        self.waits.lock().unwrap().push(options.wait);
+        self.inner.store_many_with(items, options).await
     }
 
     async fn forget(
@@ -273,6 +283,7 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
     let engine = Arc::new(TestListingEngine {
         inner: ReferenceEngine::new(),
         fail: None,
+        waits: Arc::default(),
     });
     let layout = MemoryLayout::default();
     // Turn zero is assistant-only, so its valid item has the odd turn index.
@@ -410,6 +421,7 @@ async fn cursor_ignores_foreign_namespace_agent_tag_kind_and_thread_hits() {
     let engine = Arc::new(TestListingEngine {
         inner: ReferenceEngine::new(),
         fail: None,
+        waits: Arc::default(),
     });
     let layout = MemoryLayout::default();
     let source_turn = turn("question", "answer");
