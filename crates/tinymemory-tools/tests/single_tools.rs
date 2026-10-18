@@ -119,6 +119,14 @@ async fn one_configurable_tool_dispatches_actions_and_classifies_each_action() {
         spec.parameters["properties"]["action"]["enum"],
         json!(["recall", "fetch", "learn", "forget"])
     );
+    assert!(spec.parameters["properties"].get("limit").is_none());
+    assert!(spec.parameters["properties"].get("instructions").is_none());
+    let recall_schema = &spec.parameters["oneOf"][0]["properties"];
+    assert!(recall_schema.get("limit").is_none());
+    assert!(recall_schema.get("instructions").is_none());
+    let fetch_schema = &spec.parameters["oneOf"][1]["properties"];
+    assert!(fetch_schema.get("limit").is_none());
+    assert_eq!(fetch_schema["mode"]["default"], "hybrid");
     for (action, permission, concurrency) in [
         ("recall", PermissionClass::ReadOnly, ConcurrencyClass::Safe),
         ("fetch", PermissionClass::ReadOnly, ConcurrencyClass::Safe),

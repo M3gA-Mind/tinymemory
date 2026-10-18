@@ -472,10 +472,14 @@ fn pending_error(error: PendingError) -> Error {
 
 fn schema(fetch_modes: &[FetchMode]) -> Value {
     let mut recall = super::spec::schema::recall();
-    recall["properties"]
-        .as_object_mut()
-        .map(|properties| properties.remove("instructions"));
+    if let Some(properties) = recall["properties"].as_object_mut() {
+        properties.remove("instructions");
+        properties.remove("limit");
+    }
     let mut fetch = super::spec::schema::fetch(fetch_modes);
+    fetch["properties"]
+        .as_object_mut()
+        .map(|properties| properties.remove("limit"));
     if let Some(default) = fetch_modes.first() {
         fetch["properties"]["mode"]["default"] = json!(default.as_str());
     }
