@@ -72,6 +72,8 @@
 
 mod types;
 
+pub mod turn;
+
 use std::future::Future;
 use std::sync::Arc;
 
@@ -734,3 +736,7 @@ fn gist(turns: &[Turn]) -> Option<String> {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "turn_tests.rs"]
+mod turn_tests;
