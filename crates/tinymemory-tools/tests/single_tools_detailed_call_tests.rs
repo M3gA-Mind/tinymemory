@@ -84,7 +84,7 @@ async fn single_call_with_details_returns_raw_question_full_citations_and_same_v
             .iter()
             .map(|citation| citation.id.0.clone())
             .collect::<Vec<_>>(),
-        vec!["memory-one", "memory-two"]
+        vec!["memory-one".to_string(), "memory-two".to_string()]
     );
 }
 
@@ -113,7 +113,7 @@ async fn call_with_details_marks_empty_recall_but_not_fetch_or_writes() {
     );
     assert_eq!(
         empty_recall.recall,
-        Some(RecallDetails {
+        Some(tinymemory_tools::tools::single::RecallDetails {
             question: "nothing relevant".into(),
             citations: Vec::new(),
         })
@@ -253,9 +253,21 @@ fn single_tool_pure_action_classifiers_match_instance_methods() {
         ),
     ];
     for (args, permission, concurrency, is_write) in cases {
-        assert_eq!(permission_for(&args), permission, "{args}");
-        assert_eq!(concurrency_for(&args), concurrency, "{args}");
-        assert_eq!(is_write_action(&args), is_write, "{args}");
+        assert_eq!(
+            tinymemory_tools::tools::single::permission_for(&args),
+            permission,
+            "{args}"
+        );
+        assert_eq!(
+            tinymemory_tools::tools::single::concurrency_for(&args),
+            concurrency,
+            "{args}"
+        );
+        assert_eq!(
+            tinymemory_tools::tools::single::is_write_action(&args),
+            is_write,
+            "{args}"
+        );
         assert_eq!(tool.permission_for(&args), permission, "{args}");
         assert_eq!(tool.concurrency_for(&args), concurrency, "{args}");
     }
