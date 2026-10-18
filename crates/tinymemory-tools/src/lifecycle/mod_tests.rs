@@ -38,6 +38,311 @@ async fn with_brain() -> Arc<ReferenceEngine> {
     engine
 }
 
+#[test]
+fn recall_settings_default_serialize_and_ignore_unknown_toml_fields() {
+    let defaults = RecallSettings::default();
+    assert!(defaults.enabled);
+    assert_eq!(defaults.budget_tokens, 1_200);
+    assert_eq!(defaults.learnings_limit, 8);
+    assert_eq!(defaults.brain_limit, 6);
+    assert_eq!(defaults.history_limit, 6);
+    assert_eq!(defaults.team_limit, 3);
+    assert_eq!(defaults.build_beliefs_every, 10);
+    assert_eq!(defaults.pre_turn_timeout_ms, 10_000);
+    assert!(!defaults.date_hint);
+    assert_eq!(defaults.compaction_timeout_ms, 8_000);
+    assert_eq!(defaults.build_delay_secs, 300);
+
+    let partial: RecallSettings = toml::from_str(
+        "budget_tokens = 500\nfuture_setting = 'ignored by older readers'\n",
+    )
+    .unwrap();
+    assert_eq!(partial.budget_tokens, 500);
+    assert_eq!(partial.learnings_limit, defaults.learnings_limit);
+    assert_eq!(partial.pre_turn_timeout_ms, defaults.pre_turn_timeout_ms);
+
+    let configured = RecallSettings {
+        enabled: false,
+        budget_tokens: 900,
+        team_limit: 0,
+        build_beliefs_every: 0,
+        pre_turn_timeout_ms: 4_000,
+        date_hint: true,
+        compaction_timeout_ms: 12_000,
+        build_delay_secs: 900,
+        ..RecallSettings::default()
+    };
+    let saved = toml::to_string(&configured).unwrap();
+    let restored: RecallSettings = toml::from_str(&saved).unwrap();
+    assert_eq!(restored, configured);
+}
+
+#[test]
+fn recall_settings_project_to_policy_and_log_only_preserves_non_recall_fields() {
+    let enabled = RecallSettings::default();
+    let disabled = RecallSettings {
+        enabled: false,
+        ..RecallSettings::default()
+    };
+    assert_eq!(RecallPolicy::from(&enabled), RecallPolicy::default());
+    assert_eq!(
+        RecallPolicy::from(&disabled),
+        RecallPolicy::from(&enabled),
+        "the setting controls host identity recall, not the policy projection"
+    );
+
+    let tuned = RecallSettings {
+        budget_tokens: 0,
+        team_limit: 0,
+        build_beliefs_every: 0,
+        ..RecallSettings::default()
+    };
+    let policy = RecallPolicy::from(&tuned);
+    assert_eq!(policy.budget_tokens, 1);
+    assert_eq!(policy.team_limit, 0);
+    assert_eq!(policy.build_beliefs_every, None);
+
+    let quiet = policy.log_only();
+    assert_eq!(
+        (
+            quiet.learnings_limit,
+            quiet.brain_limit,
+            quiet.history_limit,
+            quiet.team_limit
+        ),
+        (0, 0, 0, 0)
+    );
+    assert_eq!(quiet.budget_tokens, policy.budget_tokens);
+    assert_eq!(quiet.build_beliefs_every, policy.build_beliefs_every);
+}
+
+#[test]
+fn recall_settings_validate_inclusive_host_ranges_without_mutating_settings() {
+    let valid = [
+        RecallSettings {
+            budget_tokens: 100,
+            ..RecallSettings::default()
+        },
+        RecallSettings {
+            budget_tokens: 16_000,
+            ..RecallSettings::default()
+        },
+        RecallSettings {
+            learnings_limit: 0,
+            brain_limit: 0,
+            history_limit: 0,
+            team_limit: 0,
+            build_beliefs_every: 0,
+            pre_turn_timeout_ms: 100,
+            ..RecallSettings::default()
+        },
+        RecallSettings {
+            learnings_limit: 50,
+            brain_limit: 50,
+            history_limit: 50,
+            team_limit: 50,
+            build_beliefs_every: 1_000,
+            pre_turn_timeout_ms: 30_000,
+            ..RecallSettings::default()
+        },
+    ];
+    for settings in valid {
+        settings.validate().unwrap();
+    }
+
+    let invalid = [
+        (
+            RecallSettings {
+                budget_tokens: 99,
+                ..RecallSettings::default()
+            },
+            "budget_tokens must be between 100 and 16000",
+        ),
+        (
+            RecallSettings {
+                budget_tokens: 16_001,
+                ..RecallSettings::default()
+            },
+            "budget_tokens must be between 100 and 16000",
+        ),
+        (
+            RecallSettings {
+                learnings_limit: 51,
+                ..RecallSettings::default()
+            },
+            "learnings_limit must be between 0 and 50",
+        ),
+        (
+            RecallSettings {
+                brain_limit: 51,
+                ..RecallSettings::default()
+            },
+            "brain_limit must be between 0 and 50",
+        ),
+        (
+            RecallSettings {
+                history_limit: 51,
+                ..RecallSettings::default()
+            },
+            "history_limit must be between 0 and 50",
+        ),
+        (
+            RecallSettings {
+                team_limit: 51,
+                ..RecallSettings::default()
+            },
+            "team_limit must be between 0 and 50",
+        ),
+        (
+            RecallSettings {
+                build_beliefs_every: 1_001,
+                ..RecallSettings::default()
+            },
+            "build_beliefs_every must be between 0 and 1000",
+        ),
+        (
+            RecallSettings {
+                pre_turn_timeout_ms: 99,
+                ..RecallSettings::default()
+            },
+            "pre_turn_timeout_ms must be between 100 and 30000",
+        ),
+        (
+            RecallSettings {
+                pre_turn_timeout_ms: 30_001,
+                ..RecallSettings::default()
+            },
+            "pre_turn_timeout_ms must be between 100 and 30000",
+        ),
+        (
+            RecallSettings {
+                build_delay_secs: u64::MAX,
+                ..RecallSettings::default()
+            },
+            "build_delay_secs must fit within the supported date range",
+        ),
+    ];
+    for (settings, expected_message) in invalid {
+        let before = settings.clone();
+        match settings.validate() {
+            Err(tinymemory_api::Error::InvalidRequest(message)) => {
+                assert_eq!(message, expected_message);
+            }
+            other => panic!("expected invalid request, got {other:?}"),
+        }
+        assert_eq!(settings, before, "validation is pure");
+    }
+
+    let multiple_invalid = RecallSettings {
+        budget_tokens: 99,
+        brain_limit: 51,
+        ..RecallSettings::default()
+    };
+    assert!(matches!(
+        multiple_invalid.validate(),
+        Err(tinymemory_api::Error::InvalidRequest(message))
+            if message == "budget_tokens must be between 100 and 16000"
+    ));
+}
+
+#[tokio::test]
+async fn preview_preserves_host_modes_thread_context_and_read_only_behavior() {
+    let engine = with_brain().await;
+    let support = memory(&engine, "support-01");
+    support
+        .post_turn(PostTurn::new(
+            "thread-1",
+            1,
+            "The refund was approved yesterday.",
+        ))
+        .await
+        .unwrap();
+
+    let before = engine
+        .list(ListRequest::new(
+            tinymemory_api::MetaFilter::kinds([tinymemory_api::ItemKind::Conversation]),
+            20,
+        ))
+        .await
+        .unwrap()
+        .items
+        .len();
+    let turn = support
+        .preview(Some("How long do refunds take?"), Some("thread-1"))
+        .await
+        .unwrap();
+    let turn_wire = serde_json::to_value(&turn).unwrap();
+    assert_eq!(turn_wire["mode"], "turn");
+    assert!(turn_wire["pack"]["markdown"]
+        .as_str()
+        .unwrap()
+        .contains("Refunds take five business days."));
+
+    let session = support
+        .preview(Some("  \n"), Some("thread-1"))
+        .await
+        .unwrap();
+    let session_wire = serde_json::to_value(&session).unwrap();
+    assert_eq!(session_wire["mode"], "session");
+    let markdown = session_wire["pack"]["markdown"].as_str().unwrap();
+    assert!(markdown.contains("Earlier in this thread"), "{markdown}");
+    assert!(markdown.contains("The refund was approved yesterday."), "{markdown}");
+
+    let no_thread = support.preview(None, Some(" \t ")).await.unwrap();
+    let no_thread_wire = serde_json::to_value(&no_thread).unwrap();
+    assert_eq!(no_thread_wire["mode"], "session");
+    assert!(!no_thread_wire["pack"]["markdown"]
+        .as_str()
+        .unwrap()
+        .contains("Earlier in this thread"));
+
+    let after = engine
+        .list(ListRequest::new(
+            tinymemory_api::MetaFilter::kinds([tinymemory_api::ItemKind::Conversation]),
+            20,
+        ))
+        .await
+        .unwrap()
+        .items
+        .len();
+    assert_eq!(after, before, "preview must not log a turn");
+}
+
+#[tokio::test]
+async fn agents_returns_conversation_buckets_confined_to_its_layout_root() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let company = MemoryLayout::new("team:acme".parse().unwrap()).unwrap();
+    let writer = AgentMemory::new(engine.clone(), company.clone(), "writer").unwrap();
+    let reviewer = AgentMemory::new(engine.clone(), company, "reviewer").unwrap();
+    let other_root = MemoryLayout::new("team:other".parse().unwrap()).unwrap();
+    let outsider = AgentMemory::new(engine.clone(), other_root, "outsider").unwrap();
+
+    writer
+        .post_turn(PostTurn::new("w-1", 1, "Drafted the invoice."))
+        .await
+        .unwrap();
+    writer
+        .post_turn(PostTurn::new("w-2", 1, "Sent the invoice."))
+        .await
+        .unwrap();
+    reviewer
+        .post_turn(PostTurn::new("r-1", 1, "Checked the invoice."))
+        .await
+        .unwrap();
+    outsider
+        .post_turn(PostTurn::new("o-1", 1, "Private conversation."))
+        .await
+        .unwrap();
+
+    let agents = writer.agents().await.unwrap();
+    assert_eq!(agents.len(), 2);
+    assert_eq!(agents[0].agent_id, "writer");
+    assert_eq!(agents[0].turns, 2);
+    assert_eq!(agents[1].agent_id, "reviewer");
+    assert_eq!(agents[1].turns, 1);
+    assert!(agents.iter().all(|agent| agent.agent_id != "outsider"));
+}
+
 #[tokio::test]
 async fn pre_turn_logs_the_turn_and_recalls_without_it() {
     let engine = with_brain().await;
