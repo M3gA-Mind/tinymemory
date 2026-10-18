@@ -209,6 +209,13 @@ fn recall_settings_validate_inclusive_host_ranges_without_mutating_settings() {
         ),
         (
             RecallSettings {
+                pre_turn_timeout_ms: 0,
+                ..RecallSettings::default()
+            },
+            "pre_turn_timeout_ms must be between 100 and 30000",
+        ),
+        (
+            RecallSettings {
                 pre_turn_timeout_ms: 30_001,
                 ..RecallSettings::default()
             },
@@ -217,6 +224,20 @@ fn recall_settings_validate_inclusive_host_ranges_without_mutating_settings() {
         (
             RecallSettings {
                 build_delay_secs: u64::MAX,
+                ..RecallSettings::default()
+            },
+            "build_delay_secs must fit within the supported date range",
+        ),
+        (
+            RecallSettings {
+                build_delay_secs: i64::MAX as u64,
+                ..RecallSettings::default()
+            },
+            "build_delay_secs must fit within the supported date range",
+        ),
+        (
+            RecallSettings {
+                build_delay_secs: 10_000_000_000_000,
                 ..RecallSettings::default()
             },
             "build_delay_secs must fit within the supported date range",
@@ -341,6 +362,13 @@ async fn agents_returns_conversation_buckets_confined_to_its_layout_root() {
     assert_eq!(agents[1].agent_id, "reviewer");
     assert_eq!(agents[1].turns, 1);
     assert!(agents.iter().all(|agent| agent.agent_id != "outsider"));
+}
+
+#[tokio::test]
+async fn agents_is_empty_when_the_layout_has_no_conversations() {
+    let engine = Arc::new(ReferenceEngine::new());
+    let memory = memory(&engine, "support-01");
+    assert!(memory.agents().await.unwrap().is_empty());
 }
 
 #[tokio::test]
