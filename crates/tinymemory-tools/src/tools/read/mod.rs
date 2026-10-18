@@ -96,8 +96,39 @@ pub(crate) async fn fetch_page(
     limit: Option<usize>,
     exclude_thread: Option<ThreadWindow>,
 ) -> Result<FetchPage> {
+    fetch_page_inner(engine, scope, value, limit, exclude_thread, false).await
+}
+
+/// Runs the single-name fetch with the first-declared mode as its default.
+///
+/// # Errors
+///
+/// As fetch_page.
+pub(crate) async fn fetch_page_first(
+    engine: &dyn MemoryEngine,
+    scope: &ToolScope,
+    value: &Value,
+    limit: Option<usize>,
+    exclude_thread: Option<ThreadWindow>,
+) -> Result<FetchPage> {
+    fetch_page_inner(engine, scope, value, limit, exclude_thread, true).await
+}
+
+async fn fetch_page_inner(
+    engine: &dyn MemoryEngine,
+    scope: &ToolScope,
+    value: &Value,
+    limit: Option<usize>,
+    exclude_thread: Option<ThreadWindow>,
+    first_declared_default: bool,
+) -> Result<FetchPage> {
     let modes = &engine.descriptor().fetch_modes;
-    let Some(default) = default_mode(modes) else {
+    let default = if first_declared_default {
+        modes.first().copied()
+    } else {
+        default_mode(modes)
+    };
+    let Some(default) = default else {
         return Err(Error::Unsupported(format!(
             "{MEMORY_FETCH}: engine `{}` serves no fetch mode",
             engine.descriptor().id

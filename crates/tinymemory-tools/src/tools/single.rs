@@ -267,7 +267,7 @@ impl SingleTool {
 
     async fn fetch(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
         let value = without_model_limit(action_args(value, false)?);
-        let page = super::read::fetch_page(
+        let page = super::read::fetch_page_first(
             self.tools.engine.as_ref(),
             &self.tools.scope,
             &value,
@@ -379,18 +379,18 @@ impl SingleTool {
         let call_id = self
             .tools
             .scope
-            .tool_call
-            .as_ref()
-            .and_then(|call| call.id.clone());
+                .tool_call
+                .clone()
+                .unwrap_or_else(|| ToolCallRef {
+                    name: self.name.clone(),
+                    id: None,
+                });
         MemoryMeta {
             namespace: self.tools.scope.place.clone(),
             workspace: self.tools.scope.workspace.clone(),
             thread_id: self.tools.scope.thread_id.clone(),
             agent_id: self.tools.scope.agent_id.clone(),
-            tool_call: Some(ToolCallRef {
-                name: self.name.clone(),
-                id: call_id,
-            }),
+            tool_call: Some(call),
             source: SourceRef {
                 kind: SourceKind::Agent,
                 id: None,
