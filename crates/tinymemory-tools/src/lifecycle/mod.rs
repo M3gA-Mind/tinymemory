@@ -740,3 +740,7 @@ mod tests;
 #[cfg(test)]
 #[path = "turn_tests.rs"]
 mod turn_tests;
+
+#[cfg(test)]
+#[path = "turn_runtime_tests.rs"]
+mod turn_runtime_tests;
