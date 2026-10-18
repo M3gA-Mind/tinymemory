@@ -2,8 +2,9 @@
 
 `Prefetcher<K, V>` is the runtime-neutral engine for keyed background work.
 It owns per-key queue ordering, the bounded pending queues and worker pool,
-timeouts, cancellation cleanup, expiry, and revision/ticket checks that prevent
-stale work from publishing after invalidation.
+timeouts, cancellation cleanup, expiry, and revision/ticket checks that reject
+results from work already in flight when a key is invalidated. Scoped
+invalidation keeps queued work; global invalidation drops queued entries.
 
 `TurnCache<K>` specializes that engine for the native lifecycle
 `TurnPack`. Hosts supply `K`; TinyMemory does not serialize or inspect host

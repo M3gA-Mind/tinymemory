@@ -135,7 +135,9 @@ where
     /// Invalidates matching keys across all currently live caches.
     ///
     /// The predicate is called synchronously for each key and is not retained.
-    /// The registry lock is released before cache invalidation begins.
+    /// The registry lock is released before cache invalidation begins. The
+    /// underlying prefetcher keeps queued work, but rejects a result that was
+    /// already in flight when its key was invalidated.
     pub fn invalidate_where(&self, matches: impl Fn(&K) -> bool) {
         for cache in self.live_caches() {
             cache.prefetcher.invalidate_where(&matches);
@@ -144,8 +146,8 @@ where
 
     /// Clears all currently live caches.
     ///
-    /// In-flight work cannot publish into entries invalidated by the
-    /// underlying prefetcher.
+    /// The underlying prefetcher drops pending entries, and in-flight work
+    /// cannot recreate entries removed by invalidation.
     pub fn invalidate_all(&self) {
         for cache in self.live_caches() {
             cache.prefetcher.invalidate_all();
