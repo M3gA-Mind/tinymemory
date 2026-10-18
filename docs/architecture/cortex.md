@@ -259,6 +259,16 @@ without naming `CortexEngine`:
 - `EngineCredential`: `None` (default), `Static(String)`, or
   `Dynamic(Arc<dyn BearerSource>)`. `Debug` is redacted.
 
+Hosts that bind an engine for memory operations should use
+`registry::binder::EngineBinder`. It calls the existing `build_engine`, owns a
+strong cache until explicit invalidation, and always wraps configured,
+host-installed and transient engines with `ScrubbingEngine` and `TimedEngine`.
+The optional endpoint callback supplies a host-owned fallback only when the
+settings endpoint is blank. `bind_configured` lets profile or SaaS policy
+ignore an installed host engine without clearing its slot; `bind_external`
+guards a transient tenant engine without installing it globally. The host
+still decides which engine, endpoint, credential, root and policy to pass.
+
 `build_engine` picks the wire from the id (`cortexdb` is `Direct`,
 `tinyhumans` is `TinyHumans`) and resolves the endpoint: the setting, trimmed,
 if it is not blank, else the engine's default. It returns `Error::Config` for
@@ -266,7 +276,9 @@ an unknown id; a missing credential (`None`, or a blank `Static`); and
 everything `CortexEngine::new` refuses (not an HTTP(S) URL, cleartext off
 loopback). Messages never carry the credential. These are re-exported at the
 crate root: `tinymemory_integrations::{build_engine, list_engines,
-EngineCredential}`.
+EngineCredential}`. The safe host-facing binding API is also at the crate root:
+`EngineBinder`, `Binding`, `BoundEngine`, `HOST_ENGINE_ENDPOINT` and the
+`CORTEXDB_ENGINE_ID` / `TINYHUMANS_ENGINE_ID` constants.
 
 ## MemoryConfig
 
