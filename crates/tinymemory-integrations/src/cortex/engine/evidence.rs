@@ -277,7 +277,7 @@ impl CortexEngine {
     ) -> Result<(Vec<Value>, usize)> {
         let deadline = tokio::time::Instant::now() + self.log.timing.evidence;
         let mut building = stream::iter(paths.iter().cloned().enumerate())
-            .map(|(index, path)| async move { (index, self.pack(req, &path).await) })
+            .map(|(index, path)| async move { (index, self.packs(req, &path).await) })
             .buffer_unordered(PACKS_AT_ONCE);
         let mut arrived = Vec::new();
         while let Ok(next) = tokio::time::timeout_at(deadline, building.next()).await {
@@ -306,10 +306,7 @@ impl CortexEngine {
             );
         }
         arrived.sort_by_key(|(index, _)| *index);
-        Ok((
-            arrived.into_iter().map(|(_, pack)| pack).collect(),
-            late.len(),
-        ))
+        Ok((arrived.into_iter().flat_map(|(_, packs)| packs).collect(), late.len()))
     }
 
     /// See the module docs. `paths` are the kind scopes to read, most

@@ -43,7 +43,7 @@ use serde_json::{Value, json};
 use tinymemory_api::{Citation, ItemId, Namespace, Reach, RecallAnswer, RecallMode, RecallRequest};
 
 use super::CortexEngine;
-use super::fetch::{interleave, ranked, recall_body, whole_items_budget};
+use super::fetch::{interleave, ranked, recall_body, recall_bodies, whole_items_budget};
 use super::items::{admitted, located_meta};
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
@@ -199,14 +199,15 @@ impl CortexEngine {
         req: &RecallRequest,
         paths: &[String],
     ) -> Result<(Vec<Vec<Envelope>>, Result<Value>)> {
-        let packs: Vec<(String, Value)> = stream::iter(paths.to_vec())
+        let grouped: Vec<Vec<(String, Value)>> = stream::iter(paths.to_vec())
             .map(|path| async move {
-                let pack = self.pack(req, &path).await?;
-                Ok::<_, Error>((path, pack))
+                let packs = self.packs(req, &path).await?;
+                Ok::<_, Error>(packs.into_iter().map(|pack| (path.clone(), pack)).collect())
             })
             .buffered(PACKS_AT_ONCE)
             .try_collect()
             .await?;
+        let packs: Vec<(String, Value)> = grouped.into_iter().flatten().collect();
         let per_pack: Vec<Vec<Envelope>> = packs
             .iter()
             .map(|(_, pack)| ranked(pack, None, &req.filter, req.exclude_thread.as_ref()))
@@ -231,11 +232,24 @@ impl CortexEngine {
     /// citations. It includes the derived layers the answer route reads,
     /// after the events the citations come from.
     pub(super) async fn pack(&self, req: &RecallRequest, scope: &str) -> Result<Value> {
-        let mut body = recall_body(scope, &req.question, 0, &req.filter);
-        body["include"] = pack_layers();
-        body["budgets"]["per_layer_limits"] = pack_budgets(req.limit);
-        body["budgets"]["max_tokens"] = json!(whole_items_budget(req.limit.saturating_mul(3)));
-        self.log.recall(&body).await
+        self.packs(req, scope).await?.into_iter().next().ok_or_else(|| {
+            Error::Engine("CortexDB recall produced no packs".to_string())
+        })
+    }
+
+    /// Broad legacy pack plus a targeted channel pack, each with a real
+    /// server-issued id. The broad pack preserves records written before
+    /// channel labels existed.
+    pub(super) async fn packs(&self, req: &RecallRequest, scope: &str) -> Result<Vec<Value>> {
+        let bodies = recall_bodies(scope, &req.question, 0, &req.filter);
+        let mut packs = Vec::with_capacity(bodies.len());
+        for mut body in bodies {
+            body["include"] = pack_layers();
+            body["budgets"]["per_layer_limits"] = pack_budgets(req.limit);
+            body["budgets"]["max_tokens"] = json!(whole_items_budget(req.limit.saturating_mul(3)));
+            packs.push(self.log.recall(&body).await?);
+        }
+        Ok(packs)
     }
 }
 
