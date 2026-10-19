@@ -306,7 +306,10 @@ impl CortexEngine {
             );
         }
         arrived.sort_by_key(|(index, _)| *index);
-        Ok((arrived.into_iter().flat_map(|(_, packs)| packs).collect(), late.len()))
+        Ok((
+            arrived.into_iter().flat_map(|(_, packs)| packs).collect(),
+            late.len(),
+        ))
     }
 
     /// See the module docs. `paths` are the kind scopes to read, most

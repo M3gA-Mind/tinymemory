@@ -22,10 +22,7 @@ fn an_item_carries_its_id_label_and_one_per_set_field() {
     assert_eq!(labels[0], item("abc"));
     assert!(labels.contains(&format!("tm:r:{}", digest("a/b"))));
     assert!(labels.contains(&format!("tm:c:{}", digest("slack"))));
-    assert!(labels.contains(&format!(
-        "tm:cw:{}",
-        digest("slack\0workspace")
-    )));
+    assert!(labels.contains(&format!("tm:cw:{}", digest("slack\0workspace"))));
     assert!(labels.contains(&format!("tm:s:{}", digest("src-1"))));
     assert!(labels.contains(&format!("tm:k:{}", digest("github"))));
     assert_eq!(labels.len(), 7);

@@ -278,7 +278,11 @@ async fn recall_applies_channel_before_the_pack_event_budget() {
         };
         let fetched = engine.fetch(fetch).await.unwrap();
         assert_eq!(
-            fetched.hits.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>(),
+            fetched
+                .hits
+                .iter()
+                .map(|hit| hit.id.as_str())
+                .collect::<Vec<_>>(),
             vec![wanted_id.as_str()],
             "{:?}: fetch also supplements its broad pack with the channel pack",
             engine.wire()
@@ -292,14 +296,18 @@ async fn recall_applies_channel_before_the_pack_event_budget() {
             .collect();
         assert!(
             filters.iter().any(|labels| labels.iter().any(|label| {
-                label.as_str().is_some_and(|label| label.starts_with("tm:w:"))
+                label
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("tm:w:"))
             })),
             "{:?}: the broad workspace pack is retained for legacy records: {filters:?}",
             engine.wire()
         );
         assert!(
             filters.iter().any(|labels| labels.iter().any(|label| {
-                label.as_str().is_some_and(|label| label.starts_with("tm:cw:"))
+                label
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("tm:cw:"))
             })),
             "{:?}: a channel/workspace pack narrows newly labelled records: {filters:?}",
             engine.wire()
@@ -330,7 +338,9 @@ async fn channel_filters_keep_mixed_legacy_items_without_channel_labels() {
                 .events
                 .iter_mut()
                 .find(|event| {
-                    event.pointer("/content/text").and_then(serde_json::Value::as_str)
+                    event
+                        .pointer("/content/text")
+                        .and_then(serde_json::Value::as_str)
                         == Some(legacy_text)
                 })
                 .expect("the legacy fixture was stored");
