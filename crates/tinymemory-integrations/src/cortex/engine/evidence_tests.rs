@@ -256,7 +256,7 @@ async fn a_broad_channel_pack_is_kept_when_its_supplement_misses_the_deadline() 
     let mut engine = direct_engine(&endpoint);
     engine.log.timing.evidence = std::time::Duration::from_millis(300);
     let item = StoreItem::document(
-        "the broad pack still has this channel item",
+        "helix: the broad pack still has this channel item",
         MemoryMeta {
             channel: Some("support".into()),
             ..MemoryMeta::default()
