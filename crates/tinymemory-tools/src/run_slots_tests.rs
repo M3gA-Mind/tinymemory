@@ -16,6 +16,7 @@ fn default_gate_forwards_false_and_remains_usable() {
     let gate = super::RunStartGate::default();
     let mut called = false;
 
+    assert_eq!(format!("{gate:?}"), "RunStartGate { .. }");
     assert!(!gate.with_gate(&mut || {
         called = true;
         false
