@@ -58,4 +58,8 @@ echo "CortexDB $(curl --silent "$url/v1/admin/health") at $url"
 
 TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory-integrations --test live_cortexdb -- --nocapture
 TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory-integrations --features documents-office --test office_live -- --nocapture
-TINYMEMORY_LIVE_CORTEXDB_URL="$url" cargo test -p tinymemory-integrations --features brain --test live_cortex_lifecycle -- --nocapture
+# These tests mutate scopes on one live server. Running them in parallel races
+# CortexDB's shared authorization/derivation state and can return 409 while a
+# belief build is in flight; preserve the test assertions and serialize only
+# this live target.
+TINYMEMORY_LIVE_CORTEXDB_URL="$url" RUST_TEST_THREADS=1 cargo test -p tinymemory-integrations --features brain --test live_cortex_lifecycle -- --nocapture

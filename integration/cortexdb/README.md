@@ -29,6 +29,9 @@ The script runs its own Compose project (`tinymemory-cortexdb-test`) on port
 start when something already answers on its port, so it never replaces a
 server you started by hand (which uses the compose file's own project on
 3141).
+The lifecycle target runs its tests serially because concurrent test cases
+mutate authorization and derived-layer state on the same live CortexDB server.
+The target still runs every assertion against the real server.
 
 ## What runs
 
