@@ -130,7 +130,7 @@ fn unquoted_profile_end(bytes: &[u8], start: usize) -> Option<usize> {
         .find(|(_, character)| character.is_whitespace())
         .map(|(offset, _)| offset);
     if whitespace.is_some_and(|offset| offset < separator)
-        && has_new_absolute_path_after_whitespace(text)
+        && has_new_absolute_path_after_whitespace(&text[..=separator])
     {
         return None;
     }
