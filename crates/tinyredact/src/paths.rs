@@ -12,10 +12,10 @@ static UNICODE_MARK: LazyLock<Regex> = LazyLock::new(|| literal(r"\A\p{M}\z"));
 /// Recognizes `/home/<user>`, `/Users/<user>`, drive-qualified Windows
 /// `Users` paths, UNC `Users` and `home` paths, and tilde paths (`~` or
 /// `~<user>`). Matching is case-insensitive for the conventional directory
-/// names. A username token starts with a Unicode letter or digit (or `_`) and may
-/// continue with Unicode marks, letters, digits, `_`, `-`, and `.`; whitespace
-/// and other punctuation end it. Trailing dots are kept
-/// as surrounding punctuation. A bare `~` is recognized at end of input or
+/// names. A username token starts with a Unicode letter or digit (or `_`) and
+/// may continue with Unicode marks, letters, digits, `_`, `-`, and `.`;
+/// whitespace and other punctuation end it. Trailing dots are kept as
+/// surrounding punctuation. A bare `~` is recognized at end of input or
 /// before whitespace or a closing delimiter; `~.` and `~.name` are relative
 /// paths and are left unchanged. Other absolute paths are left unchanged.
 /// Quoted Windows drive and UNC paths may have spaces in the profile component;

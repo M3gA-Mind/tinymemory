@@ -54,9 +54,10 @@ The sanitization functions return a `Sanitized<T>`;
 `/Users/<user>`, drive-qualified and UNC Windows paths, and `~` home paths.
 It preserves text below the home directory and leaves unrelated absolute paths
 alone; call it separately when a host needs this rule without the full secret
-and PII pipeline. Username tokens start with a Unicode letter or digit (or `_`) and may continue
-with Unicode marks, letters, digits, `_`, `-`, and interior `.`; whitespace and
-other punctuation end the match, and a final period remains in the text. Bare `~` and `~<user>` are supported, while `~.`
+and PII pipeline. Username tokens start with a Unicode letter or digit (or
+`_`) and may continue with Unicode marks, letters, digits, `_`, `-`, and
+interior `.`; whitespace and other punctuation end the match, and a final period
+remains in the text. Bare `~` and `~<user>` are supported, while `~.`
 and `~.<name>` remain unchanged as relative paths. Quoted Windows drive and
 UNC paths may contain spaces in the profile name: the matching quote bounds a
 bare profile and the next path separator bounds a profile with descendants.
