@@ -82,7 +82,7 @@ mod lifecycle_tests;
 #[path = "local_paths_tests.rs"]
 mod local_paths_tests;
 
-pub use credential::{BearerSource, CortexCredential, StaticBearer};
+pub use credential::{BearerSource, CallbackBearerSource, CortexCredential, StaticBearer};
 pub use descriptor::{
     CORTEX_API_ENDPOINT, CORTEXDB_ENGINE_ID, CortexWire, PROXIED_ENGINE_ID,
     TINYHUMANS_API_ENDPOINT, TINYHUMANS_ENGINE_ID, cortexdb_descriptor, proxied_descriptor,
