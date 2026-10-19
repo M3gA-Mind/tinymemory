@@ -1,12 +1,14 @@
+//! Request shaping, confinement, and deletion behavior for memory operations.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::{NaiveDate, TimeZone, Utc};
 use tinymemory_api::conformance::ReferenceEngine;
 use tinymemory_api::{
     EngineDescriptor, EngineHealth, EraseRequest, ExplorePage, ExploreRequest, Facet, FetchMode,
-    FetchPage, FetchRequest, ForgetReport, ForgetTarget, ItemId, LearningKind, ListPage,
-    ListRequest, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach, RecallAnswer, RecallMode,
-    RecallRequest, SourceKind, SourceRef, StoreItem, StoreReceipt, WriteOptions,
+    FetchPage, FetchRequest, ForgetReport, ForgetTarget, GetRequest, Hit, ItemId, LearningKind,
+    ListPage, ListRequest, MemoryEngine, MemoryMeta, MetaFilter, Namespace, Reach, RecallAnswer,
+    RecallMode, RecallRequest, SourceKind, SourceRef, StoreItem, StoreReceipt, WriteOptions,
 };
 
 use crate::ops::{
@@ -20,6 +22,9 @@ struct CountingEngine {
     inner: ReferenceEngine,
     descriptor: EngineDescriptor,
     explores: AtomicUsize,
+    forgets: AtomicUsize,
+    lists: AtomicUsize,
+    gets: AtomicUsize,
     fail_forget: bool,
 }
 
@@ -31,6 +36,9 @@ impl CountingEngine {
             inner,
             descriptor,
             explores: AtomicUsize::new(0),
+            forgets: AtomicUsize::new(0),
+            lists: AtomicUsize::new(0),
+            gets: AtomicUsize::new(0),
             fail_forget,
         }
     }
@@ -67,6 +75,7 @@ impl MemoryEngine for CountingEngine {
     }
 
     async fn forget(&self, target: ForgetTarget) -> tinymemory_api::Result<ForgetReport> {
+        self.forgets.fetch_add(1, Ordering::Relaxed);
         if self.fail_forget {
             return Err(tinymemory_api::Error::InvalidRequest("engine down".into()));
         }
@@ -74,7 +83,13 @@ impl MemoryEngine for CountingEngine {
     }
 
     async fn list(&self, request: ListRequest) -> tinymemory_api::Result<ListPage> {
+        self.lists.fetch_add(1, Ordering::Relaxed);
         self.inner.list(request).await
+    }
+
+    async fn get(&self, request: GetRequest) -> tinymemory_api::Result<Vec<Hit>> {
+        self.gets.fetch_add(1, Ordering::Relaxed);
+        self.inner.get(request).await
     }
 
     async fn erase(
@@ -114,6 +129,19 @@ fn document(text: &str, folder: &str) -> StoreItem {
     meta.folder = Some(folder.to_string());
     meta.file_path = Some(format!("{folder}/{text}.md"));
     StoreItem::document(text, meta)
+}
+
+fn learning_in(namespace_path: &str, text: &str, tags: &[&str]) -> StoreItem {
+    StoreItem::learning(
+        text,
+        LearningKind::Fact,
+        0.8,
+        MemoryMeta {
+            namespace: namespace(namespace_path),
+            tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
+            ..MemoryMeta::default()
+        },
+    )
 }
 
 #[test]
@@ -788,6 +816,117 @@ async fn forget_refuses_empty_ids_and_never_deletes_outside_the_allowed_reach() 
             .len(),
         1
     );
+}
+
+#[tokio::test]
+async fn forget_filter_uses_one_unbounded_filter_call_and_preserves_or_tags() {
+    let ops = MemoryOps::unconfined();
+    let engine = CountingEngine::new(false);
+    engine
+        .store(learning_in("team:acme", "own flow", &["flow:f1"]))
+        .await
+        .unwrap();
+    engine
+        .store(learning_in("team:other", "all flows", &["flows"]))
+        .await
+        .unwrap();
+    engine
+        .store(learning_in("team:other", "other flow", &["flow:f2"]))
+        .await
+        .unwrap();
+
+    let report = ops
+        .forget_filter(&engine, MetaFilter::tags_any(["flow:f1", "flows"]))
+        .await
+        .unwrap();
+
+    assert_eq!(report.forgotten, 2);
+    assert_eq!(engine.forgets.load(Ordering::Relaxed), 1);
+    assert_eq!(engine.lists.load(Ordering::Relaxed), 0);
+    assert_eq!(engine.gets.load(Ordering::Relaxed), 0);
+    let remaining = engine
+        .inner
+        .list(ListRequest {
+            filter: MetaFilter::default(),
+            limit: 10,
+            cursor: None,
+        })
+        .await
+        .unwrap()
+        .items;
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].text, "other flow");
+}
+
+#[tokio::test]
+async fn forget_filter_clamps_reach_and_preserves_tag_clauses() {
+    let ops = operations(Policy::Clamp);
+    let engine = CountingEngine::new(false);
+    engine
+        .store(learning_in(
+            "team:acme/agent:writer",
+            "own flow",
+            &["flow:f1"],
+        ))
+        .await
+        .unwrap();
+    engine
+        .store(learning_in(
+            "team:other/agent:writer",
+            "other flow",
+            &["flow:f1"],
+        ))
+        .await
+        .unwrap();
+
+    let report = ops
+        .forget_filter(&engine, MetaFilter::tags_any(["flow:f1"]))
+        .await
+        .unwrap();
+
+    assert_eq!(report.forgotten, 1);
+    assert_eq!(engine.forgets.load(Ordering::Relaxed), 1);
+    let remaining = engine
+        .inner
+        .list(ListRequest {
+            filter: MetaFilter::default(),
+            limit: 10,
+            cursor: None,
+        })
+        .await
+        .unwrap()
+        .items;
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].text, "other flow");
+}
+
+#[tokio::test]
+async fn forget_filter_rejects_empty_filters_before_confinement() {
+    let ops = operations(Policy::Clamp);
+    let engine = CountingEngine::new(false);
+
+    let error = ops
+        .forget_filter(&engine, MetaFilter::default())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, tinymemory_api::Error::InvalidRequest(_)));
+    assert_eq!(engine.forgets.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn forget_filter_refuses_an_out_of_reach_filter_before_engine_call() {
+    let ops = operations(Policy::Refuse);
+    let engine = CountingEngine::new(false);
+    let filter = MetaFilter {
+        reach: Some(Reach::subtree(Namespace::ROOT)),
+        ..MetaFilter::tags_any(["flow:f1"])
+    };
+
+    let error = ops.forget_filter(&engine, filter).await.unwrap_err();
+
+    assert!(matches!(error, tinymemory_api::Error::InvalidRequest(_)));
+    assert_eq!(engine.forgets.load(Ordering::Relaxed), 0);
 }
 
 #[test]

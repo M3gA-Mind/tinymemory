@@ -13,7 +13,7 @@ use chrono::Utc;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use tinymemory_api::{
-    Error, FetchMode, LearningKind, MemoryMeta, MetaFilter, Namespace, Reach, RecallMode,
+    Citation, Error, FetchMode, LearningKind, MemoryMeta, MetaFilter, Namespace, Reach, RecallMode,
     SourceKind, SourceRef, StoreItem, ThreadWindow, ToolCallRef,
 };
 
@@ -67,6 +67,58 @@ pub struct SingleToolSpec {
     pub description: String,
     /// The closed, action-discriminated JSON parameter schema.
     pub parameters: Value,
+}
+
+/// Full evidence returned alongside one successful recall action.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecallDetails {
+    /// The exact non-blank question the native read sent to the engine.
+    pub question: String,
+    /// Every citation returned by the engine, including its metadata.
+    pub citations: Vec<Citation>,
+}
+
+/// The compact model-facing value and optional details of one successful call.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SingleToolOutcome {
+    /// The JSON value the ordinary [`SingleTool::call`] returns.
+    pub value: Value,
+    /// Present for every successful recall, including an empty recall.
+    pub recall: Option<RecallDetails>,
+}
+
+/// Classifies an action for host permission enforcement.
+///
+/// Unknown, missing, non-string, and whitespace-padded actions default to the
+/// restrictive write class. Classification uses the raw action string; call
+/// dispatch separately trims valid action names.
+#[must_use]
+pub fn permission_for(args: &Value) -> PermissionClass {
+    match action(args) {
+        Some("recall" | "fetch") => PermissionClass::ReadOnly,
+        _ => PermissionClass::Write,
+    }
+}
+
+/// Classifies an action for host concurrency enforcement.
+///
+/// Unknown, missing, non-string, and whitespace-padded actions default to
+/// exclusive. Classification uses the raw action string.
+#[must_use]
+pub fn concurrency_for(args: &Value) -> ConcurrencyClass {
+    match action(args) {
+        Some("recall" | "fetch") => ConcurrencyClass::Safe,
+        _ => ConcurrencyClass::Exclusive,
+    }
+}
+
+/// Whether `args` names a recognized write action after trimming whitespace.
+///
+/// Unknown, missing, and non-string actions are not writes, so hosts continue
+/// to apply their ordinary call budget to those invalid actions.
+#[must_use]
+pub fn is_write_action(args: &Value) -> bool {
+    matches!(action(args).map(str::trim), Some("learn" | "forget"))
 }
 
 /// A host prequeue policy hook for accepting a validated memory write.
@@ -204,10 +256,7 @@ impl SingleTool {
     /// Unknown and missing actions default to the restrictive write class.
     #[must_use]
     pub fn permission_for(&self, args: &Value) -> PermissionClass {
-        match action(args) {
-            Some("recall" | "fetch") => PermissionClass::ReadOnly,
-            _ => PermissionClass::Write,
-        }
+        self::permission_for(args)
     }
 
     /// Classifies an action for host concurrency enforcement.
@@ -215,10 +264,7 @@ impl SingleTool {
     /// Unknown and missing actions default to exclusive.
     #[must_use]
     pub fn concurrency_for(&self, args: &Value) -> ConcurrencyClass {
-        match action(args) {
-            Some("recall" | "fetch") => ConcurrencyClass::Safe,
-            _ => ConcurrencyClass::Exclusive,
-        }
+        self::concurrency_for(args)
     }
 
     /// Runs the action in args and returns its compact JSON result.
@@ -232,11 +278,35 @@ impl SingleTool {
     /// Invalid actions or arguments, reads rejected by the engine, writes
     /// rejected by the queue, and writes without an installed sink.
     pub async fn call(&self, args: Value, context: CallContext) -> tinymemory_api::Result<Value> {
-        let action = action(&args).ok_or_else(|| args::invalid(TOOL_NAME, "action is required"))?;
+        self.call_with_details(args, context)
+            .await
+            .map(|outcome| outcome.value)
+    }
+
+    /// Runs an action and returns its compact value plus full recall details.
+    ///
+    /// The compact value is byte-for-byte the value [`Self::call`] returns.
+    /// Recall details are returned as data only: this method does not deliver
+    /// citations or publish host events. The action name is trimmed for
+    /// dispatch, while permission and concurrency classification use the raw
+    /// argument so padded names remain conservatively classified.
+    ///
+    /// # Errors
+    ///
+    /// The same invalid-action, invalid-argument, engine, and write-queue
+    /// errors as [`Self::call`].
+    pub async fn call_with_details(
+        &self,
+        args: Value,
+        context: CallContext,
+    ) -> tinymemory_api::Result<SingleToolOutcome> {
+        let raw_action =
+            action(&args).ok_or_else(|| args::invalid(TOOL_NAME, "action is required"))?;
+        let action = raw_action.trim();
         if !ACTIONS.contains(&action) {
             return Err(args::invalid(
                 TOOL_NAME,
-                &format!("unknown action {action}; use recall, fetch, learn or forget"),
+                &format!("unknown action {raw_action}; use recall, fetch, learn or forget"),
             ));
         }
         if matches!(action, "learn" | "forget") && !self.tools.scope.writes {
@@ -245,15 +315,37 @@ impl SingleTool {
             ));
         }
         match action {
-            "recall" => self.recall(&args, &context).await,
-            "fetch" => self.fetch(&args, &context).await,
-            "learn" => self.learn(&args),
-            "forget" => self.forget(&args),
+            "recall" => self
+                .recall_with_details(&args, &context)
+                .await
+                .map(|(value, recall)| SingleToolOutcome {
+                    value,
+                    recall: Some(recall),
+                }),
+            "fetch" => self
+                .fetch(&args, &context)
+                .await
+                .map(|value| SingleToolOutcome {
+                    value,
+                    recall: None,
+                }),
+            "learn" => self.learn(&args).map(|value| SingleToolOutcome {
+                value,
+                recall: None,
+            }),
+            "forget" => self.forget(&args).map(|value| SingleToolOutcome {
+                value,
+                recall: None,
+            }),
             _ => Err(args::invalid(TOOL_NAME, "unknown action")),
         }
     }
 
-    async fn recall(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
+    async fn recall_with_details(
+        &self,
+        value: &Value,
+        context: &CallContext,
+    ) -> tinymemory_api::Result<(Value, RecallDetails)> {
         let mut value = action_args(value, false)?;
         let filter = take_filter(&mut value)?;
         let mut value = without_model_limit(value);
@@ -270,14 +362,31 @@ impl SingleTool {
             calling_thread(&self.tools.scope, context),
         )
         .await?;
-        Ok(if answer.answer.trim().is_empty() {
+        // The read parser has validated this non-blank string and passes it
+        // unchanged to RecallRequest::question.
+        let question = value["question"]
+            .as_str()
+            .ok_or_else(|| {
+                args::invalid(TOOL_NAME, "`question` is required and must not be blank")
+            })?
+            .to_string();
+        let citations = answer.citations;
+        let item_count = citations.len();
+        let value = if answer.answer.trim().is_empty() {
             json!({ "evidence": "", "note": "Nothing relevant is stored in memory." })
         } else {
             json!({
                 "evidence": super::render::capped_evidence(&answer.answer),
-                "items": answer.citations.len()
+                "items": item_count
             })
-        })
+        };
+        Ok((
+            value,
+            RecallDetails {
+                question,
+                citations,
+            },
+        ))
     }
 
     async fn fetch(&self, value: &Value, context: &CallContext) -> tinymemory_api::Result<Value> {
