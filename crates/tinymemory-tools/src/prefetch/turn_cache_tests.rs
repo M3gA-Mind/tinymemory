@@ -258,3 +258,122 @@ async fn registry_does_not_hold_its_lock_while_matching_cache_keys() {
     assert!(first.completed(&"invalidate").is_none());
     assert!(late.completed(&"invalidate").is_some());
 }
+
+#[tokio::test]
+async fn turn_cache_is_idle_tracks_active_pending_and_drained_work() {
+    let pool = WorkerPool::new(1);
+    let cache = cache::<&'static str>().with_workers(pool.clone());
+    assert!(cache.is_idle(&"thread"), "an unknown key is idle");
+
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let (starting, held) = (started.clone(), release.clone());
+    cache.enqueue(
+        "thread",
+        Box::pin(async move {
+            starting.notify_one();
+            held.notified().await;
+            Some(pack("active refresh"))
+        }),
+    );
+    started.notified().await;
+    assert!(!cache.is_idle(&"thread"), "an active refresh is not idle");
+
+    let pending_runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let ran = pending_runs.clone();
+    cache.enqueue(
+        "thread",
+        Box::pin(async move {
+            ran.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Some(pack("pending refresh"))
+        }),
+    );
+    assert!(!cache.is_idle(&"thread"), "queued work is not idle");
+
+    release.notify_one();
+    wait_for_workers(&pool, 1).await;
+    assert_eq!(pending_runs.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(
+        cache.is_idle(&"thread"),
+        "the key is idle after its queue drains"
+    );
+}
+
+#[tokio::test]
+async fn turn_cache_is_idle_does_not_imply_invalidated_work_finished() {
+    let pool = WorkerPool::new(1);
+    let cache = Arc::new(cache::<&'static str>().with_workers(pool.clone()));
+    let registry = TurnCacheRegistry::default();
+    registry.register(&cache);
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let (starting, held) = (started.clone(), release.clone());
+    cache.enqueue(
+        "thread",
+        Box::pin(async move {
+            starting.notify_one();
+            held.notified().await;
+            Some(pack("invalidated in-flight result"))
+        }),
+    );
+    started.notified().await;
+    assert!(!cache.is_idle(&"thread"));
+
+    registry.invalidate_all();
+    assert!(
+        cache.is_idle(&"thread"),
+        "a cleared entry is missing and idle"
+    );
+    assert_eq!(
+        pool.available(),
+        0,
+        "the invalidated worker is still active"
+    );
+
+    release.notify_one();
+    wait_for_workers(&pool, 1).await;
+    assert!(cache.is_idle(&"thread"));
+    assert!(cache.completed(&"thread").is_none());
+}
+
+#[test]
+fn turn_cache_is_idle_after_runtime_shutdown_and_allows_a_retry() {
+    let pool = WorkerPool::new(1);
+    let cache = Arc::new(cache::<&'static str>().with_workers(pool.clone()));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        cache.enqueue("thread", Box::pin(std::future::pending()));
+        cache.enqueue(
+            "thread",
+            Box::pin(async { Some(pack("queued before shutdown")) }),
+        );
+        tokio::task::yield_now().await;
+        assert!(!cache.is_idle(&"thread"));
+    });
+    drop(runtime);
+    assert!(cache.is_idle(&"thread"));
+    assert_eq!(pool.available(), 1, "shutdown releases the worker permit");
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        cache.enqueue(
+            "thread",
+            Box::pin(async { Some(pack("retry after shutdown")) }),
+        );
+        wait_for_workers(&pool, 1).await;
+        assert!(cache.is_idle(&"thread"));
+        assert!(
+            cache
+                .completed(&"thread")
+                .unwrap()
+                .markdown
+                .contains("retry after shutdown")
+        );
+    });
+}
