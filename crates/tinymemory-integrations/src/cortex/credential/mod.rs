@@ -43,7 +43,7 @@ pub trait BearerSource: Send + Sync {
 /// engine to observe the latest token without being rebuilt. The callback's
 /// errors are returned unchanged; the engine handles unavailable credentials
 /// as unauthorized and does not send a request. Neither this type nor its
-/// [`Debug`] output exposes the callback or any token.
+/// [`std::fmt::Debug`] output exposes the callback or any token.
 pub struct CallbackBearerSource<F> {
     callback: F,
 }
