@@ -69,9 +69,7 @@ impl Error {
     pub fn is_account_wide(&self) -> bool {
         matches!(
             self,
-            Self::Off(_)
-                | Self::Unauthorized(_)
-                | Self::InsufficientCredits(_)
+            Self::Off(_) | Self::Unauthorized(_) | Self::InsufficientCredits(_)
         )
     }
 

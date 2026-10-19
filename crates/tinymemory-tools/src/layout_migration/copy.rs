@@ -105,10 +105,7 @@ where
                 // retry. Unavailable is transient, not account-wide, but
                 // continuing without the unread page would skip data.
                 if error.is_account_wide()
-                    || matches!(
-                        &error,
-                        Error::Engine(tinymemory_api::Error::Unavailable(_))
-                    )
+                    || matches!(&error, Error::Engine(tinymemory_api::Error::Unavailable(_)))
                 {
                     return pause(store, state, error.to_string());
                 }
