@@ -18,7 +18,7 @@ fn an_item_carries_its_id_label_and_one_per_set_field() {
     meta.repo = Some("a/b".into());
     meta.channel = Some("slack".into());
     meta.workspace = Some("workspace".into());
-    let labels = for_item("abc", &meta);
+    let labels = for_item("abc", &meta, None);
     assert_eq!(labels[0], item("abc"));
     assert!(labels.contains(&format!("tm:r:{}", digest("a/b"))));
     assert!(labels.contains(&format!("tm:c:{}", digest("slack"))));
@@ -70,6 +70,23 @@ fn a_filter_narrows_by_its_most_selective_labelled_field() {
         ..MetaFilter::default()
     };
     assert_eq!(narrowing(&unlabelled), None);
+}
+
+#[test]
+fn channel_workspace_label_uses_the_private_path_digest_on_write_and_query() {
+    let workspace = "/Users/alice/private-workspace";
+    let meta = MemoryMeta {
+        channel: Some("support".into()),
+        workspace: None,
+        ..MemoryMeta::default()
+    };
+    let written = for_item("id", &meta, Some(&path_digest(workspace)));
+    let filter = MetaFilter {
+        channel: Some("support".into()),
+        workspace: Some(workspace.into()),
+        ..MetaFilter::default()
+    };
+    assert!(written.contains(&channel_narrowing(&filter).unwrap()[0]));
 }
 
 #[test]

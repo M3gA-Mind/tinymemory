@@ -493,7 +493,7 @@ impl Envelope {
                 chunks::MAX_EVENT_TEXT_BYTES
             )));
         }
-        let mut lookup = labels::for_item(&self.id, &self.meta);
+        let mut lookup = labels::for_item(&self.id, &self.meta, self.paths.workspace.as_deref());
         lookup.extend(self.paths.workspace.as_deref().map(labels::workspace));
         let mut head = self.clone();
         head.v = V3;

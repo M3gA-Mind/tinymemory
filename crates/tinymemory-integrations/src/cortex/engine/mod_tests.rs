@@ -227,7 +227,7 @@ async fn an_unscoped_recall_packs_each_held_scope_exactly_and_answers_once() {
 #[tokio::test]
 async fn recall_applies_channel_before_the_pack_event_budget() {
     for (engine, state) in both().await {
-        let workspace = "channel-recall-budget";
+        let workspace = "/tmp/channel-recall-budget";
         let marker = "shared-channel-recall-marker";
         let metadata = |channel: &str| MemoryMeta {
             workspace: Some(workspace.to_string()),

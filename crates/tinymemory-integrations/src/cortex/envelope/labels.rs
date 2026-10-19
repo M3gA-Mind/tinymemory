@@ -12,6 +12,7 @@
 //! digest collision costs a wasted row, never a wrong answer.
 
 use sha2::{Digest, Sha256};
+use std::path::Path;
 use tinymemory_api::{MemoryMeta, MetaFilter};
 
 /// Hex digits of the SHA-256 a label keeps: 64 bits.
@@ -121,7 +122,11 @@ const CHANNEL_WORKSPACE_PREFIX: &str = "tm:cw:";
 /// Every label an event of item `id` with `meta` carries: the item label, one
 /// per set labelled field, the source kind and channel lookup labels. At most
 /// ten.
-pub(crate) fn for_item(id: &str, meta: &MemoryMeta) -> Vec<String> {
+pub(crate) fn for_item(
+    id: &str,
+    meta: &MemoryMeta,
+    workspace_path_digest: Option<&str>,
+) -> Vec<String> {
     let mut labels = vec![item(id)];
     for field in &META_FIELDS {
         if let Some(value) = (field.held)(meta) {
@@ -130,7 +135,7 @@ pub(crate) fn for_item(id: &str, meta: &MemoryMeta) -> Vec<String> {
     }
     if let Some(channel) = meta.channel.as_deref() {
         labels.push(format!("{CHANNEL_PREFIX}{}", digest(channel)));
-        if let Some(workspace) = meta.workspace.as_deref() {
+        if let Some(workspace) = workspace_path_digest.or(meta.workspace.as_deref()) {
             labels.push(format!(
                 "{CHANNEL_WORKSPACE_PREFIX}{}",
                 digest(&format!("{channel}\0{workspace}"))
@@ -150,10 +155,17 @@ pub(crate) fn for_item(id: &str, meta: &MemoryMeta) -> Vec<String> {
 pub(crate) fn channel_narrowing(filter: &MetaFilter) -> Option<Vec<String>> {
     let channel = filter.channel.as_deref()?;
     let label = match filter.workspace.as_deref() {
-        Some(workspace) => format!(
-            "{CHANNEL_WORKSPACE_PREFIX}{}",
-            digest(&format!("{channel}\0{workspace}"))
-        ),
+        Some(workspace) => {
+            let workspace = if Path::new(workspace).is_absolute() {
+                path_digest(workspace)
+            } else {
+                workspace.to_string()
+            };
+            format!(
+                "{CHANNEL_WORKSPACE_PREFIX}{}",
+                digest(&format!("{channel}\0{workspace}"))
+            )
+        }
         None => format!("{CHANNEL_PREFIX}{}", digest(channel)),
     };
     Some(vec![label])
