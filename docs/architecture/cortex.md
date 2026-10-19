@@ -207,9 +207,12 @@ uppercased, restricted to ASCII letters, digits and `_`, at most 64
 characters), and an exhausted-credit refusal is also represented by the
 typed `Error::InsufficientCredits` variant. A failure with no
 `errorCode` is filed under `UNAUTHORIZED` (401, 403), `USER_INSUFFICIENT_CREDITS`
-(402), `RATE_LIMITED` (429) or `HTTP_<status>`. `error_code(&Error) ->
-Option<&str>` reads the code back, and returns `None` for a direct failure, a
-local refusal, or a message that no longer starts with a well-formed prefix.
+(402 only when explicitly identified by the backend), `RATE_LIMITED` (429),
+`HTTP_402` for an uncoded payment-required response, or `HTTP_<status>`. A
+generic 402 is not enough evidence to classify the account as out of credits.
+`error_code(&Error) -> Option<&str>` reads the code back, and returns `None`
+for a direct failure, a local refusal, or a message that no longer starts with
+a well-formed prefix.
 
 **An exhausted balance is `InsufficientCredits`.** It is not transient
 (`Unavailable` would invite a retry loop that cannot succeed until someone tops

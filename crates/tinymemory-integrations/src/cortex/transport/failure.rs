@@ -258,11 +258,12 @@ fn clean_code(raw: &str) -> String {
         .to_ascii_uppercase()
 }
 
-/// The code a failure without an `errorCode` is filed under.
+/// The neutral code a failure without a usable `errorCode` is filed under.
+/// HTTP 402 does not establish credit exhaustion on its own.
 fn default_code(status: StatusCode) -> String {
     match status.as_u16() {
         401 | 403 => "UNAUTHORIZED".to_string(),
-        402 => INSUFFICIENT_CREDITS_CODE.to_string(),
+        402 => "HTTP_402".to_string(),
         429 => "RATE_LIMITED".to_string(),
         other => format!("HTTP_{other}"),
     }
