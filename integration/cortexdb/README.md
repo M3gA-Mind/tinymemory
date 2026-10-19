@@ -10,6 +10,7 @@ against the server and not only against the HTTP doubles in
 KEEP=1 ./scripts/cortexdb-live.sh                   # leave it running on :3142
 CORTEXDB_VERSION=v0.9.9 ./scripts/cortexdb-live.sh  # an explicit older release
 CORTEXDB_IMAGE=registry.example/cortexdb@sha256:... ./scripts/cortexdb-live.sh
+CORTEXDB_COMPOSE_PROJECT=tm-check-1 CORTEXDB_PORT=43147 ./scripts/cortexdb-live.sh
 ```
 
 Or by hand:
@@ -28,8 +29,8 @@ The script runs its own Compose project (`tinymemory-cortexdb-test`) on port
 3142 by default and removes it, volumes included, when it ends. It refuses to
 start when something already answers on its port, so it never replaces a
 server you started by hand (which uses the compose file's own project on
-3141).
-The lifecycle target runs its tests serially because concurrent test cases
+3141). Set `CORTEXDB_COMPOSE_PROJECT` and `CORTEXDB_PORT` to isolate concurrent
+local harnesses. The lifecycle target runs its tests serially because concurrent test cases
 mutate authorization and derived-layer state on the same live CortexDB server.
 The target still runs every assertion against the real server.
 
