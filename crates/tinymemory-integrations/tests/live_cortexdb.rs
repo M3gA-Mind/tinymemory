@@ -222,7 +222,10 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .parse()
         .expect("a valid namespace");
     let workspace = format!("/tmp/tinymemory-channel-{run}");
-    let marker = format!("Cobalt channel budget marker {run}");
+    // The harness embedding double is a SHA-256 vector. These fixed strings
+    // were selected so the foreign-channel vectors outrank the wanted item
+    // for this query, making the two-event broad negative control stable.
+    let marker = "Cobalt channel budget marker";
     let make_meta = |channel: &str, item: &str| MemoryMeta {
         namespace: namespace.clone(),
         workspace: Some(workspace.clone()),
@@ -235,15 +238,15 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
     };
 
     let wanted = StoreItem::document(
-        format!("{marker} wanted details"),
+        format!("{marker} wanted details 734"),
         make_meta("support", "wanted"),
     );
     let wanted_id = wanted.fingerprint();
     engine.store(wanted).await.expect("store the wanted item");
     let mut distractor_ids = Vec::new();
-    for index in 0..4 {
+    for index in [899, 381, 774, 619] {
         let distractor = StoreItem::document(
-            format!("{marker}; {marker}; {marker}; foreign detail {index}"),
+            format!("{marker} distractor {index}"),
             make_meta("other", &format!("other-{index}")),
         );
         distractor_ids.push(distractor.fingerprint());
@@ -267,74 +270,71 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
     // smaller citation page, and send only the hashed workspace label.
     let scope = format!("app:tinymemory/{namespace}/app:documents");
     let broad_label = format!("tm:w:{}", label_digest(&workspace));
-    let broad_pack: serde_json::Value = reqwest::Client::new()
-        .post(format!("{url}/v1/recall"))
-        .bearer_auth(
-            std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into()),
-        )
-        .json(&serde_json::json!({
-            "scope": scope,
-            "query": marker,
-            "view": "granular",
-            "include": ["events"],
-            "filters": { "metadata": { "labels": [broad_label] } },
-            "budgets": {
-                "max_tokens": 1_572_864,
-                "per_layer_limits": { "events": 2 }
-            }
-        }))
-        .send()
-        .await
-        .expect("request the broad two-event control pack")
-        .error_for_status()
-        .expect("the broad control pack succeeds")
-        .json()
-        .await
-        .expect("the broad control pack is JSON");
-    let broad_events = broad_pack
-        .pointer("/layers/events")
-        .and_then(serde_json::Value::as_array)
-        .expect("the broad control pack has events");
-    assert_eq!(
-        broad_events.len(),
-        2,
-        "the server applied the two-event budget"
-    );
-    let broad_texts: Vec<&str> = broad_events
-        .iter()
-        .filter_map(|event| {
-            event
-                .pointer("/content/text")
-                .and_then(serde_json::Value::as_str)
-        })
-        .collect();
-    assert!(
-        broad_texts
+    let broad_deadline = Instant::now() + VISIBILITY;
+    let broad_texts = loop {
+        let broad_pack: serde_json::Value = reqwest::Client::new()
+            .post(format!("{url}/v1/recall"))
+            .bearer_auth(
+                std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into()),
+            )
+            .json(&serde_json::json!({
+                "scope": scope,
+                "query": marker,
+                "view": "granular",
+                "include": ["events"],
+                "filters": { "metadata": { "labels": [broad_label] } },
+                "budgets": {
+                    "max_tokens": 1_572_864,
+                    "per_layer_limits": { "events": 2 }
+                }
+            }))
+            .send()
+            .await
+            .expect("request the broad two-event control pack")
+            .error_for_status()
+            .expect("the broad control pack succeeds")
+            .json()
+            .await
+            .expect("the broad control pack is JSON");
+        let broad_events = broad_pack
+            .pointer("/layers/events")
+            .and_then(serde_json::Value::as_array)
+            .expect("the broad control pack has events");
+        let texts: Vec<&str> = broad_events
             .iter()
-            .all(|text| text.contains(&marker) && text.contains("foreign detail")),
-        "both budgeted events should be distinct foreign-channel distractors: {broad_texts:?}"
-    );
-    assert!(
-        broad_texts
-            .iter()
-            .all(|text| !text.contains("wanted details")),
-        "the raw broad pack must exclude the wanted item: {broad_texts:?}"
-    );
-    assert!(
-        !broad_pack.to_string().contains(&workspace),
-        "the local workspace path is never returned in the event labels"
-    );
-    assert!(
-        broad_events.iter().all(|event| {
-            event
-                .pointer("/context/labels")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|labels| {
-                    labels.contains(&serde_json::Value::String(broad_label.clone()))
-                })
-        }),
-        "the raw control only narrows by the hashed workspace label"
-    );
+            .filter_map(|event| {
+                event
+                    .pointer("/content/text")
+                    .and_then(serde_json::Value::as_str)
+            })
+            .collect();
+        if broad_events.len() == 2
+            && texts.iter().all(|text| text.contains("distractor"))
+            && texts.iter().all(|text| !text.contains("wanted details"))
+        {
+            assert!(
+                !broad_pack.to_string().contains(&workspace),
+                "the local workspace path is never returned in event labels"
+            );
+            assert!(
+                broad_events.iter().all(|event| {
+                    event
+                        .pointer("/context/labels")
+                        .and_then(serde_json::Value::as_array)
+                        .is_some_and(|labels| {
+                            labels.contains(&serde_json::Value::String(broad_label.clone()))
+                        })
+                }),
+                "the raw control only narrows by the hashed workspace label"
+            );
+            break texts;
+        }
+        assert!(
+            Instant::now() < broad_deadline,
+            "the two-event broad pack still includes the wanted item or lacks ranked distractors: {texts:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
 
     let deadline = Instant::now() + VISIBILITY;
     let channel_answer = loop {
