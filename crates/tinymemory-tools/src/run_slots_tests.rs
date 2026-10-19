@@ -2,10 +2,14 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Barrier};
 use std::thread;
 
-use super::{RunGuard, RunSlots, RunStartGate, StartGate};
+use super::{RunGuard, RunSlots, StartGate};
 
-fn reserve_if_peer_idle(
-    gate: &RunStartGate,
+fn shared_gate() -> impl StartGate + Clone {
+    super::RunStartGate::new()
+}
+
+fn reserve_if_peer_idle<G: StartGate>(
+    gate: &G,
     own: &RunSlots<String>,
     peer: &RunSlots<String>,
     key: String,
@@ -23,7 +27,7 @@ fn reserve_if_peer_idle(
 
 #[test]
 fn shared_gate_excludes_peer_runs_across_separate_slot_registries() {
-    let gate = RunStartGate::new();
+    let gate = shared_gate();
     let import_slots = RunSlots::new();
     let migration_slots = RunSlots::new();
     let key = String::from("workspace");
@@ -73,7 +77,7 @@ fn shared_gate_excludes_peer_runs_across_separate_slot_registries() {
 
 #[test]
 fn shared_gate_recovers_from_a_panicking_reservation_callback() {
-    let gate = RunStartGate::new();
+    let gate = shared_gate();
     let panic = catch_unwind(AssertUnwindSafe(|| {
         gate.with_gate(&mut || panic!("reservation callback failed"));
     }));
@@ -89,7 +93,7 @@ fn shared_gate_recovers_from_a_panicking_reservation_callback() {
 
 #[test]
 fn released_run_slot_can_be_reserved_again_through_the_shared_gate() {
-    let gate = RunStartGate::new();
+    let gate = shared_gate();
     let own = RunSlots::new();
     let peer = RunSlots::new();
     let key = String::from("workspace");
@@ -107,7 +111,7 @@ fn released_run_slot_can_be_reserved_again_through_the_shared_gate() {
 
 #[test]
 fn shared_gate_allows_runs_for_unrelated_keys_in_separate_registries() {
-    let gate = RunStartGate::new();
+    let gate = shared_gate();
     let import_slots = RunSlots::new();
     let migration_slots = RunSlots::new();
     let import_key = String::from("import-workspace");
