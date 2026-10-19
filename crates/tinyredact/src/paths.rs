@@ -22,12 +22,28 @@ pub fn redact_home_paths(text: &str) -> String {
     let mut position = 0;
 
     while position < text.len() {
+        if let Some(uri) = parse_uri(text, position) {
+            if uri.is_file
+                && let Some(path_start) = uri.path_start
+                && let Some((match_start, consumed)) =
+                    file_uri_home_path_end(&bytes[..uri.end], path_start)
+            {
+                output.push_str(&text[position..match_start]);
+                if match_start == path_start {
+                    output.push('/');
+                }
+                output.push_str("<HOME>");
+                output.push_str(&text[match_start + consumed..uri.end]);
+            } else {
+                output.push_str(&text[position..uri.end]);
+            }
+            position = uri.end;
+            continue;
+        }
+
         if has_path_boundary(text, position)
             && let Some(consumed) = home_path_end(bytes, position)
         {
-            if is_local_file_uri_unix_path_start(&text[..position]) {
-                output.push('/');
-            }
             output.push_str("<HOME>");
             position = consumed;
         } else {
@@ -43,32 +59,72 @@ pub fn redact_home_paths(text: &str) -> String {
     output
 }
 
+struct ParsedUri {
+    is_file: bool,
+    path_start: Option<usize>,
+    end: usize,
+}
+
+fn parse_uri(text: &str, start: usize) -> Option<ParsedUri> {
+    let bytes = text.as_bytes();
+    if !bytes.get(start)?.is_ascii_alphabetic()
+        || (start > 0 && is_uri_scheme_byte(bytes[start - 1]))
+    {
+        return None;
+    }
+
+    let mut scheme_end = start + 1;
+    while bytes
+        .get(scheme_end)
+        .is_some_and(|byte| is_uri_scheme_byte(*byte))
+    {
+        scheme_end += 1;
+    }
+    if bytes.get(scheme_end) != Some(&b':')
+        || bytes.get(scheme_end + 1..scheme_end + 3) != Some(b"//")
+    {
+        return None;
+    }
+
+    let authority_start = scheme_end + 3;
+    let end = text[start..]
+        .find(char::is_whitespace)
+        .map_or(text.len(), |relative| start + relative);
+    let path_start = bytes[authority_start..end]
+        .iter()
+        .position(|byte| *byte == b'/')
+        .map(|relative| authority_start + relative);
+
+    Some(ParsedUri {
+        is_file: bytes[start..scheme_end].eq_ignore_ascii_case(b"file"),
+        path_start,
+        end,
+    })
+}
+
+fn is_uri_scheme_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.')
+}
+
+fn file_uri_home_path_end(bytes: &[u8], path_start: usize) -> Option<(usize, usize)> {
+    if starts_with_ascii_case_insensitive(&bytes[path_start..], b"/users/")
+        || starts_with_ascii_case_insensitive(&bytes[path_start..], b"/home/")
+    {
+        return home_path_end(bytes, path_start).map(|consumed| (path_start, consumed));
+    }
+
+    if bytes.get(path_start) == Some(&b'/') {
+        let drive_start = path_start + 1;
+        return home_path_end(bytes, drive_start).map(|consumed| (drive_start, consumed));
+    }
+
+    None
+}
+
 fn has_path_boundary(text: &str, position: usize) -> bool {
     text[..position].chars().next_back().is_none_or(|previous| {
         !previous.is_alphanumeric() && previous != '_' && previous != '/' && previous != '\\'
-    }) || is_local_file_uri_path_start(&text[..position])
-}
-
-/// A file URI with an empty authority has one extra slash before its path:
-/// `file:///Users/...`. The slash that begins a Unix path, or precedes a
-/// Windows drive, is therefore not an ordinary text boundary. Recognize only
-/// the URI's exact path starts; do not treat nested paths or arbitrary URLs as
-/// file URI roots.
-fn is_local_file_uri_path_start(prefix: &str) -> bool {
-    [
-        "file://",
-        "file:///",
-        "file://localhost",
-        "file://localhost/",
-    ]
-    .iter()
-    .any(|start| prefix.eq_ignore_ascii_case(start))
-}
-
-fn is_local_file_uri_unix_path_start(prefix: &str) -> bool {
-    ["file://", "file://localhost"]
-        .iter()
-        .any(|start| prefix.eq_ignore_ascii_case(start))
+    })
 }
 
 fn home_path_end(bytes: &[u8], start: usize) -> Option<usize> {
@@ -118,9 +174,6 @@ fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
     if start + 2 > bytes.len() || !is_separator(bytes[start]) || !is_separator(bytes[start + 1]) {
         return None;
     }
-    if begins_uri_authority(bytes, start) {
-        return None;
-    }
     let server_end = segment_end(bytes, start + 2)?;
     if server_end == start + 2 || server_end == bytes.len() {
         return None;
@@ -138,23 +191,6 @@ fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
     quoted_profile_end(bytes, start, username_start)
         .or_else(|| unquoted_profile_end(bytes, username_start))
         .or_else(|| username_end(bytes, username_start))
-}
-
-/// A URI authority starts with `//` immediately after its scheme colon. It is
-/// not a UNC server path, even when its URL path happens to contain `/Users`.
-fn begins_uri_authority(bytes: &[u8], start: usize) -> bool {
-    let Some(colon) = bytes[..start].iter().rposition(|byte| *byte == b':') else {
-        return false;
-    };
-    if colon + 1 != start {
-        return false;
-    }
-    let scheme = &bytes[..colon];
-    !scheme.is_empty()
-        && scheme[0].is_ascii_alphabetic()
-        && scheme
-            .iter()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
 }
 
 fn segment_end(bytes: &[u8], start: usize) -> Option<usize> {
