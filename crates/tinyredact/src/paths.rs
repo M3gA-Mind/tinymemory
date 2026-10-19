@@ -118,14 +118,13 @@ fn username_end(bytes: &[u8], start: usize) -> Option<usize> {
     if let Some((offset, character)) = text
         .char_indices()
         .find(|(_, character)| character.is_whitespace() || matches!(character, '/' | '\\'))
+        && matches!(character, '/' | '\\')
     {
-        if matches!(character, '/' | '\\') {
-            let mut end = start + offset;
-            while end > start && matches!(bytes[end - 1], b'.' | b',' | b';') {
-                end -= 1;
-            }
-            return (end > start).then_some(end);
+        let mut end = start + offset;
+        while end > start && matches!(bytes[end - 1], b'.' | b',' | b';') {
+            end -= 1;
         }
+        return (end > start).then_some(end);
     }
 
     let mut end = start;
