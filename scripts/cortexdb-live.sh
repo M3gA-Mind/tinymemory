@@ -5,11 +5,17 @@
 #
 #   ./scripts/cortexdb-live.sh            # boot, test, tear down
 #   KEEP=1 ./scripts/cortexdb-live.sh     # leave the server running after
-#   CORTEXDB_VERSION=v0.10.4 ./scripts/cortexdb-live.sh
+#   CORTEXDB_VERSION=v0.10.4 ./scripts/cortexdb-live.sh  # explicit version override
 
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# Keep the version convenience for this script while the default stays tied to
+# the verified immutable multi-architecture image digest. An explicit image
+# override takes precedence.
+if [ -z "${CORTEXDB_IMAGE:-}" ] && [ -n "${CORTEXDB_VERSION:-}" ]; then
+  export CORTEXDB_IMAGE="cortexdb/cortexdb:${CORTEXDB_VERSION}"
+fi
 compose=(docker compose --project-name tinymemory-cortexdb-test -f "$root/integration/cortexdb/docker-compose.yml")
 port="${CORTEXDB_PORT:-3142}"
 # Compose reads the published port from the environment.
