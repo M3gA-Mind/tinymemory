@@ -225,6 +225,71 @@ async fn an_unscoped_recall_packs_each_held_scope_exactly_and_answers_once() {
 }
 
 #[tokio::test]
+async fn recall_applies_channel_before_the_pack_event_budget() {
+    for (engine, state) in both().await {
+        let workspace = "channel-recall-budget";
+        let marker = "shared-channel-recall-marker";
+        let metadata = |channel: &str| MemoryMeta {
+            workspace: Some(workspace.to_string()),
+            channel: Some(channel.to_string()),
+            ..MemoryMeta::default()
+        };
+        let wanted = StoreItem::document(format!("{marker} wanted item"), metadata("wanted"));
+        let wanted_id = wanted.fingerprint();
+        engine.store(wanted).await.unwrap();
+
+        // A one-citation pack budgets two events. Put two equally relevant
+        // items from another channel after the wanted item so top-k recall
+        // returns those two first unless the channel label narrows the server
+        // request before it applies that budget.
+        for index in 0..2 {
+            engine
+                .store(StoreItem::document(
+                    format!("{marker} other item {index}"),
+                    metadata("other"),
+                ))
+                .await
+                .unwrap();
+        }
+
+        state.seen.lock().unwrap().recalls.clear();
+        let mut request = RecallRequest::new(marker, 1);
+        request.filter = MetaFilter {
+            workspace: Some(workspace.to_string()),
+            channel: Some("wanted".to_string()),
+            ..MetaFilter::kinds([ItemKind::Document])
+        };
+        let answer = engine.recall(request).await.unwrap();
+        assert_eq!(
+            answer
+                .citations
+                .iter()
+                .map(|citation| citation.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![wanted_id.as_str()],
+            "{:?}: a filtered item outside the unfiltered pack's top two is still recalled",
+            engine.wire()
+        );
+        let seen = state.seen.lock().unwrap();
+        let filter_labels = &seen.recalls.last().unwrap()["filters"]["metadata"]["labels"];
+        assert_eq!(
+            filter_labels.as_array().unwrap().len(),
+            1,
+            "{:?}: the server gets the channel's narrowing label",
+            engine.wire()
+        );
+        assert!(
+            filter_labels[0]
+                .as_str()
+                .unwrap()
+                .starts_with("tm:c:"),
+            "{:?}: {filter_labels}",
+            engine.wire()
+        );
+    }
+}
+
+#[tokio::test]
 async fn recall_over_one_kind_uses_that_kind_scope() {
     for (engine, state) in both().await {
         let mut req = RecallRequest::new("anything", 3);
