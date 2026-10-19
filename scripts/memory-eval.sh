@@ -26,6 +26,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+source "$root/scripts/cortexdb-image.sh"
 models="${MODELS:-mock}"
 port="${CORTEXDB_PORT:-3145}"
 label="${LABEL:-cortex-$models}"
