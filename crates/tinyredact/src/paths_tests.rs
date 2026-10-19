@@ -88,6 +88,8 @@ fn punctuation_around_bare_home_paths_is_preserved() {
     assert_home_path_cases(&[
         ("(/Users/alice)", "(<HOME>)"),
         ("'/home/alice'", "'<HOME>'"),
+        (r#""C:\Users\alice""#, r#""<HOME>""#),
+        (r"\\server\Users\alice)", r"<HOME>)"),
         ("/Users/alice.", "<HOME>."),
         (
             "from /home/alice,/home/bob; done",
@@ -103,6 +105,8 @@ fn tilde_home_tokens_keep_boundaries_and_ignore_relative_dot_path() {
         ("~/docs", "<HOME>/docs"),
         ("~alice now", "<HOME> now"),
         ("~alice.smith/notes", "<HOME>/notes"),
+        ("~alice.", "<HOME>."),
+        ("(~)", "(<HOME>)"),
         ("~.", "~."),
         ("~.config/settings", "~.config/settings"),
     ]);
