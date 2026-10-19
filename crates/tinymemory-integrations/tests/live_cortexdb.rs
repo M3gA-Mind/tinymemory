@@ -79,7 +79,11 @@ fn run_id() -> String {
 /// The lookup-label digest prefix used to inspect a broad live pack without
 /// sending the workspace path itself.
 fn label_digest(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))[..16].to_string()
+    Sha256::digest(value.as_bytes())
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn meta(workspace: &str, source: SourceKind) -> MemoryMeta {
