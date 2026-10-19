@@ -639,7 +639,7 @@ fn app_thread(thread_id: &str) -> bool {
 }
 
 /// Whether `path` is absolute on any system: `/…`, `~…`, `\\…` or `C:…`.
-fn is_absolute(path: &str) -> bool {
+pub(crate) fn is_absolute(path: &str) -> bool {
     let drive = matches!(path.as_bytes(), [letter, b':', ..] if letter.is_ascii_alphabetic());
     path.starts_with(['/', '~', '\\']) || drive
 }
