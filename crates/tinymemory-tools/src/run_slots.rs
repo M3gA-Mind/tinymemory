@@ -112,3 +112,7 @@ impl<K: std::fmt::Debug> std::fmt::Debug for RunSlots<K> {
         f.debug_struct("RunSlots").finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+#[path = "run_slots_tests.rs"]
+mod tests;
