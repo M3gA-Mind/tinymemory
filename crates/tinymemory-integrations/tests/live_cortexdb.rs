@@ -261,7 +261,10 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .collect();
     expected_texts.sort();
     let listed = list_exactly(&engine, &broad_filter, &expected_texts).await;
-    assert_eq!(listed, expected_texts, "all five candidates reached the server");
+    assert_eq!(
+        listed, expected_texts,
+        "all five candidates reached the server"
+    );
 
     // Inspect the server's actual broad pack, not the smaller citation page.
     // Its two results establish the cutoff; choosing one of the other three
@@ -273,8 +276,7 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         let pack: serde_json::Value = reqwest::Client::new()
             .post(format!("{url}/v1/recall"))
             .bearer_auth(
-                std::env::var("TINYMEMORY_TEST_CORTEX_KEY")
-                    .unwrap_or_else(|_| DEFAULT_KEY.into()),
+                std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into()),
             )
             .json(&serde_json::json!({
                 "scope": scope,
@@ -411,7 +413,11 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .iter()
         .map(|citation| citation.id.as_str())
         .collect();
-    assert_eq!(evidence_ids, [wanted_id], "Evidence result: {evidence_ids:?}");
+    assert_eq!(
+        evidence_ids,
+        [wanted_id],
+        "Evidence result: {evidence_ids:?}"
+    );
     assert!(
         evidence_ids
             .iter()
