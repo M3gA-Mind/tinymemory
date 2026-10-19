@@ -475,6 +475,30 @@ impl MemoryOps {
         }
     }
 
+    /// Forgets every item matching a non-empty filter in one engine call.
+    ///
+    /// The configured confinement is applied to the filter while preserving
+    /// its metadata clauses. This keeps filtered deletion unbounded: it does
+    /// not page through matches or convert them to ids first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRequest`] for an empty filter or a refused
+    /// out-of-reach filter, and returns engine errors unchanged.
+    pub async fn forget_filter(
+        &self,
+        engine: &dyn MemoryEngine,
+        filter: MetaFilter,
+    ) -> Result<ForgetReport> {
+        if filter.is_empty() {
+            return Err(Error::InvalidRequest(
+                "forget needs a non-empty filter".to_string(),
+            ));
+        }
+        let filter = self.filter(Some(filter))?;
+        engine.forget(ForgetTarget::Filter(filter)).await
+    }
+
     /// Tries a pending deletion, queueing it once when memory is off or the
     /// engine fails. Off is a safe zero-count outcome; engine errors remain
     /// visible to the host after the deletion is queued.
@@ -630,8 +654,7 @@ impl MemoryOps {
                 ..MetaFilter::default()
             },
         };
-        let filter = self.filter(Some(filter))?;
-        Ok(engine.forget(ForgetTarget::Filter(filter)).await?.forgotten)
+        Ok(self.forget_filter(engine, filter).await?.forgotten)
     }
 }
 

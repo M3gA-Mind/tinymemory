@@ -83,6 +83,15 @@ pub struct MetaFilter {
 }
 
 impl MetaFilter {
+    /// A filter restricted to items carrying any of the given tags.
+    #[must_use]
+    pub fn tags_any(tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            tags_any: tags.into_iter().map(Into::into).collect(),
+            ..Self::default()
+        }
+    }
+
     /// A filter restricted to the given item kinds.
     #[must_use]
     pub fn kinds(kinds: impl IntoIterator<Item = ItemKind>) -> Self {
