@@ -296,7 +296,9 @@ impl CortexEngine {
             .buffer_unordered(PACKS_AT_ONCE);
         let mut arrived = vec![Vec::new(); paths.len()];
         while let Ok(next) = tokio::time::timeout_at(deadline, building.next()).await {
-            let Some((scope, pack, result)) = next else { break };
+            let Some((scope, pack, result)) = next else {
+                break;
+            };
             arrived[scope].push((pack, result?));
         }
         let late: Vec<&str> = paths
