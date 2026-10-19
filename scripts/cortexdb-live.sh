@@ -7,7 +7,6 @@
 #   KEEP=1 ./scripts/cortexdb-live.sh     # leave the server running after
 #   CORTEXDB_VERSION=v0.10.4 ./scripts/cortexdb-live.sh  # explicit version override
 #   CORTEXDB_IMAGE=registry/cortexdb@sha256:... ./scripts/cortexdb-live.sh
-#   CORTEXDB_COMPOSE_PROJECT=tm-check-1 CORTEXDB_PORT=43147 ./scripts/cortexdb-live.sh
 
 set -euo pipefail
 
@@ -18,7 +17,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 if [ -z "${CORTEXDB_IMAGE:-}" ] && [ -n "${CORTEXDB_VERSION:-}" ]; then
   export CORTEXDB_IMAGE="cortexdb/cortexdb:${CORTEXDB_VERSION}"
 fi
-compose=(docker compose --project-name "${CORTEXDB_COMPOSE_PROJECT:-tinymemory-cortexdb-test}" -f "$root/integration/cortexdb/docker-compose.yml")
+compose=(docker compose --project-name tinymemory-cortexdb-test -f "$root/integration/cortexdb/docker-compose.yml")
 port="${CORTEXDB_PORT:-3142}"
 # Compose reads the published port from the environment.
 export CORTEXDB_PORT="$port"
