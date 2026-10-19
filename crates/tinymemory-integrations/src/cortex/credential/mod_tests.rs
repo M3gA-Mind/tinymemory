@@ -22,7 +22,7 @@ async fn both_kinds_resolve_to_their_token() {
 #[tokio::test]
 async fn callback_bearer_source_resolves_a_token() {
     let source = crate::cortex::CallbackBearerSource::new(|| async {
-        Ok("host-session-token".to_owned())
+        Ok::<String, crate::cortex::Error>("host-session-token".to_owned())
     });
 
     assert_eq!(source.bearer().await.unwrap(), "host-session-token");
@@ -37,7 +37,7 @@ async fn callback_bearer_source_resolves_each_token_dynamically() {
         let calls = calls.clone();
         move || {
             let call = calls.fetch_add(1, Ordering::SeqCst);
-            async move { Ok(format!("host-session-{call}")) }
+            async move { Ok::<String, crate::cortex::Error>(format!("host-session-{call}")) }
         }
     });
 
