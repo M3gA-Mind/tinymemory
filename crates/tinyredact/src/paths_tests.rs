@@ -89,7 +89,6 @@ fn local_file_uri_platform_forms_preserve_uri_context() {
 fn file_uri_redaction_does_not_match_arbitrary_url_or_embedded_scheme_text() {
     for input in [
         "https://example.test/Users/alice/Documents/report.txt",
-        "file://files.example.test/Users/alice/Documents/report.txt",
         "prefix-file:///Users/alice/Documents/report.txt",
         "file:///var/users/alice/Documents/report.txt",
     ] {

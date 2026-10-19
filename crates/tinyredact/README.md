@@ -52,10 +52,11 @@ The sanitization functions return a `Sanitized<T>`;
 
 `redact_home_paths` is a standalone text rule for `/home/<user>`,
 `/Users/<user>`, drive-qualified and UNC Windows paths, and `~` home paths.
-It also recognizes local file URIs with an empty authority (`file:///...`) or
-the `localhost` authority, including Windows drive paths written as
-`file:///C:/Users/...`. It scans URI path text as written and does not decode
-percent escapes; non-local URI authorities are not treated as UNC paths.
+It also recognizes file URIs with empty, `localhost`, or remote authorities,
+redacting a home profile at the path root while preserving the scheme,
+authority, and remaining path. Windows drive paths such as
+`file:///C:/Users/...` are supported. URI path text is scanned as written;
+percent escapes are not decoded.
 It preserves text below the home directory and leaves unrelated absolute paths
 alone; call it separately when a host needs this rule without the full secret
 and PII pipeline. After an explicit home prefix, the nonempty profile component

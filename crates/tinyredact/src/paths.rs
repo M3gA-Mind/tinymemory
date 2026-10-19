@@ -25,7 +25,7 @@ pub fn redact_home_paths(text: &str) -> String {
         if let Some(uri) = parse_uri(text, position) {
             if uri.is_file
                 && let Some(path_start) = uri.path_start
-                && let Some((match_start, consumed)) =
+                && let Some((match_start, end)) =
                     file_uri_home_path_end(&bytes[..uri.end], path_start)
             {
                 output.push_str(&text[position..match_start]);
@@ -33,7 +33,7 @@ pub fn redact_home_paths(text: &str) -> String {
                     output.push('/');
                 }
                 output.push_str("<HOME>");
-                output.push_str(&text[match_start + consumed..uri.end]);
+                output.push_str(&text[end..uri.end]);
             } else {
                 output.push_str(&text[position..uri.end]);
             }
@@ -110,12 +110,12 @@ fn file_uri_home_path_end(bytes: &[u8], path_start: usize) -> Option<(usize, usi
     if starts_with_ascii_case_insensitive(&bytes[path_start..], b"/users/")
         || starts_with_ascii_case_insensitive(&bytes[path_start..], b"/home/")
     {
-        return home_path_end(bytes, path_start).map(|consumed| (path_start, consumed));
+        return home_path_end(bytes, path_start).map(|end| (path_start, end));
     }
 
     if bytes.get(path_start) == Some(&b'/') {
         let drive_start = path_start + 1;
-        return home_path_end(bytes, drive_start).map(|consumed| (drive_start, consumed));
+        return home_path_end(bytes, drive_start).map(|end| (drive_start, end));
     }
 
     None
