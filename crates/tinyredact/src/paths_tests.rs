@@ -151,6 +151,16 @@ fn quoted_windows_and_unc_profiles_with_spaces_are_fully_scrubbed() {
     ]);
 }
 
+#[test]
+fn decomposed_unicode_username_marks_and_following_letters_are_scrubbed() {
+    assert_home_path_cases(&[
+        ("/Users/Zo\u{0308}eSmith/Documents", "<HOME>/Documents"),
+        ("/Users/Jose\u{0301}/Documents", "<HOME>/Documents"),
+        ("/home/Zo\u{0308}eSmith/work", "<HOME>/work"),
+        ("/home/क्षमा/work", "<HOME>/work"),
+    ]);
+}
+
 fn assert_home_path_cases(cases: &[(&str, &str)]) {
     let mismatches = cases
         .iter()
