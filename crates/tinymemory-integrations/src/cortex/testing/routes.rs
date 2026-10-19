@@ -351,7 +351,8 @@ async fn recall(
                     .is_some_and(|label| label.starts_with("tm:c:") || label.starts_with("tm:cw:"))
             })
         });
-    if targeted_channel && let Some(ms) = *state.slow_channel_recall.lock().unwrap() {
+    let slow_channel = *state.slow_channel_recall.lock().unwrap();
+    if targeted_channel && let Some(ms) = slow_channel {
         tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
     }
     let pack = state.log.lock().unwrap().recall(&body);
