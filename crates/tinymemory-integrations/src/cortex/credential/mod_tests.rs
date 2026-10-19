@@ -25,6 +25,8 @@ async fn callback_bearer_source_resolves_a_token() {
         Ok::<String, crate::cortex::Error>("host-session-token".to_owned())
     });
 
+    assert_eq!(format!("{source:?}"), "CallbackBearerSource(<callback>)");
+    assert!(!format!("{source:?}").contains("host-session-token"));
     assert_eq!(source.bearer().await.unwrap(), "host-session-token");
 }
 
