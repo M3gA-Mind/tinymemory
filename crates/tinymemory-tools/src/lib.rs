@@ -68,12 +68,14 @@
 pub mod backfill;
 pub mod background;
 pub mod brain;
+pub mod confine;
 pub mod context;
 pub mod deletion;
 pub mod layout;
 pub mod layout_migration;
 pub mod lifecycle;
 pub mod list_store;
+pub mod ops;
 pub mod pending;
 pub mod prefetch;
 pub mod queue;
@@ -82,6 +84,11 @@ pub mod tools;
 
 pub use background::{BackgroundJob, BackgroundRunner, JobOutcome, JobReport};
 pub use brain::{Brain, BrainBatch, BrainDocument, Ingested};
+pub use confine::{Confinement, Policy};
+pub use layout::identity::{
+    AgentPin, Identity, IdentityPins, ResolvedIdentity, account_root, actor_of_root, chat_node,
+    org_of_recorded, validate_root,
+};
 pub use layout::{BrainSource, CoreScope, DEFAULT_CORE_LIMIT, MemoryLayout};
 pub use lifecycle::{
     AgentMemory, Compaction, PostTurn, PostTurnReport, PreTurn, RecallPolicy, SessionStart,

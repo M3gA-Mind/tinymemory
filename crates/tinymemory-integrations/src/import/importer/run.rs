@@ -14,14 +14,10 @@ use crate::import::{Checkpoint, ImportedItem};
 const UNAVAILABLE_REASON: &str =
     "the memory service is unavailable; the import resumes on its own within a few minutes";
 
-/// The hosted backend's code for an exhausted credit balance, which arrives
-/// as an `Engine` error whose message starts with `[CODE] `.
-const INSUFFICIENT_CREDITS_PREFIX: &str = "[USER_INSUFFICIENT_CREDITS] ";
-
 /// Whether `error` is the hosted backend's "not enough credits" refusal.
 #[must_use]
 pub fn is_insufficient_credits(error: &EngineError) -> bool {
-    matches!(error, EngineError::Engine(message) if message.starts_with(INSUFFICIENT_CREDITS_PREFIX))
+    matches!(error, EngineError::InsufficientCredits(_))
 }
 
 /// Whether a store failure is about the item (skip it and go on) rather than
