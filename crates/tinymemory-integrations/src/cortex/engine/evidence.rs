@@ -274,7 +274,7 @@ impl CortexEngine {
         &self,
         req: &RecallRequest,
         paths: &[String],
-    ) -> Result<(Vec<Value>, usize)> {
+    ) -> Result<(Vec<Vec<Value>>, usize)> {
         let deadline = tokio::time::Instant::now() + self.log.timing.evidence;
         let mut building = stream::iter(paths.iter().cloned().enumerate())
             .map(|(index, path)| async move { (index, self.packs(req, &path).await) })
@@ -307,7 +307,7 @@ impl CortexEngine {
         }
         arrived.sort_by_key(|(index, _)| *index);
         Ok((
-            arrived.into_iter().flat_map(|(_, packs)| packs).collect(),
+            arrived.into_iter().map(|(_, packs)| packs).collect(),
             late.len(),
         ))
     }
@@ -323,11 +323,19 @@ impl CortexEngine {
         let mut facts = Vec::new();
         let mut beliefs = Vec::new();
         let mut per_pack = Vec::new();
-        for pack in &packs {
-            let gathered = gather(pack, &req.filter, req.exclude_thread.as_ref());
-            facts.extend(gathered.facts);
-            beliefs.extend(gathered.beliefs);
-            per_pack.push(gathered.events);
+        for scope_packs in &packs {
+            for (index, pack) in scope_packs.iter().enumerate() {
+                let mut gathered = gather(pack, &req.filter, req.exclude_thread.as_ref());
+                // The broad pack is the canonical source for derived layers;
+                // the channel pack supplements events only.
+                if index > 0 {
+                    gathered.facts.clear();
+                    gathered.beliefs.clear();
+                }
+                facts.extend(gathered.facts);
+                beliefs.extend(gathered.beliefs);
+                per_pack.push(gathered.events);
+            }
         }
         let events = interleave(per_pack);
         let mut answer = render(&facts, &beliefs, &events);
