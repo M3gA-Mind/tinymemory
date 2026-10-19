@@ -157,7 +157,10 @@ fn unquoted_windows_profiles_with_spaces_are_bounded_by_their_descendants() {
         (r"C:\Users\Jane Doe\Documents", r"<HOME>\Documents"),
         (r"\\server\Users\Jane Doe\Documents", r"<HOME>\Documents"),
         (r#""C:\Users\Jane Doe\Documents""#, r#""<HOME>\Documents""#),
-        (r#""\\server\Users\Jane Doe\Documents""#, r#""<HOME>\Documents""#),
+        (
+            r#""\\server\Users\Jane Doe\Documents""#,
+            r#""<HOME>\Documents""#,
+        ),
         (
             r"open C:\Users\alice and D:\Projects\report.txt",
             r"open <HOME> and D:\Projects\report.txt",

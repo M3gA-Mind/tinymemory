@@ -66,6 +66,7 @@ fn home_path_end(bytes: &[u8], start: usize) -> Option<usize> {
     {
         let username_start = start + 9;
         return quoted_profile_end(bytes, start, username_start)
+            .or_else(|| unquoted_profile_end(bytes, username_start))
             .or_else(|| username_end(bytes, username_start));
     }
 
@@ -105,12 +106,63 @@ fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
         return None;
     }
     let username_start = root_end + 1;
-    quoted_profile_end(bytes, start, username_start).or_else(|| username_end(bytes, username_start))
+    quoted_profile_end(bytes, start, username_start)
+        .or_else(|| unquoted_profile_end(bytes, username_start))
+        .or_else(|| username_end(bytes, username_start))
 }
 
 fn segment_end(bytes: &[u8], start: usize) -> Option<usize> {
     let relative_end = bytes[start..].iter().position(|byte| is_separator(*byte))?;
     Some(start + relative_end)
+}
+
+/// Include spaces in an unquoted Windows profile when a descendant separator
+/// completes the same path. If whitespace introduces another absolute path,
+/// leave the ordinary username scanner to preserve that prose boundary.
+fn unquoted_profile_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let text = std::str::from_utf8(&bytes[start..]).ok()?;
+    let separator = text
+        .char_indices()
+        .find(|(_, character)| matches!(character, '/' | '\\'))?
+        .0;
+    let whitespace = text
+        .char_indices()
+        .find(|(_, character)| character.is_whitespace())
+        .map(|(offset, _)| offset);
+    if whitespace.is_some_and(|offset| offset < separator)
+        && has_new_absolute_path_after_whitespace(&text[..separator])
+    {
+        return None;
+    }
+
+    let mut end = start + separator;
+    while end > start && matches!(bytes[end - 1], b'.' | b',' | b';') {
+        end -= 1;
+    }
+    (end > start).then_some(end)
+}
+
+fn has_new_absolute_path_after_whitespace(component: &str) -> bool {
+    let bytes = component.as_bytes();
+    for (offset, character) in component.char_indices() {
+        if !character.is_whitespace() {
+            continue;
+        }
+        let next = offset + character.len_utf8();
+        if next >= bytes.len() {
+            continue;
+        }
+        if is_separator(bytes[next]) {
+            return true;
+        }
+        if bytes[next].is_ascii_alphabetic()
+            && bytes.get(next + 1) == Some(&b':')
+            && bytes.get(next + 2).is_some_and(|byte| is_separator(*byte))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn username_end(bytes: &[u8], start: usize) -> Option<usize> {
