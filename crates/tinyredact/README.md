@@ -57,7 +57,10 @@ alone; call it separately when a host needs this rule without the full secret
 and PII pipeline. Username tokens use Unicode letters and digits, `_`, `-`,
 and interior `.`; whitespace and other punctuation end the match, and a final
 period remains in the text. Bare `~` and `~<user>` are supported, while `~.`
-and `~.<name>` remain unchanged as relative paths.
+and `~.<name>` remain unchanged as relative paths. Quoted Windows drive and
+UNC paths may contain spaces in the profile name: the matching quote bounds a
+bare profile and the next path separator bounds a profile with descendants.
+This quoted-path rule does not expand to unquoted prose.
 
 ## What is blocked and what is redacted
 
