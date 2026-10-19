@@ -6,7 +6,11 @@
 /// Recognizes `/home/<user>`, `/Users/<user>`, drive-qualified Windows
 /// `Users` paths, UNC `Users` and `home` paths, and tilde paths (`~` or
 /// `~<user>`). Matching is case-insensitive for the conventional directory
-/// names. Other absolute paths are left unchanged.
+/// names. A username token consists of Unicode letters or digits, `_`, `-`,
+/// and `.`; whitespace and other punctuation end it. Trailing dots are kept
+/// as surrounding punctuation. A bare `~` is recognized at end of input or
+/// before whitespace or a closing delimiter; `~.` and `~.name` are relative
+/// paths and are left unchanged. Other absolute paths are left unchanged.
 pub fn redact_home_paths(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut output = String::with_capacity(text.len());
@@ -63,11 +67,18 @@ fn home_path_end(bytes: &[u8], start: usize) -> Option<usize> {
 }
 
 fn tilde_home_end(bytes: &[u8], start: usize) -> Option<usize> {
-    let mut end = start + 1;
-    while end < bytes.len() && !is_separator(bytes[end]) && !bytes[end].is_ascii_whitespace() {
-        end += 1;
+    let after_tilde = start + 1;
+    if after_tilde == bytes.len() || is_separator(bytes[after_tilde]) {
+        return Some(after_tilde);
     }
-    Some(end)
+    let next = std::str::from_utf8(&bytes[after_tilde..])
+        .ok()?
+        .chars()
+        .next()?;
+    if is_username_start(next) {
+        return username_end(bytes, after_tilde);
+    }
+    (next.is_whitespace() || is_closing_delimiter(next)).then_some(after_tilde)
 }
 
 fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
@@ -96,11 +107,33 @@ fn segment_end(bytes: &[u8], start: usize) -> Option<usize> {
 }
 
 fn username_end(bytes: &[u8], start: usize) -> Option<usize> {
-    let end = bytes[start..]
-        .iter()
-        .position(|byte| is_separator(*byte))
-        .map_or(bytes.len(), |relative_end| start + relative_end);
-    (end > start && !bytes[start..end].iter().any(u8::is_ascii_whitespace)).then_some(end)
+    let text = std::str::from_utf8(&bytes[start..]).ok()?;
+    let mut end = start;
+    for (offset, character) in text.char_indices() {
+        if (offset == 0 && !is_username_start(character)) || !is_username_character(character) {
+            break;
+        }
+        end = start + offset + character.len_utf8();
+    }
+
+    // A final period is usually sentence punctuation rather than part of the
+    // account name. Interior dots remain valid (`alice.smith`).
+    while end > start && bytes[end - 1] == b'.' {
+        end -= 1;
+    }
+    (end > start).then_some(end)
+}
+
+fn is_username_start(character: char) -> bool {
+    character.is_alphanumeric() || character == '_'
+}
+
+fn is_username_character(character: char) -> bool {
+    is_username_start(character) || character == '-' || character == '.'
+}
+
+fn is_closing_delimiter(character: char) -> bool {
+    matches!(character, ')' | ']' | '}' | '\'' | '"' | '`' | '>')
 }
 
 fn is_separator(byte: u8) -> bool {

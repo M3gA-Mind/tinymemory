@@ -74,18 +74,12 @@ fn unicode_and_path_boundaries_are_preserved() {
 fn prose_after_bare_unix_windows_and_unc_homes_is_preserved() {
     assert_home_path_cases(&[
         ("open /Users/alice now", "open <HOME> now"),
-        (
-            "/home/alice and /home/bob/docs",
-            "<HOME> and <HOME>/docs",
-        ),
+        ("/home/alice and /home/bob/docs", "<HOME> and <HOME>/docs"),
         (
             r"C:\Users\alice and D:\Projects\report.txt",
             r"<HOME> and D:\Projects\report.txt",
         ),
-        (
-            r"\\server\Users\alice and more",
-            r"<HOME> and more",
-        ),
+        (r"\\server\Users\alice and more", r"<HOME> and more"),
     ]);
 }
 
@@ -133,9 +127,8 @@ fn assert_home_path_cases(cases: &[(&str, &str)]) {
         .iter()
         .filter_map(|(input, expected)| {
             let actual = redact_home_paths(input);
-            (actual != *expected).then(|| {
-                format!("input={input:?}, actual={actual:?}, expected={expected:?}")
-            })
+            (actual != *expected)
+                .then(|| format!("input={input:?}, actual={actual:?}, expected={expected:?}"))
         })
         .collect::<Vec<_>>();
     assert!(
