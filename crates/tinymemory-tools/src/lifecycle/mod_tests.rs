@@ -871,14 +871,15 @@ async fn pooled_agents_log_to_one_node_and_keep_their_own_history() {
 #[tokio::test]
 async fn pooled_team_reads_past_own_ranked_turns_without_crossing_roots() {
     let engine = Arc::new(ReferenceEngine::new());
-    let node: Namespace = "ws:main".parse().unwrap();
+    let node: Namespace = "team:mine/ws:main".parse().unwrap();
     let mine = MemoryLayout::new("team:mine".parse().unwrap())
         .unwrap()
         .with_pooled_conversations(&node)
         .unwrap();
+    let other_node: Namespace = "team:other/ws:main".parse().unwrap();
     let other = MemoryLayout::new("team:other".parse().unwrap())
         .unwrap()
-        .with_pooled_conversations(&node)
+        .with_pooled_conversations(&other_node)
         .unwrap();
     let coder = AgentMemory::new(engine.clone(), mine.clone(), "coder")
         .unwrap()

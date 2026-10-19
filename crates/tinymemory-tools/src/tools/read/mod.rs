@@ -16,7 +16,9 @@ use tinymemory_api::{
 use super::ToolScope;
 use super::args::{Args, facet, fetch_mode, meta_filter, time_hint};
 use super::render;
-use super::spec::schema::{DEFAULT_LIMIT, MAX_IDS, MAX_LIMIT, default_mode};
+use super::spec::schema::{
+    DEFAULT_BUCKETS, DEFAULT_LIMIT, MAX_BUCKETS, MAX_IDS, MAX_LIMIT, default_mode,
+};
 use super::spec::{MEMORY_EXPLORE, MEMORY_FETCH, MEMORY_GET, MEMORY_LIST, MEMORY_RECALL};
 
 /// `memory_recall`.
@@ -143,7 +145,7 @@ pub(crate) async fn explore(
     let args = Args::parse(MEMORY_EXPLORE, value, &["facet", "filter", "limit"])?;
     let mut request = ExploreRequest::new(
         facet(&args, "facet")?,
-        args.count("limit", DEFAULT_LIMIT, MAX_LIMIT)?,
+        args.count("limit", DEFAULT_BUCKETS, MAX_BUCKETS)?,
     );
     request.filter = meta_filter(&args, "filter")?;
     scope.confine(&mut request.filter);

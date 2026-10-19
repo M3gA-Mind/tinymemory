@@ -12,7 +12,7 @@
 //! | HTTP | Variant |
 //! | --- | --- |
 //! | 401, 403 | [`Error::Unauthorized`] |
-//! | 402 | [`Error::Engine`] (hosted: prefixed `[USER_INSUFFICIENT_CREDITS]`) |
+//! | 402 | [`Error::InsufficientCredits`] when the hosted code names exhausted credits |
 //! | 404 | [`Error::NotFound`] |
 //! | 400, 413, 422 | [`Error::InvalidRequest`] |
 //! | 409 | [`Error::Conflict`] |
@@ -25,13 +25,12 @@
 //! AUTHORIZATION_STATE_CHANGED`, which a concurrent scope registration
 //! causes and which settles on its own.
 //!
-//! **Why 402 is `Engine`.** An exhausted credit balance is neither transient
+//! **Why 402 has a dedicated variant.** An exhausted credit balance is neither transient
 //! (`Unavailable` would invite a retry loop that cannot succeed until someone
 //! tops up) nor a credential fault (`Unauthorized` would send the host to its
 //! sign-in flow). It is the engine refusing to serve, which is what `Engine`
-//! means, and the `[USER_INSUFFICIENT_CREDITS]` prefix lets
-//! [`is_insufficient_credits`] tell it apart so a host can show a top-up
-//! prompt.
+//! means; the hosted transport maps its structured backend code to
+//! [`Error::InsufficientCredits`] so a host can show a top-up prompt.
 //!
 //! # The `[CODE]` prefix
 //!
@@ -55,8 +54,10 @@ pub(crate) const INSUFFICIENT_CREDITS_CODE: &str = "USER_INSUFFICIENT_CREDITS";
 fn message_of(error: &Error) -> &str {
     match error {
         Error::Unsupported(m)
+        | Error::Off(m)
         | Error::InvalidRequest(m)
         | Error::Unauthorized(m)
+        | Error::InsufficientCredits(m)
         | Error::NotFound(m)
         | Error::Conflict(m)
         | Error::Unavailable(m)
@@ -79,12 +80,6 @@ pub fn error_code(error: &Error) -> Option<&str> {
             .chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
     well_formed.then_some(code)
-}
-
-/// Whether `error` is the hosted backend's "not enough credits" refusal.
-#[must_use]
-pub fn is_insufficient_credits(error: &Error) -> bool {
-    matches!(error, Error::Engine(_)) && error_code(error) == Some(INSUFFICIENT_CREDITS_CODE)
 }
 
 #[cfg(test)]

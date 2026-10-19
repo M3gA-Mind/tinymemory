@@ -16,6 +16,14 @@ The agent-facing side of TinyMemory, over any `tinymemory_api::MemoryEngine`:
   compaction. `BackgroundJob` carries the belief builds those calls hand back.
   See [`docs/architecture/lifecycle.md`](../../docs/architecture/lifecycle.md)
   and the runnable `examples/agent_loop.rs` and `examples/brain.rs`.
+- **`pending`**: a runtime-neutral durable FIFO for tool writes, plus weakly
+  cached owner barriers and per-partition drain locks. The host supplies each
+  partition's `ListStore`, maps its own owner and storage keys, and runs the
+  engine executor. New owner epochs use a UUID so a recreated gate cannot
+  mistake an older persisted fence epoch for its own.
+- **`ops`**: validated host request builders, explorer paths, common read
+  limits, learning metadata shaping and deletion helpers. `MemoryOps` applies
+  a concrete `Confinement` policy before a request reaches an engine.
 
 The crate has no tool-runtime dependency (no MCP, no `tinytools`). A host
 adapts `ToolSpec` to whatever runtime it uses; see
@@ -36,7 +44,8 @@ written up in [`docs/architecture/tools.md`](../../docs/architecture/tools.md).
 
 Details:
 
-- `limit` is `1..=50`, default `10`. `ids` lists `1..=200` ids.
+- `limit` is `1..=100`, default `10`, across recall, fetch and list. Explore
+  defaults to `50` buckets and accepts `1..=500`. `ids` lists `1..=200` ids.
 - `memory_fetch`'s `mode` enum lists exactly the engine's
   `EngineDescriptor::fetch_modes`; with no mode named, `hybrid` is used when
   served, otherwise the engine's first mode. An engine serving no mode gets no
@@ -147,6 +156,26 @@ that. `MemoryTools::with_scope` takes a `ToolScope` directly.
   means across the contract.
 - Anything the engine returns.
 
+## Pending writes
+
+`pending::PendingWrites` bounds each durable partition independently using
+`Limits::max_entries` and `Limits::max_bytes`. Hosts may impose an additional
+limit on the number of on-disk partitions because naming and enumerating those
+files belongs to the storage adapter. `OwnerRegistry` holds weak references:
+active mutations and fences retain shared owner state, and idle owners are
+reclaimed on the next lookup. `PartitionLocks` applies the same lifetime rule
+to drain serialization, with a separate cancellation-safe async lock per
+partition key. `PendingPartitions` shares the in-memory `PendingWrites` queue
+for an active partition and recreates it from a host-supplied `ListStore`
+factory after eviction. Both partition registries accept exact `Eq + Hash`
+keys, including `PathBuf`, so the host does not need to stringify filesystem
+paths.
+
+The queue's `Entry` is the current persisted representation. A host that has
+older durable encodings should keep decoding them into `Entry` while those
+records may still exist; dropping a legacy decoder can make an accepted write
+unreadable after an upgrade.
+
 ## Adapting to a tool runtime
 
 `ToolSpec` is three fields: `name`, `description` and `parameters` (a JSON
@@ -191,12 +220,27 @@ an empty engine yields an empty document. `ContextSpec::reach` confines the
 brief to one agent's part of the tree. Details:
 [`docs/architecture/tools.md`](../../docs/architecture/tools.md#contextmd).
 
+## Memory identity and layout
+
+Hosts adapt their configuration into `IdentityPins` and resolve the acting
+`Identity` for each operation. Resolution preserves the documented precedence:
+host-wide pins, a definition pin, the agent's team, then the default root and
+agent id. With `IdentityPins::v3`, conversations are pooled at `ws:main` below
+the resolved root.
+
+`MemoryLayout::with_pooled_conversations` accepts an **absolute** namespace
+inside the layout root, such as `team:acme/ws:main`; it does not append the
+root. `pooled_conversations_node()` returns the same absolute namespace for
+host migration placement. Callers upgrading from the previous relative-node
+contract must include the layout root when constructing the node.
+
 ## Layout
 
 ```text
 src/
 ├── lib.rs              # crate docs and re-exports
 ├── context/            # the context.md compiler
+├── pending/            # durable write FIFO, owner fences, partition locks
 └── tools/
     ├── mod.rs          # MemoryTools, ToolScope, dispatch
     ├── spec/           # ToolSpec, tool names, JSON Schemas, limits

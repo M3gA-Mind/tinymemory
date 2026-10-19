@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::cortex::StaticBearer;
-use crate::cortex::error::{error_code, is_insufficient_credits};
+use crate::cortex::error::error_code;
 use crate::cortex::testing::{hosted_double, hosted_engine, sample_items, serve};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -160,7 +160,7 @@ async fn a_402_is_insufficient_credits_and_codes_survive() {
     let engine = hosted_engine(&endpoint);
     *state.fail_all.lock().unwrap() = Some((402, "USER_INSUFFICIENT_CREDITS"));
     let error = engine.store(sample_items().remove(0)).await.unwrap_err();
-    assert!(is_insufficient_credits(&error), "{error:?}");
+    assert!(matches!(error, Error::InsufficientCredits(_)), "{error:?}");
     assert!(
         !error
             .to_string()
