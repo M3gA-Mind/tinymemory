@@ -79,6 +79,16 @@ where
         self.prefetcher.completed(key).map(cached_notice)
     }
 
+    /// Whether no refresh is running or queued for `key`.
+    ///
+    /// Returns `true` for a missing key. Invalidation can remove an entry while
+    /// its worker is still unwinding, so this observation is not a completion
+    /// barrier for invalidated work.
+    #[must_use]
+    pub fn is_idle(&self, key: &K) -> bool {
+        self.prefetcher.is_idle(key)
+    }
+
     /// Queues owned background work for `key`.
     ///
     /// The existing prefetcher serializes work per key and applies its queue,

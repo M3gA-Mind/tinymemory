@@ -39,7 +39,7 @@ pub struct RecallPolicy {
 /// `enabled` controls whether the host identity recalls at all; it is kept
 /// separate from [`RecallPolicy`], which describes the sections and budgets
 /// of a pack.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(default)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RecallSettings {

@@ -299,7 +299,14 @@ impl EngineBinder {
         (settings, fingerprint)
     }
 
-    fn host_engine(&self) -> Option<BoundEngine> {
+    /// Returns a clone of the currently installed host binding, if any.
+    ///
+    /// This reads only the host slot. It does not construct or cache an
+    /// engine, change the slot, or add another safety decorator. The returned
+    /// binding retains its engine `Arc` if the slot is later replaced or
+    /// cleared.
+    #[must_use]
+    pub fn host_engine(&self) -> Option<BoundEngine> {
         self.host_engine
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
