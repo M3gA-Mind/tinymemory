@@ -834,10 +834,7 @@ async fn forget_filter_uses_one_unbounded_filter_call_and_preserves_or_tags() {
         .unwrap();
 
     let report = ops
-        .forget_filter(
-            &engine,
-            MetaFilter::tags_any(["flow:f1", "flows"]),
-        )
+        .forget_filter(&engine, MetaFilter::tags_any(["flow:f1", "flows"]))
         .await
         .unwrap();
 
@@ -872,7 +869,11 @@ async fn forget_filter_clamps_reach_and_preserves_tag_clauses() {
         .await
         .unwrap();
     engine
-        .store(learning_in("team:other/agent:writer", "other flow", &["flow:f1"]))
+        .store(learning_in(
+            "team:other/agent:writer",
+            "other flow",
+            &["flow:f1"],
+        ))
         .await
         .unwrap();
 
