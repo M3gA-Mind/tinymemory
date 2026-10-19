@@ -255,11 +255,9 @@ async fn a_broad_channel_pack_is_kept_when_its_supplement_misses_the_deadline() 
     let (endpoint, state) = direct_double().await;
     let mut engine = direct_engine(&endpoint);
     engine.log.timing.evidence = std::time::Duration::from_millis(300);
-    let workspace = "/tmp/evidence-channel-deadline";
     let item = StoreItem::document(
         "the broad pack still has this channel item",
         MemoryMeta {
-            workspace: Some(workspace.into()),
             channel: Some("support".into()),
             ..MemoryMeta::default()
         },
@@ -270,7 +268,6 @@ async fn a_broad_channel_pack_is_kept_when_its_supplement_misses_the_deadline() 
 
     let mut req = evidence_request();
     req.filter = MetaFilter {
-        workspace: Some(workspace.into()),
         channel: Some("support".into()),
         ..MetaFilter::kinds([ItemKind::Document])
     };
