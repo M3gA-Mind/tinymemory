@@ -22,6 +22,7 @@
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tinymemory_api::{
     EraseRequest, FetchMode, FetchRequest, ForgetTarget, ItemKind, LearningKind, ListRequest,
@@ -73,6 +74,12 @@ fn run_id() -> String {
         .expect("clock after the epoch")
         .as_nanos();
     format!("live-{nanos}")
+}
+
+/// The lookup-label digest prefix used to inspect a broad live pack without
+/// sending the workspace path itself.
+fn label_digest(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))[..16].to_string()
 }
 
 fn meta(workspace: &str, source: SourceKind) -> MemoryMeta {
@@ -243,51 +250,81 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
     }
 
     let reach = Some(tinymemory_api::Reach::subtree(namespace.clone()));
-    let broad_filter = MetaFilter {
+    let channel_filter = MetaFilter {
+        channel: Some("support".into()),
         workspace: Some(workspace.clone()),
         reach: reach.clone(),
         ..MetaFilter::kinds([ItemKind::Document])
     };
-    let channel_filter = MetaFilter {
-        channel: Some("support".into()),
-        ..broad_filter.clone()
-    };
 
     // Negative control: the unfiltered workspace pack is limited to the
     // newest two events and cannot recover the older wanted item from below
-    // that server-side top-k cutoff.
-    let broad_deadline = Instant::now() + VISIBILITY;
-    let broad_result = loop {
-        let mut broad = RecallRequest::new(&marker, 1);
-        broad.filter = broad_filter.clone();
-        let answer = engine.recall(broad).await.expect("broad control recall");
-        if answer
-            .citations
-            .iter()
-            .any(|citation| distractor_ids.iter().any(|id| id == citation.id.as_str()))
-        {
-            break answer;
-        }
-        assert!(
-            Instant::now() < broad_deadline,
-            "broad control recall found no distractor"
-        );
-        tokio::time::sleep(Duration::from_millis(500)).await;
-    };
-    let broad_ids: Vec<&str> = broad_result
-        .citations
+    // that server-side top-k cutoff. Inspect the raw two-event pack, not the
+    // smaller citation page, and send only the hashed workspace label.
+    let scope = format!("app:tinymemory/{namespace}/app:documents");
+    let broad_label = format!("tm:w:{}", label_digest(&workspace));
+    let broad_pack: serde_json::Value = reqwest::Client::new()
+        .post(format!("{url}/v1/recall"))
+        .bearer_auth(
+            std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into()),
+        )
+        .json(&serde_json::json!({
+            "scope": scope,
+            "query": marker,
+            "view": "granular",
+            "include": ["events"],
+            "filters": { "metadata": { "labels": [broad_label] } },
+            "budgets": {
+                "max_tokens": 1_572_864,
+                "per_layer_limits": { "events": 2 }
+            }
+        }))
+        .send()
+        .await
+        .expect("request the broad two-event control pack")
+        .error_for_status()
+        .expect("the broad control pack succeeds")
+        .json()
+        .await
+        .expect("the broad control pack is JSON");
+    let broad_events = broad_pack
+        .pointer("/layers/events")
+        .and_then(serde_json::Value::as_array)
+        .expect("the broad control pack has events");
+    assert_eq!(
+        broad_events.len(),
+        2,
+        "the server applied the two-event budget"
+    );
+    let broad_texts: Vec<&str> = broad_events
         .iter()
-        .map(|citation| citation.id.as_str())
+        .filter_map(|event| {
+            event
+                .pointer("/content/text")
+                .and_then(serde_json::Value::as_str)
+        })
         .collect();
+    assert!(broad_texts.iter().any(|text| *text == marker));
     assert!(
-        broad_ids
+        broad_texts
             .iter()
-            .any(|id| distractor_ids.iter().any(|other| other == id)),
-        "the broad control should return a competing-channel item: {broad_ids:?}"
+            .all(|text| !text.contains("wanted details")),
+        "the raw broad pack must exclude the wanted item: {broad_texts:?}"
     );
     assert!(
-        !broad_ids.contains(&wanted_id.as_str()),
-        "the wanted item must be outside the broad pack's top two: {broad_ids:?}"
+        !broad_pack.to_string().contains(&workspace),
+        "the local workspace path is never returned in the event labels"
+    );
+    assert!(
+        broad_events.iter().all(|event| {
+            event
+                .pointer("/context/labels")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|labels| {
+                    labels.contains(&serde_json::Value::String(broad_label.clone()))
+                })
+        }),
+        "the raw control only narrows by the hashed workspace label"
     );
 
     let deadline = Instant::now() + VISIBILITY;
@@ -308,27 +345,37 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
+    let recall_ids: Vec<&str> = channel_answer
+        .citations
+        .iter()
+        .map(|citation| citation.id.as_str())
+        .collect();
     assert_eq!(
-        channel_answer
-            .citations
+        recall_ids,
+        [wanted_id.as_str()],
+        "recall result: {recall_ids:?}"
+    );
+    assert!(
+        recall_ids
             .iter()
-            .map(|citation| citation.id.as_str())
-            .collect::<Vec<_>>(),
-        vec![wanted_id.as_str()],
+            .all(|id| distractor_ids.iter().all(|other| other.as_str() != *id)),
         "recall excludes every competing channel"
     );
 
     let mut fetch = FetchRequest::new(&marker, FetchMode::Hybrid, 1);
     fetch.filter = channel_filter.clone();
     let fetched = engine.fetch(fetch).await.expect("channel fetch");
+    let fetched_ids: Vec<&str> = fetched.hits.iter().map(|hit| hit.id.as_str()).collect();
     assert_eq!(
-        fetched
-            .hits
+        fetched_ids,
+        [wanted_id.as_str()],
+        "fetch result: {fetched_ids:?}"
+    );
+    assert!(
+        fetched_ids
             .iter()
-            .map(|hit| hit.id.as_str())
-            .collect::<Vec<_>>(),
-        vec![wanted_id.as_str()],
-        "fetch supplements its broad pack before top-k"
+            .all(|id| distractor_ids.iter().all(|other| other.as_str() != *id)),
+        "fetch excludes every competing channel"
     );
 
     let mut evidence = RecallRequest::new(&marker, 1);
@@ -338,14 +385,21 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .recall(evidence)
         .await
         .expect("channel Evidence recall");
+    let evidence_ids: Vec<&str> = evidence
+        .citations
+        .iter()
+        .map(|citation| citation.id.as_str())
+        .collect();
     assert_eq!(
-        evidence
-            .citations
+        evidence_ids,
+        [wanted_id.as_str()],
+        "Evidence result: {evidence_ids:?}"
+    );
+    assert!(
+        evidence_ids
             .iter()
-            .map(|citation| citation.id.as_str())
-            .collect::<Vec<_>>(),
-        vec![wanted_id.as_str()],
-        "Evidence supplements its broad pack before top-k"
+            .all(|id| distractor_ids.iter().all(|other| other.as_str() != *id)),
+        "Evidence excludes every competing channel"
     );
 
     engine
