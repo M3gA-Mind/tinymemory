@@ -203,10 +203,11 @@ pub(crate) fn hosted_status_error(
             "[{code}] memory API {label} on {host}: the session expired or the API key was \
              rejected (HTTP {status}); re-authenticate"
         ),
-        402 => format!(
+        402 if code == INSUFFICIENT_CREDITS_CODE => format!(
             "[{code}] memory API {label} on {host}: the account has insufficient credits \
              (HTTP {status})"
         ),
+        402 => format!("[{code}] memory API {label} on {host} returned HTTP {status}"),
         _ => format!("[{code}] memory API {label} on {host} returned HTTP {status}"),
     };
     // memory-api's refusal of an already-claimed `Idempotency-Key` is relayed
