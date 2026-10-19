@@ -152,6 +152,26 @@ fn quoted_windows_and_unc_profiles_with_spaces_are_fully_scrubbed() {
 }
 
 #[test]
+fn legacy_home_components_with_symbols_are_redacted_through_boundaries() {
+    assert_home_path_cases(&[
+        ("/Users/O'Connor/Documents", "<HOME>/Documents"),
+        ("/home/alice+dev/work", "<HOME>/work"),
+        ("/Users/service$/Documents", "<HOME>/Documents"),
+        ("/Users/alice\u{200d}dev/Documents", "<HOME>/Documents"),
+        (
+            r#""C:\Users\O'Connor\Documents""#,
+            r#""<HOME>\Documents""#,
+        ),
+        (r"C:\Users\alice+dev\Documents", r"<HOME>\Documents"),
+        (r"C:\Users\service$\Documents", r"<HOME>\Documents"),
+        ("/home/$service/work", "<HOME>/work"),
+        ("/home/$service", "<HOME>"),
+        ("/Users/alice+dev", "<HOME>"),
+        ("open /Users/O'Connor now", "open <HOME> now"),
+    ]);
+}
+
+#[test]
 fn decomposed_unicode_username_marks_and_following_letters_are_scrubbed() {
     assert_home_path_cases(&[
         ("/Users/Zo\u{0308}eSmith/Documents", "<HOME>/Documents"),
