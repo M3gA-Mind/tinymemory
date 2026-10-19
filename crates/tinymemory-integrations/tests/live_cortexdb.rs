@@ -204,9 +204,9 @@ async fn the_live_server_upholds_the_contract_in_layout_v3() {
     );
 }
 
-/// A real channel filter must narrow CortexDB before its top-k budget. The
-/// broad control pack is deliberately filled with newer distractors, while
-/// the wanted item is only returned by the channel-specific supplement.
+/// A real channel filter must narrow CortexDB before its top-k budget. Seed
+/// five distinct same-scope records, inspect the actual broad top two, and
+/// choose the wanted record from those the server omitted.
 #[tokio::test]
 async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
     let _alone = ONE_AT_A_TIME.lock().await;
@@ -222,60 +222,59 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .parse()
         .expect("a valid namespace");
     let workspace = format!("/tmp/tinymemory-channel-{run}");
-    // The harness embedding double is a SHA-256 vector. These fixed strings
-    // were selected so the foreign-channel vectors outrank the wanted item
-    // for this query, making the two-event broad negative control stable.
-    let marker = "Cobalt channel budget marker";
-    let make_meta = |channel: &str, item: &str| MemoryMeta {
-        namespace: namespace.clone(),
-        workspace: Some(workspace.clone()),
-        channel: Some(channel.to_string()),
-        source: SourceRef {
-            kind: SourceKind::Agent,
-            id: Some(format!("{run}-{item}")),
-        },
-        ..MemoryMeta::default()
-    };
-
-    let wanted = StoreItem::document(
-        format!("{marker} wanted details 734"),
-        make_meta("support", "wanted"),
-    );
-    let wanted_id = wanted.fingerprint();
-    engine.store(wanted).await.expect("store the wanted item");
-    let mut distractor_ids = Vec::new();
-    for index in [899, 381, 774, 619] {
-        let distractor = StoreItem::document(
-            format!("{marker} distractor {index}"),
-            make_meta("other", &format!("other-{index}")),
+    let marker = "Cobalt memory";
+    let candidates = [
+        ("Cobalt memory alpha", "channel-alpha", "alpha"),
+        ("Cobalt memory bravo", "channel-bravo", "bravo"),
+        ("Cobalt memory charlie", "channel-charlie", "charlie"),
+        ("Cobalt memory delta", "channel-delta", "delta"),
+        ("Cobalt memory echo", "channel-echo", "echo"),
+    ];
+    let mut ids = Vec::with_capacity(candidates.len());
+    for (text, channel, source_id) in candidates {
+        let item = StoreItem::document(
+            text,
+            MemoryMeta {
+                namespace: namespace.clone(),
+                workspace: Some(workspace.clone()),
+                channel: Some(channel.to_string()),
+                source: SourceRef {
+                    kind: SourceKind::Agent,
+                    id: Some(format!("{run}-{source_id}")),
+                },
+                ..MemoryMeta::default()
+            },
         );
-        distractor_ids.push(distractor.fingerprint());
-        engine
-            .store(distractor)
-            .await
-            .expect("store a competing-channel item");
+        ids.push(item.fingerprint());
+        engine.store(item).await.expect("store a channel candidate");
     }
 
     let reach = Some(tinymemory_api::Reach::subtree(namespace.clone()));
-    let channel_filter = MetaFilter {
-        channel: Some("support".into()),
+    let broad_filter = MetaFilter {
         workspace: Some(workspace.clone()),
         reach: reach.clone(),
         ..MetaFilter::kinds([ItemKind::Document])
     };
+    let mut expected_texts: Vec<String> = candidates
+        .iter()
+        .map(|(text, _, _)| (*text).to_string())
+        .collect();
+    expected_texts.sort();
+    let listed = list_exactly(&engine, &broad_filter, &expected_texts).await;
+    assert_eq!(listed, expected_texts, "all five candidates reached the server");
 
-    // Negative control: the unfiltered workspace pack is limited to the
-    // newest two events and cannot recover the older wanted item from below
-    // that server-side top-k cutoff. Inspect the raw two-event pack, not the
-    // smaller citation page, and send only the hashed workspace label.
+    // Inspect the server's actual broad pack, not the smaller citation page.
+    // Its two results establish the cutoff; choosing one of the other three
+    // candidates avoids any assumption about vector ranking or tie-breaks.
     let scope = format!("app:tinymemory/{namespace}/app:documents");
     let broad_label = format!("tm:w:{}", label_digest(&workspace));
     let broad_deadline = Instant::now() + VISIBILITY;
-    loop {
-        let broad_pack: serde_json::Value = reqwest::Client::new()
+    let (broad_pack, broad_texts) = loop {
+        let pack: serde_json::Value = reqwest::Client::new()
             .post(format!("{url}/v1/recall"))
             .bearer_auth(
-                std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into()),
+                std::env::var("TINYMEMORY_TEST_CORTEX_KEY")
+                    .unwrap_or_else(|_| DEFAULT_KEY.into()),
             )
             .json(&serde_json::json!({
                 "scope": scope,
@@ -296,11 +295,11 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
             .json()
             .await
             .expect("the broad control pack is JSON");
-        let broad_events = broad_pack
+        let events = pack
             .pointer("/layers/events")
             .and_then(serde_json::Value::as_array)
             .expect("the broad control pack has events");
-        let texts: Vec<String> = broad_events
+        let texts: Vec<String> = events
             .iter()
             .filter_map(|event| {
                 event
@@ -309,33 +308,53 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
                     .map(str::to_string)
             })
             .collect();
-        if broad_events.len() == 2
-            && texts.iter().all(|text| text.contains("distractor"))
-            && texts.iter().all(|text| !text.contains("wanted details"))
-        {
-            assert!(
-                !broad_pack.to_string().contains(&workspace),
-                "the local workspace path is never returned in event labels"
-            );
-            assert!(
-                broad_events.iter().all(|event| {
-                    event
-                        .pointer("/context/labels")
-                        .and_then(serde_json::Value::as_array)
-                        .is_some_and(|labels| {
-                            labels.contains(&serde_json::Value::String(broad_label.clone()))
-                        })
-                }),
-                "the raw control only narrows by the hashed workspace label"
-            );
-            break;
+        if events.len() == 2 && texts.len() == 2 {
+            break (pack, texts);
         }
         assert!(
             Instant::now() < broad_deadline,
-            "the two-event broad pack still includes the wanted item or lacks ranked distractors: {texts:?}"
+            "broad events are still indexing: {texts:?}"
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
-    }
+    };
+    assert!(
+        broad_texts.iter().all(|text| expected_texts.contains(text)),
+        "the broad pack returned only seeded candidates: {broad_texts:?}"
+    );
+    assert!(
+        !broad_pack.to_string().contains(&workspace),
+        "the local workspace path is never returned in event labels"
+    );
+    assert!(
+        broad_pack
+            .pointer("/layers/events")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|events| events.iter().all(|event| {
+                event
+                    .pointer("/context/labels")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|labels| {
+                        labels.contains(&serde_json::Value::String(broad_label.clone()))
+                    })
+            })),
+        "the raw control only narrows by the hashed workspace label"
+    );
+    let wanted_index = candidates
+        .iter()
+        .position(|(text, _, _)| !broad_texts.iter().any(|seen| seen == text))
+        .expect("three candidates are outside the two-event broad pack");
+    let (wanted_text, wanted_channel, _) = candidates[wanted_index];
+    let wanted_id = ids[wanted_index].as_str();
+    let distractor_ids: Vec<&str> = ids
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != wanted_index)
+        .map(|(_, id)| id.as_str())
+        .collect();
+    let channel_filter = MetaFilter {
+        channel: Some(wanted_channel.to_string()),
+        ..broad_filter
+    };
 
     let deadline = Instant::now() + VISIBILITY;
     let channel_answer = loop {
@@ -351,7 +370,7 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         }
         assert!(
             Instant::now() < deadline,
-            "channel recall did not return the wanted item"
+            "channel recall did not return {wanted_text}"
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     };
@@ -360,15 +379,11 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .iter()
         .map(|citation| citation.id.as_str())
         .collect();
-    assert_eq!(
-        recall_ids,
-        [wanted_id.as_str()],
-        "recall result: {recall_ids:?}"
-    );
+    assert_eq!(recall_ids, [wanted_id], "recall result: {recall_ids:?}");
     assert!(
         recall_ids
             .iter()
-            .all(|id| distractor_ids.iter().all(|other| other.as_str() != *id)),
+            .all(|id| distractor_ids.iter().all(|other| *other != *id)),
         "recall excludes every competing channel"
     );
 
@@ -376,15 +391,11 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
     fetch.filter = channel_filter.clone();
     let fetched = engine.fetch(fetch).await.expect("channel fetch");
     let fetched_ids: Vec<&str> = fetched.hits.iter().map(|hit| hit.id.as_str()).collect();
-    assert_eq!(
-        fetched_ids,
-        [wanted_id.as_str()],
-        "fetch result: {fetched_ids:?}"
-    );
+    assert_eq!(fetched_ids, [wanted_id], "fetch result: {fetched_ids:?}");
     assert!(
         fetched_ids
             .iter()
-            .all(|id| distractor_ids.iter().all(|other| other.as_str() != *id)),
+            .all(|id| distractor_ids.iter().all(|other| *other != *id)),
         "fetch excludes every competing channel"
     );
 
@@ -400,15 +411,11 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .iter()
         .map(|citation| citation.id.as_str())
         .collect();
-    assert_eq!(
-        evidence_ids,
-        [wanted_id.as_str()],
-        "Evidence result: {evidence_ids:?}"
-    );
+    assert_eq!(evidence_ids, [wanted_id], "Evidence result: {evidence_ids:?}");
     assert!(
         evidence_ids
             .iter()
-            .all(|id| distractor_ids.iter().all(|other| other.as_str() != *id)),
+            .all(|id| distractor_ids.iter().all(|other| *other != *id)),
         "Evidence excludes every competing channel"
     );
 
