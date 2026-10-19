@@ -1,13 +1,20 @@
 //! Home-directory path redaction for text that may be persisted or logged.
 
+use crate::pattern::literal;
+use regex::Regex;
+use std::sync::LazyLock;
+
+static UNICODE_MARK: LazyLock<Regex> = LazyLock::new(|| literal(r"\A\p{M}\z"));
+
 /// Replace recognized home-directory prefixes with `<HOME>`, preserving the
 /// path below the user's home directory and all surrounding text.
 ///
 /// Recognizes `/home/<user>`, `/Users/<user>`, drive-qualified Windows
 /// `Users` paths, UNC `Users` and `home` paths, and tilde paths (`~` or
 /// `~<user>`). Matching is case-insensitive for the conventional directory
-/// names. A username token consists of Unicode letters or digits, `_`, `-`,
-/// and `.`; whitespace and other punctuation end it. Trailing dots are kept
+/// names. A username token starts with a Unicode letter or digit (or `_`) and may
+/// continue with Unicode marks, letters, digits, `_`, `-`, and `.`; whitespace
+/// and other punctuation end it. Trailing dots are kept
 /// as surrounding punctuation. A bare `~` is recognized at end of input or
 /// before whitespace or a closing delimiter; `~.` and `~.name` are relative
 /// paths and are left unchanged. Other absolute paths are left unchanged.
@@ -164,7 +171,15 @@ fn is_username_start(character: char) -> bool {
 }
 
 fn is_username_character(character: char) -> bool {
-    is_username_start(character) || character == '-' || character == '.'
+    is_username_start(character)
+        || character == '-'
+        || character == '.'
+        || is_unicode_mark(character)
+}
+
+fn is_unicode_mark(character: char) -> bool {
+    let mut encoded = [0; 4];
+    UNICODE_MARK.is_match(character.encode_utf8(&mut encoded))
 }
 
 fn is_closing_delimiter(character: char) -> bool {
