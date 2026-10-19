@@ -50,6 +50,7 @@ fn unrelated_absolute_paths_and_non_paths_are_unchanged() {
         r"D:\Projects\openhuman",
         "hello world",
         "prefix/home/alice/file",
+        "项目/home/alice/file",
         "/home/",
         "/Users/",
         r"\server\Users\alice\data",

@@ -37,7 +37,7 @@ pub fn redact_home_paths(text: &str) -> String {
 
 fn has_path_boundary(text: &str, position: usize) -> bool {
     text[..position].chars().next_back().is_none_or(|previous| {
-        !previous.is_ascii_alphanumeric() && previous != '_' && previous != '/' && previous != '\\'
+        !previous.is_alphanumeric() && previous != '_' && previous != '/' && previous != '\\'
     })
 }
 
