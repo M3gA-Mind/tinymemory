@@ -156,7 +156,9 @@ identifies failures that apply to every request on the account.
 
 Stable `code()` values are `MEMORY_OFF`, `UNSUPPORTED`, `INVALID_REQUEST`,
 `UNAUTHORIZED`, `INSUFFICIENT_CREDITS`, `UNAVAILABLE`, and `ENGINE`. `Off`,
-`Unauthorized`, `InsufficientCredits`, and `Unavailable` are account-wide.
+`Unauthorized`, and `InsufficientCredits` are account-wide. `Unavailable` is
+transient, but its generic request-level error carries no proof of an
+account-wide outage.
 
 `Result<T>` is `std::result::Result<T, Error>`. The conformance feature has
 its own `conformance::Error` (`Check` and `Engine` variants) naming the check
