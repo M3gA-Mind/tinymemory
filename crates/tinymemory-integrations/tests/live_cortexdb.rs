@@ -338,7 +338,7 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
 
     let deadline = Instant::now() + VISIBILITY;
     let channel_answer = loop {
-        let mut recall = RecallRequest::new(&marker, 1);
+        let mut recall = RecallRequest::new(marker, 1);
         recall.filter = channel_filter.clone();
         let answer = engine.recall(recall).await.expect("channel recall");
         if answer
@@ -371,7 +371,7 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         "recall excludes every competing channel"
     );
 
-    let mut fetch = FetchRequest::new(&marker, FetchMode::Hybrid, 1);
+    let mut fetch = FetchRequest::new(marker, FetchMode::Hybrid, 1);
     fetch.filter = channel_filter.clone();
     let fetched = engine.fetch(fetch).await.expect("channel fetch");
     let fetched_ids: Vec<&str> = fetched.hits.iter().map(|hit| hit.id.as_str()).collect();
@@ -387,7 +387,7 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         "fetch excludes every competing channel"
     );
 
-    let mut evidence = RecallRequest::new(&marker, 1);
+    let mut evidence = RecallRequest::new(marker, 1);
     evidence.mode = tinymemory_api::RecallMode::Evidence;
     evidence.filter = channel_filter;
     let evidence = engine
