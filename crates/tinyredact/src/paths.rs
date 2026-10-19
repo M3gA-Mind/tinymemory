@@ -115,6 +115,15 @@ fn segment_end(bytes: &[u8], start: usize) -> Option<usize> {
 
 fn username_end(bytes: &[u8], start: usize) -> Option<usize> {
     let text = std::str::from_utf8(&bytes[start..]).ok()?;
+    if let Some((offset, character)) = text
+        .char_indices()
+        .find(|(_, character)| character.is_whitespace() || matches!(character, '/' | '\\'))
+    {
+        if matches!(character, '/' | '\\') {
+            return (offset > 0).then_some(start + offset);
+        }
+    }
+
     let mut end = start;
     for (offset, character) in text.char_indices() {
         if matches!(character, '/' | '\\') || character.is_whitespace() {
