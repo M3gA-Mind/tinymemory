@@ -119,6 +119,10 @@ fn an_uncoded_hosted_402_is_not_assumed_to_mean_credit_exhaustion() {
         );
         assert!(matches!(error, Error::Engine(_)), "{error:?}");
         assert_eq!(error_code(&error), Some("HTTP_402"));
+        assert!(
+            !error.to_string().contains("insufficient credits"),
+            "an uncoded payment-required response must not claim credit exhaustion: {error}"
+        );
     }
 }
 
