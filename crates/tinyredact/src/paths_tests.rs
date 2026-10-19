@@ -192,6 +192,60 @@ fn public_file_uri_probe_matrix_preserves_context_and_redacts_home_paths() {
 }
 
 #[test]
+fn adjacent_uri_and_path_text_keeps_each_redaction_boundary() {
+    for (input, expected) in [
+        (
+            r#""https://example.test/a","/home/bob/b""#,
+            r#""https://example.test/a","<HOME>/b""#,
+        ),
+        (
+            r#""file:///Users/alice/a","file:///home/bob/b""#,
+            r#""file:///<HOME>/a","file:///<HOME>/b""#,
+        ),
+        (
+            r#"[site](https://example.test/a),[file](file:///Users/alice/b)"#,
+            r#"[site](https://example.test/a),[file](file:///<HOME>/b)"#,
+        ),
+        (
+            r#""file:///Users/alice/a","//server/home/bob/b""#,
+            r#""file:///<HOME>/a","<HOME>/b""#,
+        ),
+        (
+            "(file:///home/alice),(/Users/bob)",
+            "(file:///<HOME>),(<HOME>)",
+        ),
+        (
+            r#""file:///var/log/a","/Users/alice/b""#,
+            r#""file:///var/log/a","<HOME>/b""#,
+        ),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
+fn embedded_uri_schemes_follow_word_boundaries_and_suffixes_survive() {
+    for (input, expected) in [
+        ("项目file:///Users/alice/a", "项目file:///Users/alice/a"),
+        (
+            "prefix_file:///Users/alice/a",
+            "prefix_file:///Users/alice/a",
+        ),
+        (
+            "prefix-file:///Users/alice/a",
+            "prefix-file:///Users/alice/a",
+        ),
+        (
+            "file:///home/alice?download=true",
+            "file:///<HOME>?download=true",
+        ),
+        ("file:///Users/alice#section", "file:///<HOME>#section"),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
 fn unrelated_absolute_paths_and_non_paths_are_unchanged() {
     for input in [
         "/var/log/openhuman.log",

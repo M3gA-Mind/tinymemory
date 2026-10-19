@@ -26,7 +26,7 @@ pub fn redact_home_paths(text: &str) -> String {
             if uri.is_file
                 && let Some(path_start) = uri.path_start
                 && let Some((match_start, end)) =
-                    file_uri_home_path_end(&bytes[..uri.end], path_start)
+                    file_uri_home_path_end(&bytes[..uri.path_end], path_start)
             {
                 output.push_str(&text[position..match_start]);
                 if match_start == path_start {
@@ -62,14 +62,13 @@ pub fn redact_home_paths(text: &str) -> String {
 struct ParsedUri {
     is_file: bool,
     path_start: Option<usize>,
+    path_end: usize,
     end: usize,
 }
 
 fn parse_uri(text: &str, start: usize) -> Option<ParsedUri> {
     let bytes = text.as_bytes();
-    if !bytes.get(start)?.is_ascii_alphabetic()
-        || (start > 0 && is_uri_scheme_byte(bytes[start - 1]))
-    {
+    if !bytes.get(start)?.is_ascii_alphabetic() || !has_uri_token_boundary(text, start) {
         return None;
     }
 
@@ -88,18 +87,42 @@ fn parse_uri(text: &str, start: usize) -> Option<ParsedUri> {
 
     let authority_start = scheme_end + 3;
     let end = text[start..]
-        .find(char::is_whitespace)
-        .map_or(text.len(), |relative| start + relative);
+        .char_indices()
+        .find(|(_, character)| is_uri_token_end(*character))
+        .map_or(text.len(), |(relative, _)| start + relative);
     let path_start = bytes[authority_start..end]
         .iter()
         .position(|byte| *byte == b'/')
         .map(|relative| authority_start + relative);
+    let path_end = path_start.map_or(end, |path_start| {
+        bytes[path_start..end]
+            .iter()
+            .position(|byte| matches!(*byte, b'?' | b'#'))
+            .map_or(end, |relative| path_start + relative)
+    });
 
     Some(ParsedUri {
         is_file: bytes[start..scheme_end].eq_ignore_ascii_case(b"file"),
         path_start,
+        path_end,
         end,
     })
+}
+
+fn has_uri_token_boundary(text: &str, start: usize) -> bool {
+    text[..start].chars().next_back().is_none_or(|previous| {
+        !previous.is_alphanumeric()
+            && previous != '_'
+            && !(previous.is_ascii() && is_uri_scheme_byte(previous as u8))
+    })
+}
+
+fn is_uri_token_end(character: char) -> bool {
+    character.is_whitespace()
+        || matches!(
+            character,
+            '"' | '`' | '<' | '>' | ')' | ']' | '}' | ',' | ';'
+        )
 }
 
 fn is_uri_scheme_byte(byte: u8) -> bool {
