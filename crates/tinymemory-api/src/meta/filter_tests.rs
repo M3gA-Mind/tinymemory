@@ -68,12 +68,17 @@ fn tags_any_constructor_matches_any_tag_and_leaves_other_fields_unset() {
     assert_eq!(filter.reach, None);
     assert_eq!(filter.workspace, None);
 
-    let mut item = MemoryMeta::default();
-    item.tags = vec!["flows".into()];
-    assert!(filter.matches(ItemKind::Learning, &item));
+    let matching = MemoryMeta {
+        tags: vec!["flows".into()],
+        ..MemoryMeta::default()
+    };
+    assert!(filter.matches(ItemKind::Learning, &matching));
 
-    item.tags = vec!["flow:f2".into()];
-    assert!(!filter.matches(ItemKind::Learning, &item));
+    let nonmatching = MemoryMeta {
+        tags: vec!["flow:f2".into()],
+        ..MemoryMeta::default()
+    };
+    assert!(!filter.matches(ItemKind::Learning, &nonmatching));
 }
 
 #[test]

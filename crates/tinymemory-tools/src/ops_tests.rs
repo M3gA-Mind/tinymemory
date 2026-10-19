@@ -1,3 +1,5 @@
+//! Request shaping, confinement, and deletion behavior for memory operations.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::{NaiveDate, TimeZone, Utc};
