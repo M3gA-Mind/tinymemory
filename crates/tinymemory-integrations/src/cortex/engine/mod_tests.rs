@@ -270,20 +270,38 @@ async fn recall_applies_channel_before_the_pack_event_budget() {
             "{:?}: a filtered item outside the unfiltered pack's top two is still recalled",
             engine.wire()
         );
-        let seen = state.seen.lock().unwrap();
-        let filter_labels = &seen.recalls.last().unwrap()["filters"]["metadata"]["labels"];
+        let mut fetch = FetchRequest::new(marker, FetchMode::Hybrid, 1);
+        fetch.filter = MetaFilter {
+            workspace: Some(workspace.to_string()),
+            channel: Some("wanted".to_string()),
+            ..MetaFilter::kinds([ItemKind::Document])
+        };
+        let fetched = engine.fetch(fetch).await.unwrap();
         assert_eq!(
-            filter_labels.as_array().unwrap().len(),
-            1,
-            "{:?}: the server gets the channel's narrowing label",
+            fetched.hits.iter().map(|hit| hit.id.as_str()).collect::<Vec<_>>(),
+            vec![wanted_id.as_str()],
+            "{:?}: fetch also supplements its broad pack with the channel pack",
+            engine.wire()
+        );
+        let seen = state.seen.lock().unwrap();
+        let filters: Vec<_> = seen
+            .recalls
+            .iter()
+            .filter_map(|body| body.pointer("/filters/metadata/labels"))
+            .filter_map(serde_json::Value::as_array)
+            .collect();
+        assert!(
+            filters.iter().any(|labels| labels.iter().any(|label| {
+                label.as_str().is_some_and(|label| label.starts_with("tm:w:"))
+            })),
+            "{:?}: the broad workspace pack is retained for legacy records: {filters:?}",
             engine.wire()
         );
         assert!(
-            filter_labels[0]
-                .as_str()
-                .unwrap()
-                .starts_with("tm:c:"),
-            "{:?}: {filter_labels}",
+            filters.iter().any(|labels| labels.iter().any(|label| {
+                label.as_str().is_some_and(|label| label.starts_with("tm:cw:"))
+            })),
+            "{:?}: a channel/workspace pack narrows newly labelled records: {filters:?}",
             engine.wire()
         );
     }

@@ -28,7 +28,7 @@ fn an_item_carries_its_id_label_and_one_per_set_field() {
     )));
     assert!(labels.contains(&format!("tm:s:{}", digest("src-1"))));
     assert!(labels.contains(&format!("tm:k:{}", digest("github"))));
-    assert_eq!(labels.len(), 6);
+    assert_eq!(labels.len(), 7);
     assert!(labels.iter().all(|l| l.len() <= 24 && !l.contains(',')));
 }
 
@@ -55,6 +55,13 @@ fn a_filter_narrows_by_its_most_selective_labelled_field() {
     assert_eq!(
         channel_narrowing(&channel_and_workspace),
         Some(vec![format!("tm:cw:{}", digest("slack\0workspace"))])
+    );
+    assert_eq!(
+        channel_narrowing(&MetaFilter {
+            channel: Some("slack".into()),
+            ..MetaFilter::default()
+        }),
+        Some(vec![format!("tm:c:{}", digest("slack"))])
     );
     let by_sources = MetaFilter {
         sources: vec![SourceKind::Rss, SourceKind::Link],
