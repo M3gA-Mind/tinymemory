@@ -46,8 +46,9 @@ safety/
 | `Policy`, `BareCardGate` | The single tunable |
 | `Sanitized<T>`, `SanitizationReport` | Cleaned value plus a tally of changes |
 
-None of these functions fail or panic at runtime. Every scrubber returns a
-`Sanitized<T>`; `report.changed()` says whether anything was replaced.
+The sanitization functions return a `Sanitized<T>`;
+`report.changed()` says whether anything was replaced. The standalone
+`redact_home_paths` rule returns the scrubbed string directly.
 
 `redact_home_paths` is a standalone text rule for `/home/<user>`,
 `/Users/<user>`, drive-qualified and UNC Windows paths, and `~` home paths.
