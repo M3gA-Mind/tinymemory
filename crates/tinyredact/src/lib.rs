@@ -38,8 +38,8 @@
 //! corroborated behaviour use the `*_with` variants and [`Policy::corroborated`].
 
 mod markers;
-mod pattern;
 mod paths;
+mod pattern;
 /// Exhaustive checksum-gated multilingual national-ID PII module. Content
 /// scrubbing runs from [`sanitize_text`]; the boundary check is re-exported as
 /// [`has_likely_pii`].

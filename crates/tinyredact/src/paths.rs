@@ -33,10 +33,7 @@ pub fn redact_home_paths(text: &str) -> String {
 
 fn has_path_boundary(text: &str, position: usize) -> bool {
     text[..position].chars().next_back().is_none_or(|previous| {
-        !previous.is_ascii_alphanumeric()
-            && previous != '_'
-            && previous != '/'
-            && previous != '\\'
+        !previous.is_ascii_alphanumeric() && previous != '_' && previous != '/' && previous != '\\'
     })
 }
 
@@ -94,9 +91,7 @@ fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
 }
 
 fn segment_end(bytes: &[u8], start: usize) -> Option<usize> {
-    let relative_end = bytes[start..]
-        .iter()
-        .position(|byte| is_separator(*byte))?;
+    let relative_end = bytes[start..].iter().position(|byte| is_separator(*byte))?;
     Some(start + relative_end)
 }
 

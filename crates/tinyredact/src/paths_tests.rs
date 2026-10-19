@@ -3,7 +3,10 @@ use super::*;
 #[test]
 fn openhuman_home_path_cases_map_to_home_marker() {
     for (input, expected) in [
-        ("open /Users/oxoxdev/work/openhuman", "open <HOME>/work/openhuman"),
+        (
+            "open /Users/oxoxdev/work/openhuman",
+            "open <HOME>/work/openhuman",
+        ),
         (r"C:\Users\oxoxdev\work\openhuman", r"<HOME>\work\openhuman"),
         ("C:/Users/oxoxdev/work/openhuman", "<HOME>/work/openhuman"),
         ("/home/jane/project", "<HOME>/project"),
@@ -29,7 +32,10 @@ fn tilde_and_unc_home_paths_are_scrubbed() {
     for (input, expected) in [
         ("~/Documents/report.txt", "<HOME>/Documents/report.txt"),
         ("~alice/Documents/report.txt", "<HOME>/Documents/report.txt"),
-        (r"\\server\Users\alice\Documents\report.txt", r"<HOME>\Documents\report.txt"),
+        (
+            r"\\server\Users\alice\Documents\report.txt",
+            r"<HOME>\Documents\report.txt",
+        ),
         (r"\\server\home\alice\Documents", r"<HOME>\Documents"),
     ] {
         assert_eq!(redact_home_paths(input), expected, "input={input:?}");
