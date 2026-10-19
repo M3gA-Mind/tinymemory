@@ -1,3 +1,5 @@
+//! Home-path redaction behavior across platforms, profile names and text boundaries.
+
 use super::*;
 
 #[test]
