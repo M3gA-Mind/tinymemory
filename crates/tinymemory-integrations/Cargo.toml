@@ -62,7 +62,7 @@ sha2 = { version = "0.11", optional = true }
 # `calamine`, so the graph carries one copy of each.
 pdf-extract = { version = "0.12", optional = true }
 calamine = { version = "0.37", optional = true }
-quick-xml = { version = "0.41", optional = true }
+quick-xml = { version = "0.42", optional = true }
 zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 
 # --- sources ---
