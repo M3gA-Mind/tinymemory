@@ -1,6 +1,6 @@
 use super::*;
 
-async fn seed_green_tea(engine: &ReferenceEngine, scope: &ToolScope) {
+async fn seed_green_tea(engine: &ReferenceEngine, scope: &ToolScope) -> tinymemory_api::Result<()> {
     engine
         .store(StoreItem::learning(
             "prefers green tea",
@@ -12,14 +12,16 @@ async fn seed_green_tea(engine: &ReferenceEngine, scope: &ToolScope) {
             },
         ))
         .await
-        .expect("seed memory");
+        .map(|_| ())
 }
 
 #[tokio::test]
 async fn single_call_accepts_padded_action_for_recall() {
     let engine = Arc::new(ReferenceEngine::new());
     let scope = scope();
-    seed_green_tea(&engine, &scope).await;
+    seed_green_tea(&engine, &scope)
+        .await
+        .expect("seed recall fixture");
     let tool = SingleTool::new("memory", MemoryTools::with_scope(engine, scope));
 
     let result = tool
@@ -37,7 +39,9 @@ async fn single_call_accepts_padded_action_for_recall() {
 async fn single_call_accepts_padded_action_for_fetch() {
     let engine = Arc::new(ReferenceEngine::new());
     let scope = scope();
-    seed_green_tea(&engine, &scope).await;
+    seed_green_tea(&engine, &scope)
+        .await
+        .expect("seed fetch fixture");
     let tool = SingleTool::new("memory", MemoryTools::with_scope(engine, scope));
 
     let result = tool
