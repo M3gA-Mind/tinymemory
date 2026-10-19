@@ -127,6 +127,30 @@ fn dots_and_hyphens_inside_username_tokens_are_scrubbed() {
     ]);
 }
 
+#[test]
+fn quoted_windows_and_unc_profiles_with_spaces_are_fully_scrubbed() {
+    assert_home_path_cases(&[
+        (
+            r#""C:\Users\Jane Doe\Documents\report.txt""#,
+            r#""<HOME>\Documents\report.txt""#,
+        ),
+        (
+            r#""C:\Users\Mary-Jane Smith\Documents""#,
+            r#""<HOME>\Documents""#,
+        ),
+        (r#"'C:\Users\Jane Doe'"#, r#"'<HOME>'"#),
+        (
+            r#""\\server\Users\Jane Doe\Documents""#,
+            r#""<HOME>\Documents""#,
+        ),
+        (r#"'\\server\Users\Jane Doe'"#, r#"'<HOME>'"#),
+        (
+            r#""D:\Projects\Jane Doe\report.txt""#,
+            r#""D:\Projects\Jane Doe\report.txt""#,
+        ),
+    ]);
+}
+
 fn assert_home_path_cases(cases: &[(&str, &str)]) {
     let mismatches = cases
         .iter()
