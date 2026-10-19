@@ -144,6 +144,13 @@ fn is_bare_component_boundary(character: char, text: &str, offset: usize) -> boo
             next.is_whitespace() || matches!(next, '/' | '\\' | ',' | ';' | ')' | ']' | '}')
         });
     }
+    if matches!(character, '!' | '?') {
+        let after = offset + character.len_utf8();
+        return text[after..]
+            .chars()
+            .next()
+            .is_none_or(|next| next.is_whitespace() || matches!(next, ')' | ']' | '}'));
+    }
     if matches!(character, '\'' | '"') {
         let after = offset + character.len_utf8();
         return text[after..].chars().next().is_none_or(|next| {

@@ -165,6 +165,8 @@ fn legacy_home_components_with_symbols_are_redacted_through_boundaries() {
         ("/home/$service", "<HOME>"),
         ("/Users/alice+dev", "<HOME>"),
         ("open /Users/O'Connor now", "open <HOME> now"),
+        ("/Users/O'Connor!", "<HOME>!"),
+        ("/home/alice+dev?", "<HOME>?"),
     ]);
 }
 
