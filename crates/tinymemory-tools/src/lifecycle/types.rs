@@ -12,7 +12,7 @@ pub const DEFAULT_TURN_BUDGET_TOKENS: usize = 1_200;
 
 /// How an [`crate::AgentMemory`] fills its packs and when it asks for
 /// belief builds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecallPolicy {
     /// The most tokens a pack's block may take.
