@@ -16,12 +16,14 @@ fn a_digest_is_sixteen_hex_digits_and_stable() {
 fn an_item_carries_its_id_label_and_one_per_set_field() {
     let mut meta = MemoryMeta::from_source(SourceKind::Github, Some("src-1".into()));
     meta.repo = Some("a/b".into());
+    meta.channel = Some("slack".into());
     let labels = for_item("abc", &meta);
     assert_eq!(labels[0], item("abc"));
     assert!(labels.contains(&format!("tm:r:{}", digest("a/b"))));
+    assert!(labels.contains(&format!("tm:c:{}", digest("slack"))));
     assert!(labels.contains(&format!("tm:s:{}", digest("src-1"))));
     assert!(labels.contains(&format!("tm:k:{}", digest("github"))));
-    assert_eq!(labels.len(), 4);
+    assert_eq!(labels.len(), 5);
     assert!(labels.iter().all(|l| l.len() <= 24 && !l.contains(',')));
 }
 
@@ -35,6 +37,15 @@ fn a_filter_narrows_by_its_most_selective_labelled_field() {
     assert_eq!(
         narrowing(&filter),
         Some(vec![format!("tm:t:{}", digest("t1"))])
+    );
+    let channel_and_workspace = MetaFilter {
+        channel: Some("slack".into()),
+        workspace: Some("workspace".into()),
+        ..MetaFilter::default()
+    };
+    assert_eq!(
+        narrowing(&channel_and_workspace),
+        Some(vec![format!("tm:c:{}", digest("slack"))])
     );
     let by_sources = MetaFilter {
         sources: vec![SourceKind::Rss, SourceKind::Link],

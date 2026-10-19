@@ -71,9 +71,11 @@ struct MetaField {
 }
 
 /// The exact-match fields that are labelled, in the order a filter picks one
-/// to narrow by: the most selective first. `folder` and `file_path` are not
-/// here because they also match as a prefix, which a digest cannot.
-const META_FIELDS: [MetaField; 6] = [
+/// to narrow by: the most selective first. Channel precedes workspace so a
+/// channel filter narrows the server's ranked pack before its event budget.
+/// `folder` and `file_path` are not here because they also match as a prefix,
+/// which a digest cannot.
+const META_FIELDS: [MetaField; 7] = [
     MetaField {
         prefix: "tm:t:",
         held: |m| m.thread_id.as_deref(),
@@ -88,6 +90,11 @@ const META_FIELDS: [MetaField; 6] = [
         prefix: "tm:r:",
         held: |m| m.repo.as_deref(),
         wanted: |f| f.repo.as_deref(),
+    },
+    MetaField {
+        prefix: "tm:c:",
+        held: |m| m.channel.as_deref(),
+        wanted: |f| f.channel.as_deref(),
     },
     MetaField {
         prefix: WORKSPACE_PREFIX,
@@ -111,7 +118,7 @@ const META_FIELDS: [MetaField; 6] = [
 const SOURCE_KIND_PREFIX: &str = "tm:k:";
 
 /// Every label an event of item `id` with `meta` carries: the item label, one
-/// per set labelled field, and the source kind. At most eight.
+/// per set labelled field, and the source kind. At most nine.
 pub(crate) fn for_item(id: &str, meta: &MemoryMeta) -> Vec<String> {
     let mut labels = vec![item(id)];
     for field in &META_FIELDS {
