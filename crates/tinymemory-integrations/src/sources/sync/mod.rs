@@ -118,7 +118,8 @@ pub struct SyncState {
 pub enum SyncUpdate {
     /// A run was claimed and is starting.
     Started,
-    /// A run stored `items` and ended at `at`.
+    /// A run stored `items` and ended at `at`. Every item is listed by
+    /// then; ranked recall can trail by an index refresh (see [`store_all`]).
     Finished {
         /// Items stored.
         items: u64,
@@ -373,6 +374,14 @@ pub struct Stored {
 /// Stores items already placed at their node on `engine`, [`STORE_CHUNK`] at
 /// a time. A refused batch is retried item by item, so one invalid item costs
 /// only itself; an account-wide refusal stops the sync.
+///
+/// On return every stored item is listed, but not necessarily recallable:
+/// `store_many` waits for ranked recall only on each batch's final event, so
+/// earlier items of a batch can show in listings before ranked recall finds
+/// them, for up to an index refresh (about a second). That is the price of
+/// one request per [`STORE_CHUNK`] instead of one per item, the same price
+/// a batched import pays. Items stored one by one after a refused batch
+/// are each recall-awaited. See tinyhumansai/openhuman#7474.
 ///
 /// # Errors
 ///
