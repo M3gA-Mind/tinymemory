@@ -69,3 +69,65 @@ fn unicode_and_path_boundaries_are_preserved() {
         "x=<HOME>/one; y=<HOME>/two"
     );
 }
+
+#[test]
+fn prose_after_bare_unix_windows_and_unc_homes_is_preserved() {
+    for (input, expected) in [
+        ("open /Users/alice now", "open <HOME> now"),
+        (
+            "/home/alice and /home/bob/docs",
+            "<HOME> and <HOME>/docs",
+        ),
+        (
+            r"C:\Users\alice and D:\Projects\report.txt",
+            r"<HOME> and D:\Projects\report.txt",
+        ),
+        (
+            r"\\server\Users\alice and more",
+            r"<HOME> and more",
+        ),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
+fn punctuation_around_bare_home_paths_is_preserved() {
+    for (input, expected) in [
+        ("(/Users/alice)", "(<HOME>)"),
+        ("'/home/alice'", "'<HOME>'"),
+        ("/Users/alice.", "<HOME>."),
+        (
+            "from /home/alice,/home/bob; done",
+            "from <HOME>,<HOME>; done",
+        ),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
+fn tilde_home_tokens_keep_boundaries_and_ignore_relative_dot_path() {
+    for (input, expected) in [
+        ("~", "<HOME>"),
+        ("~/docs", "<HOME>/docs"),
+        ("~alice now", "<HOME> now"),
+        ("~alice.smith/notes", "<HOME>/notes"),
+        ("~.", "~."),
+        ("~.config/settings", "~.config/settings"),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
+fn dots_and_hyphens_inside_username_tokens_are_scrubbed() {
+    assert_eq!(
+        redact_home_paths("/Users/alice.smith/docs and /home/bob-jones/work"),
+        "<HOME>/docs and <HOME>/work"
+    );
+    assert_eq!(
+        redact_home_paths(r"C:\Users\alice.smith\docs and \\server\Users\bob-jones\work"),
+        r"<HOME>\docs and <HOME>\work"
+    );
+}
