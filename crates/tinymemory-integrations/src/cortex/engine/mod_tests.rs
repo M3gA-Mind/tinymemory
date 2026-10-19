@@ -334,6 +334,17 @@ async fn channel_filters_keep_mixed_legacy_items_without_channel_labels() {
         let current = StoreItem::document("current channel item", meta());
         let current_id = current.fingerprint();
         engine.store(current).await.unwrap();
+        engine
+            .store(StoreItem::document(
+                "other channel item",
+                MemoryMeta {
+                    workspace: Some(workspace.to_string()),
+                    channel: Some("other".to_string()),
+                    ..MemoryMeta::default()
+                },
+            ))
+            .await
+            .unwrap();
 
         let filter = MetaFilter {
             workspace: Some(workspace.to_string()),
@@ -341,7 +352,7 @@ async fn channel_filters_keep_mixed_legacy_items_without_channel_labels() {
             ..MetaFilter::kinds([ItemKind::Document])
         };
         let listed = engine
-            .list(ListRequest::new(filter, 10))
+            .list(ListRequest::new(filter.clone(), 10))
             .await
             .unwrap();
         let mut actual: Vec<String> = listed
@@ -356,6 +367,22 @@ async fn channel_filters_keep_mixed_legacy_items_without_channel_labels() {
             actual,
             expected,
             "{:?}: channel narrowing must retain readable pre-label records",
+            engine.wire()
+        );
+
+        let mut request = RecallRequest::new("channel item", 2);
+        request.filter = filter;
+        let answer = engine.recall(request).await.unwrap();
+        let mut citations: Vec<String> = answer
+            .citations
+            .iter()
+            .map(|citation| citation.id.as_str().to_string())
+            .collect();
+        citations.sort();
+        assert_eq!(
+            citations,
+            expected,
+            "{:?}: a broad legacy pack keeps old channel items readable beside newly labelled ones",
             engine.wire()
         );
     }
