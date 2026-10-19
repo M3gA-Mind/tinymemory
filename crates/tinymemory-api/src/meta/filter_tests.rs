@@ -59,6 +59,21 @@ fn an_empty_filter_matches_everything() {
 }
 
 #[test]
+fn tags_any_constructor_matches_any_tag_and_leaves_other_fields_unset() {
+    let filter = MetaFilter::tags_any(["flow:f1", "flows"]);
+    assert_eq!(filter.tags_any, ["flow:f1".to_string(), "flows".to_string()]);
+    assert_eq!(filter.reach, None);
+    assert_eq!(filter.workspace, None);
+
+    let mut item = MemoryMeta::default();
+    item.tags = vec!["flows".into()];
+    assert!(filter.matches(ItemKind::Learning, &item));
+
+    item.tags = vec!["flow:f2".into()];
+    assert!(!filter.matches(ItemKind::Learning, &item));
+}
+
+#[test]
 fn every_exact_field_must_match() {
     let item = meta();
     let probes: Vec<(MetaFilter, MetaFilter)> = vec![
