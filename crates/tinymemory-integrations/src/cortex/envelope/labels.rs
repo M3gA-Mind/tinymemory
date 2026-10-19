@@ -70,12 +70,12 @@ struct MetaField {
     wanted: fn(&MetaFilter) -> Option<&str>,
 }
 
-/// The exact-match fields that are labelled, in the order a filter picks one
-/// to narrow by: the most selective first. Channel precedes workspace so a
-/// channel filter narrows the server's ranked pack before its event budget.
-/// `folder` and `file_path` are not here because they also match as a prefix,
-/// which a digest cannot.
-const META_FIELDS: [MetaField; 7] = [
+/// The exact-match fields used to narrow the legacy broad read, in the order
+/// a filter picks one: the most selective first. `folder`, `file_path` and
+/// `channel` are not here: the first two match as prefixes, and channel uses
+/// a supplemental pack so events written before channel labels remain
+/// readable.
+const META_FIELDS: [MetaField; 6] = [
     MetaField {
         prefix: "tm:t:",
         held: |m| m.thread_id.as_deref(),
@@ -90,11 +90,6 @@ const META_FIELDS: [MetaField; 7] = [
         prefix: "tm:r:",
         held: |m| m.repo.as_deref(),
         wanted: |f| f.repo.as_deref(),
-    },
-    MetaField {
-        prefix: "tm:c:",
-        held: |m| m.channel.as_deref(),
-        wanted: |f| f.channel.as_deref(),
     },
     MetaField {
         prefix: WORKSPACE_PREFIX,
@@ -117,8 +112,15 @@ const META_FIELDS: [MetaField; 7] = [
 /// for several source kinds, which a label filter's any-of reading serves.
 const SOURCE_KIND_PREFIX: &str = "tm:k:";
 
+/// A channel label can narrow a supplemental recall pack for new records.
+const CHANNEL_PREFIX: &str = "tm:c:";
+
+/// A channel-and-workspace label confines that pack to one workspace.
+const CHANNEL_WORKSPACE_PREFIX: &str = "tm:cw:";
+
 /// Every label an event of item `id` with `meta` carries: the item label, one
-/// per set labelled field, and the source kind. At most nine.
+/// per set labelled field, the source kind and channel lookup labels. At most
+/// ten.
 pub(crate) fn for_item(id: &str, meta: &MemoryMeta) -> Vec<String> {
     let mut labels = vec![item(id)];
     for field in &META_FIELDS {
@@ -126,11 +128,35 @@ pub(crate) fn for_item(id: &str, meta: &MemoryMeta) -> Vec<String> {
             labels.push(format!("{}{}", field.prefix, digest(value)));
         }
     }
+    if let Some(channel) = meta.channel.as_deref() {
+        labels.push(format!("{CHANNEL_PREFIX}{}", digest(channel)));
+        if let Some(workspace) = meta.workspace.as_deref() {
+            labels.push(format!(
+                "{CHANNEL_WORKSPACE_PREFIX}{}",
+                digest(&format!("{channel}\0{workspace}"))
+            ));
+        }
+    }
     labels.push(format!(
         "{SOURCE_KIND_PREFIX}{}",
         digest(meta.source.kind.as_str())
     ));
     labels
+}
+
+/// The supplemental label for a channel-filtered recall pack. The ordinary
+/// narrowing path remains broad so older envelopes without channel labels
+/// stay visible.
+pub(crate) fn channel_narrowing(filter: &MetaFilter) -> Option<Vec<String>> {
+    let channel = filter.channel.as_deref()?;
+    let label = match filter.workspace.as_deref() {
+        Some(workspace) => format!(
+            "{CHANNEL_WORKSPACE_PREFIX}{}",
+            digest(&format!("{channel}\0{workspace}"))
+        ),
+        None => format!("{CHANNEL_PREFIX}{}", digest(channel)),
+    };
+    Some(vec![label])
 }
 
 /// The one label filter that narrows a read for `filter`, if any field of it
