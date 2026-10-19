@@ -270,6 +270,24 @@ async fn recall_applies_channel_before_the_pack_event_budget() {
             "{:?}: a filtered item outside the unfiltered pack's top two is still recalled",
             engine.wire()
         );
+        let mut evidence_request = RecallRequest::new(marker, 1);
+        evidence_request.mode = tinymemory_api::RecallMode::Evidence;
+        evidence_request.filter = MetaFilter {
+            workspace: Some(workspace.to_string()),
+            channel: Some("wanted".to_string()),
+            ..MetaFilter::kinds([ItemKind::Document])
+        };
+        let evidence = engine.recall(evidence_request).await.unwrap();
+        assert_eq!(
+            evidence
+                .citations
+                .iter()
+                .map(|citation| citation.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![wanted_id.as_str()],
+            "{:?}: Evidence mode also supplements the broad pack before top-k",
+            engine.wire()
+        );
         let mut fetch = FetchRequest::new(marker, FetchMode::Hybrid, 1);
         fetch.filter = MetaFilter {
             workspace: Some(workspace.to_string()),
@@ -350,11 +368,9 @@ async fn channel_filters_keep_mixed_legacy_items_without_channel_labels() {
                     .unwrap()
                     .iter()
                     .filter(|label| {
-                        !label
-                            .as_str()
-                            .is_some_and(|label| {
-                                label.starts_with("tm:c:") || label.starts_with("tm:cw:")
-                            })
+                        !label.as_str().is_some_and(|label| {
+                            label.starts_with("tm:c:") || label.starts_with("tm:cw:")
+                        })
                     })
                     .cloned()
                     .collect(),
