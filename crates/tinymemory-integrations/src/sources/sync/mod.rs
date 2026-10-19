@@ -376,11 +376,11 @@ pub struct Stored {
 /// only itself; an account-wide refusal stops the sync.
 ///
 /// On return every stored item is listed, but not necessarily recallable:
-/// `store_many` waits for ranked recall only on each batch's final event, so
-/// earlier items of a batch can show in listings before ranked recall finds
-/// them, for up to an index refresh (about a second). That is the price of
-/// one request per [`STORE_CHUNK`] instead of one per item, the same price
-/// a batched import pays. Items stored one by one after a refused batch
+/// the Cortex engines' `store_many` waits for ranked recall only on each
+/// batch's final event, so earlier items of a batch can show in listings
+/// before ranked recall finds them, until the engine's index refreshes. That
+/// is the price of waiting once per batch instead of once per item, the same
+/// price a batched import pays. Items stored one by one after a refused batch
 /// are each recall-awaited. See tinyhumansai/openhuman#7474.
 ///
 /// # Errors
