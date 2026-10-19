@@ -170,7 +170,7 @@ fn unquoted_windows_profiles_with_spaces_are_bounded_by_their_descendants() {
             r"<HOME>\Documents and <HOME>/docs",
         ),
         (
-            r"\\server\Users\Jane Doe\Documents and \\\other\Users\Bob\docs",
+            r"\\server\Users\Jane Doe\Documents and \\other\Users\Bob\docs",
             r"<HOME>\Documents and <HOME>\docs",
         ),
     ]);
