@@ -62,8 +62,9 @@ impl Error {
         }
     }
 
-    /// Whether the failure affects every request on the account, not only
-    /// one item or operation.
+    /// Whether the failure is known to affect every request on the account.
+    /// `Unavailable` is deliberately excluded: it describes a transient
+    /// request failure and carries no typed proof of an account-wide outage.
     #[must_use]
     pub fn is_account_wide(&self) -> bool {
         matches!(
@@ -71,7 +72,6 @@ impl Error {
             Self::Off(_)
                 | Self::Unauthorized(_)
                 | Self::InsufficientCredits(_)
-                | Self::Unavailable(_)
         )
     }
 

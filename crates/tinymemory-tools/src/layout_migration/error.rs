@@ -40,9 +40,10 @@ impl Error {
         }
     }
 
-    /// Whether this refuses every request on the account, not just this one:
-    /// memory off, a rejected credential, no credits, or no engine to reach.
-    /// A loop over items stops on these instead of skipping every item.
+    /// Whether this is known to refuse every request on the account, not just
+    /// this one: memory off, a rejected credential, or no credits. An
+    /// [`EngineError::Unavailable`] may be request-scoped, so it does not stop
+    /// a loop over items from trying the remaining items.
     #[must_use]
     pub fn is_account_wide(&self) -> bool {
         match self {
