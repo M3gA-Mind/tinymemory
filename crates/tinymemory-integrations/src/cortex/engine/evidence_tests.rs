@@ -272,7 +272,7 @@ async fn a_broad_channel_pack_is_kept_when_its_supplement_misses_the_deadline() 
     req.filter = MetaFilter {
         workspace: Some(workspace.into()),
         channel: Some("support".into()),
-        ..MetaFilter::default()
+        ..MetaFilter::kinds([ItemKind::Document])
     };
     let got = engine.recall(req).await.unwrap();
     assert_eq!(
