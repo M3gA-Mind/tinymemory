@@ -366,7 +366,9 @@ impl SingleTool {
         // unchanged to RecallRequest::question.
         let question = value["question"]
             .as_str()
-            .expect("successful recall parsed a string question")
+            .ok_or_else(|| {
+                args::invalid(TOOL_NAME, "`question` is required and must not be blank")
+            })?
             .to_string();
         let citations = answer.citations;
         let item_count = citations.len();
