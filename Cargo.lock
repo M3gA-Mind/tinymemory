@@ -1717,6 +1717,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "url",
  "walkdir",
  "zip",
 ]
