@@ -352,7 +352,9 @@ async fn channel_filters_keep_mixed_legacy_items_without_channel_labels() {
                     .filter(|label| {
                         !label
                             .as_str()
-                            .is_some_and(|label| label.starts_with("tm:c:"))
+                            .is_some_and(|label| {
+                                label.starts_with("tm:c:") || label.starts_with("tm:cw:")
+                            })
                     })
                     .cloned()
                     .collect(),
