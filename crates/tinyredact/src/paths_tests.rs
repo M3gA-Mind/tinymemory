@@ -346,6 +346,65 @@ fn balanced_uri_wrappers_do_not_truncate_parenthesized_profiles() {
 }
 
 #[test]
+fn every_quote_transition_keeps_adjacent_home_tokens_visible_to_redaction() {
+    let quote_types = ['\'', '"', '`'];
+    let separators = [',', ';'];
+    let following_paths = [
+        ("/home/bob/b", "<HOME>/b"),
+        ("file:///Users/bob/b", "file:///<HOME>/b"),
+        ("//server/home/bob/b", "<HOME>/b"),
+    ];
+
+    for first_quote in quote_types {
+        for next_quote in quote_types {
+            for separator in separators {
+                for (path, redacted_path) in following_paths {
+                    let input = format!(
+                        "{first_quote}https://example.test/a{first_quote}{separator}{next_quote}{path}{next_quote}"
+                    );
+                    let expected = format!(
+                        "{first_quote}https://example.test/a{first_quote}{separator}{next_quote}{redacted_path}{next_quote}"
+                    );
+                    assert_eq!(redact_home_paths(&input), expected, "input={input:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn punctuation_inside_quoted_profiles_survives_until_the_descendant_separator() {
+    for (input, expected) in [
+        (
+            "'file://server/Users/O'.Connor/Documents'",
+            "'file://server/<HOME>/Documents'",
+        ),
+        (
+            "'file://server/Users/alice')smith/Documents'",
+            "'file://server/<HOME>/Documents'",
+        ),
+        (
+            "(file://server/home/alice),smith/Documents)",
+            "(file://server/<HOME>/Documents)",
+        ),
+        (
+            "file://server/Users/alice]smith/Documents",
+            "file://server/<HOME>/Documents",
+        ),
+        (
+            "'https://example.test/Users/O'.Connor/Documents'",
+            "'https://example.test/Users/O'.Connor/Documents'",
+        ),
+        (
+            "'https://example.test/Users/alice')smith/Documents'",
+            "'https://example.test/Users/alice')smith/Documents'",
+        ),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
 fn unrelated_absolute_paths_and_non_paths_are_unchanged() {
     for input in [
         "/var/log/openhuman.log",
