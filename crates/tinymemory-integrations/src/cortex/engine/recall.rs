@@ -1,7 +1,7 @@
-//! Recall: one recall pack per scope, then the answer route once with one
-//! of them. In [`tinymemory_api::RecallMode::Evidence`] the same packs are
-//! rendered as evidence instead and the answer route is never asked (see
-//! `evidence`).
+//! Recall: a broad recall pack per scope, plus a channel-specific supplement
+//! when requested, then the answer route once with one real pack id. In
+//! [`tinymemory_api::RecallMode::Evidence`] those packs are rendered as
+//! evidence instead and the answer route is never asked (see `evidence`).
 //!
 //! The scopes are the filter's (see `scopes`): the kind scopes of its reach,
 //! or, with no reach (an unscoped, administrative read), every kind scope the
@@ -50,7 +50,7 @@ use crate::cortex::descriptor::CortexWire;
 use crate::cortex::envelope::Envelope;
 use crate::cortex::error::{Error, Result};
 
-/// Recall packs built at once when a reach spans several scopes.
+/// Recall pack requests in flight when a reach spans several scopes.
 pub(super) const PACKS_AT_ONCE: usize = 4;
 
 /// Rounds (packs, then one answer) at most per recall: the first, and one
@@ -190,8 +190,9 @@ impl CortexEngine {
 }
 
 impl CortexEngine {
-    /// One round of recall: a pack per path (four at a time), decoded and
-    /// filtered, and the answer route asked once with the pack holding the
+    /// One round of recall: a broad pack and optional channel supplement per
+    /// path (four requests at a time), decoded and filtered, and the answer
+    /// route asked once with the real pack holding the
     /// most admitted events, the most specific node on a tie. The answer's
     /// own error is handed back, so the caller can tell a dropped pack.
     async fn answer_round(
