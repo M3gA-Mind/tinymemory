@@ -259,7 +259,6 @@ async fn registry_does_not_hold_its_lock_while_matching_cache_keys() {
     assert!(late.completed(&"invalidate").is_some());
 }
 
-
 #[tokio::test]
 async fn turn_cache_is_idle_tracks_active_pending_and_drained_work() {
     let pool = WorkerPool::new(1);
