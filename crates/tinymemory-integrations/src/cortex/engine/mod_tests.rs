@@ -290,6 +290,78 @@ async fn recall_applies_channel_before_the_pack_event_budget() {
 }
 
 #[tokio::test]
+async fn channel_filters_keep_mixed_legacy_items_without_channel_labels() {
+    for (engine, state) in both().await {
+        let workspace = "mixed-channel-label-versions";
+        let meta = || MemoryMeta {
+            workspace: Some(workspace.to_string()),
+            channel: Some("support".to_string()),
+            ..MemoryMeta::default()
+        };
+        let legacy_text = "legacy channel item";
+        let legacy = StoreItem::document(legacy_text, meta());
+        let legacy_id = legacy.fingerprint();
+        engine.store(legacy).await.unwrap();
+
+        // A v3 envelope written before channel lookup labels were introduced
+        // still has the channel in its envelope metadata, but only carries
+        // the older item/workspace labels.
+        {
+            let mut log = state.log.lock().unwrap();
+            let event = log
+                .events
+                .iter_mut()
+                .find(|event| {
+                    event.pointer("/content/text").and_then(serde_json::Value::as_str)
+                        == Some(legacy_text)
+                })
+                .expect("the legacy fixture was stored");
+            event["context"]["labels"] = serde_json::Value::Array(
+                event["context"]["labels"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|label| {
+                        !label
+                            .as_str()
+                            .is_some_and(|label| label.starts_with("tm:c:"))
+                    })
+                    .cloned()
+                    .collect(),
+            );
+        }
+
+        let current = StoreItem::document("current channel item", meta());
+        let current_id = current.fingerprint();
+        engine.store(current).await.unwrap();
+
+        let filter = MetaFilter {
+            workspace: Some(workspace.to_string()),
+            channel: Some("support".to_string()),
+            ..MetaFilter::kinds([ItemKind::Document])
+        };
+        let listed = engine
+            .list(ListRequest::new(filter, 10))
+            .await
+            .unwrap();
+        let mut actual: Vec<String> = listed
+            .items
+            .iter()
+            .map(|hit| hit.id.as_str().to_string())
+            .collect();
+        actual.sort();
+        let mut expected = vec![legacy_id, current_id];
+        expected.sort();
+        assert_eq!(
+            actual,
+            expected,
+            "{:?}: channel narrowing must retain readable pre-label records",
+            engine.wire()
+        );
+    }
+}
+
+#[tokio::test]
 async fn recall_over_one_kind_uses_that_kind_scope() {
     for (engine, state) in both().await {
         let mut req = RecallRequest::new("anything", 3);
