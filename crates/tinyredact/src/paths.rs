@@ -135,8 +135,14 @@ fn username_end(bytes: &[u8], start: usize) -> Option<usize> {
 }
 
 fn is_bare_component_boundary(character: char, text: &str, offset: usize) -> bool {
-    if matches!(character, ')' | ']' | '}' | '>' | ',' | ';' | '.') {
+    if matches!(character, ')' | ']' | '}' | '>' | ',' | ';') {
         return true;
+    }
+    if character == '.' {
+        let after = offset + character.len_utf8();
+        return text[after..].chars().next().is_none_or(|next| {
+            next.is_whitespace() || matches!(next, '/' | '\\' | ',' | ';' | ')' | ']' | '}')
+        });
     }
     if matches!(character, '\'' | '"') {
         let after = offset + character.len_utf8();
