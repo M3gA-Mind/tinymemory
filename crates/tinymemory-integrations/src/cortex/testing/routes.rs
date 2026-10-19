@@ -341,6 +341,19 @@ async fn recall(
     {
         tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
     }
+    let targeted_channel = body
+        .pointer("/filters/metadata/labels")
+        .and_then(Value::as_array)
+        .is_some_and(|labels| {
+            labels.iter().any(|label| {
+                label
+                    .as_str()
+                    .is_some_and(|label| label.starts_with("tm:c:") || label.starts_with("tm:cw:"))
+            })
+        });
+    if targeted_channel && let Some(ms) = *state.slow_channel_recall.lock().unwrap() {
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+    }
     let pack = state.log.lock().unwrap().recall(&body);
     ok(&state, 200, pack)
 }
