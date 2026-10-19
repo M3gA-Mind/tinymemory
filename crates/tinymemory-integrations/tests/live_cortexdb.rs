@@ -271,7 +271,7 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
     let scope = format!("app:tinymemory/{namespace}/app:documents");
     let broad_label = format!("tm:w:{}", label_digest(&workspace));
     let broad_deadline = Instant::now() + VISIBILITY;
-    let broad_texts = loop {
+    loop {
         let broad_pack: serde_json::Value = reqwest::Client::new()
             .post(format!("{url}/v1/recall"))
             .bearer_auth(
@@ -300,12 +300,13 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
             .pointer("/layers/events")
             .and_then(serde_json::Value::as_array)
             .expect("the broad control pack has events");
-        let texts: Vec<&str> = broad_events
+        let texts: Vec<String> = broad_events
             .iter()
             .filter_map(|event| {
                 event
                     .pointer("/content/text")
                     .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
             })
             .collect();
         if broad_events.len() == 2
@@ -327,14 +328,14 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
                 }),
                 "the raw control only narrows by the hashed workspace label"
             );
-            break texts;
+            break;
         }
         assert!(
             Instant::now() < broad_deadline,
             "the two-event broad pack still includes the wanted item or lacks ranked distractors: {texts:?}"
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
-    };
+    }
 
     let deadline = Instant::now() + VISIBILITY;
     let channel_answer = loop {
