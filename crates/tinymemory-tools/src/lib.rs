@@ -88,7 +88,7 @@ pub mod run_slots;
 pub mod tools;
 
 pub use background::{BackgroundJob, BackgroundRunner, JobOutcome, JobReport};
-pub use brain::{Brain, BrainBatch, BrainDocument, Ingested};
+pub use brain::{Brain, BrainBatch, BrainDocument, BrainSourceCount, BrainSourcesView, Ingested};
 pub use confine::{Confinement, Policy};
 pub use layout::identity::{
     AgentPin, Identity, IdentityPins, ResolvedIdentity, account_root, actor_of_root, chat_node,
