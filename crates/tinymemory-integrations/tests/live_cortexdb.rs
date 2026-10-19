@@ -212,19 +212,29 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
         .expect("a valid namespace");
     let workspace = format!("/tmp/tinymemory-channel-{run}");
     let marker = format!("Cobalt channel budget marker {run}");
-    let make_meta = |channel: &str| MemoryMeta {
+    let make_meta = |channel: &str, item: &str| MemoryMeta {
         namespace: namespace.clone(),
         workspace: Some(workspace.clone()),
         channel: Some(channel.to_string()),
+        source: SourceRef {
+            kind: SourceKind::Agent,
+            id: Some(format!("{run}-{item}")),
+        },
         ..MemoryMeta::default()
     };
 
-    let wanted = StoreItem::document(format!("{marker} wanted details"), make_meta("support"));
+    let wanted = StoreItem::document(
+        format!("{marker} wanted details"),
+        make_meta("support", "wanted"),
+    );
     let wanted_id = wanted.fingerprint();
     engine.store(wanted).await.expect("store the wanted item");
     let mut distractor_ids = Vec::new();
     for index in 0..4 {
-        let distractor = StoreItem::document(marker.clone(), make_meta("other"));
+        let distractor = StoreItem::document(
+            marker.clone(),
+            make_meta("other", &format!("other-{index}")),
+        );
         distractor_ids.push(distractor.fingerprint());
         engine
             .store(distractor)
