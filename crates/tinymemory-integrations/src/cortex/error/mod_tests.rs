@@ -25,3 +25,19 @@ fn insufficient_credits_needs_both_the_variant_and_the_code() {
         "[RATE_LIMITED] slow".into()
     )));
 }
+
+#[test]
+fn plan_required_needs_the_engine_variant_and_a_plan_code() {
+    assert!(is_plan_required(&Error::Engine(
+        "[MEMORY_PLAN_REQUIRED] not in the plan".into()
+    )));
+    assert!(!is_plan_required(&Error::Unauthorized(
+        "[MEMORY_PLAN_REQUIRED] not in the plan".into()
+    )));
+    assert!(!is_plan_required(&Error::Engine(
+        "[USER_INSUFFICIENT_CREDITS] top up".into()
+    )));
+    assert!(!is_plan_required(&Error::Engine(
+        "MEMORY_PLAN_REQUIRED without the prefix".into()
+    )));
+}

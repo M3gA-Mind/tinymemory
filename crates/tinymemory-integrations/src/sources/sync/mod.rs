@@ -38,6 +38,10 @@ pub const STORE_CHUNK: usize = MAX_STORE_MANY;
 /// The credit-exhaustion code the hosted engine puts on its message.
 const INSUFFICIENT_CREDITS_CODE: &str = "USER_INSUFFICIENT_CREDITS";
 
+/// The suffix of the hosted engine's codes for a feature the account's plan
+/// does not include (`MEMORY_PLAN_REQUIRED`).
+const PLAN_REQUIRED_SUFFIX: &str = "_PLAN_REQUIRED";
+
 /// Why a sync failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SyncError {
@@ -54,7 +58,7 @@ pub enum SyncError {
 
 impl SyncError {
     /// Whether the failure is about the account, not the item: out of
-    /// credits, signed out, or the engine unreachable. Retrying siblings
+    /// credits, not in the plan, signed out, or the engine unreachable. Retrying siblings
     /// would fail the same way, so a sync stops on it.
     #[must_use]
     pub fn is_account_wide(&self) -> bool {
@@ -72,7 +76,9 @@ fn engine_error_is_account_wide(error: &tinymemory_api::Error) -> bool {
         E::Engine(message) => message
             .strip_prefix('[')
             .and_then(|rest| rest.split_once("] "))
-            .is_some_and(|(code, _)| code == INSUFFICIENT_CREDITS_CODE),
+            .is_some_and(|(code, _)| {
+                code == INSUFFICIENT_CREDITS_CODE || code.ends_with(PLAN_REQUIRED_SUFFIX)
+            }),
         _ => false,
     }
 }

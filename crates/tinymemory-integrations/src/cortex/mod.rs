@@ -19,7 +19,8 @@
 //! Hosts normally build an engine through [`crate::registry::build_engine`] or
 //! [`crate::config::MemoryConfig::build`] rather than naming
 //! [`CortexEngine`]. Errors are the contract's [`tinymemory_api::Error`]; see
-//! [`error_code`] and [`is_insufficient_credits`] for hosted failures.
+//! [`error_code`], [`is_insufficient_credits`] and [`is_plan_required`] for hosted
+//! failures.
 //!
 //! # Storage layout
 //!
@@ -89,4 +90,4 @@ pub use descriptor::{
     tinyhumans_descriptor,
 };
 pub use engine::CortexEngine;
-pub use error::{Error, Result, error_code, is_insufficient_credits};
+pub use error::{Error, Result, error_code, is_insufficient_credits, is_plan_required};

@@ -171,6 +171,9 @@ fn account_wide_failures_are_told_from_item_failures() {
     assert!(wide(Error::Engine(
         "[USER_INSUFFICIENT_CREDITS] top up".into()
     )));
+    assert!(wide(Error::Engine(
+        "[MEMORY_PLAN_REQUIRED] not in the plan".into()
+    )));
     assert!(!wide(Error::Engine("[OTHER] nope".into())));
     assert!(!wide(Error::InvalidRequest("x".into())));
     assert!(!SyncError::Read("x".into()).is_account_wide());
