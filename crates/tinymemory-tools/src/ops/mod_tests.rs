@@ -1,3 +1,5 @@
+//! Tests for memory operation behavior.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::{NaiveDate, TimeZone, Utc};
