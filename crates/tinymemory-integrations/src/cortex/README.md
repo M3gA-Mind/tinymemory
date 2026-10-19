@@ -175,16 +175,16 @@ someone else's and is ignored. An item that opts out of derivation
 concepts are derived from it. `context.observed_at` carries the turn's
 `at` or the item's `meta.observed_at`.
 
-**Labels.** Each event carries up to nine `context.labels`, each a 16-hex
+**Labels.** Each event carries up to ten `context.labels`, each a 16-hex
 SHA-256 digest: `tm:i:` (item id) on every event, plus `tm:t:` thread,
-`tm:s:` source id, `tm:r:` repo, `tm:c:` channel, `tm:w:` workspace,
-`tm:a:` agent, `tm:l:` language, and `tm:k:` source kind. Channel precedes
-workspace in the filter priority so recall narrows a channel within a
-workspace before applying its ranked event budget. A read whose filter has a
-labelled field sends **one** label filter (`labels=` comma list on events,
-`filters.metadata.labels` on recall) to narrow server-side, then **always**
-re-applies the full `MetaFilter` client-side. `folder` and `file_path` match
-as prefixes, so they cannot be labelled and are filtered only client-side.
+`tm:s:` source id, `tm:r:` repo, `tm:w:` workspace, `tm:a:` agent,
+`tm:l:` language, `tm:k:` source kind, `tm:c:` channel and `tm:cw:` channel
+plus workspace. Channel recall keeps the existing broad pack for records
+written before these labels existed and adds a pack narrowed by `tm:c:` or
+`tm:cw:` for newer records. Other reads keep their existing broad label so
+old records stay visible. Each pack re-applies the full `MetaFilter`
+client-side. `folder` and `file_path` match as prefixes, so they cannot be
+labelled and are filtered only client-side.
 
 ## Operations
 
