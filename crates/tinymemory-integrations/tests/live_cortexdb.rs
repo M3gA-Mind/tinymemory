@@ -243,7 +243,7 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
     let mut distractor_ids = Vec::new();
     for index in 0..4 {
         let distractor = StoreItem::document(
-            marker.clone(),
+            format!("{marker}; {marker}; {marker}; foreign detail {index}"),
             make_meta("other", &format!("other-{index}")),
         );
         distractor_ids.push(distractor.fingerprint());
@@ -308,7 +308,12 @@ async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
                 .and_then(serde_json::Value::as_str)
         })
         .collect();
-    assert!(broad_texts.iter().any(|text| *text == marker));
+    assert!(
+        broad_texts
+            .iter()
+            .all(|text| text.contains(&marker) && text.contains("foreign detail")),
+        "both budgeted events should be distinct foreign-channel distractors: {broad_texts:?}"
+    );
     assert!(
         broad_texts
             .iter()
