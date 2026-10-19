@@ -31,9 +31,9 @@ server you started by hand (which uses the compose file's own project on
 
 ## What runs
 
-- `cortex`: `cortexdb/cortexdb` pinned to `v0.10.4` (override with
-  the original public v0.10.4 OCI index digest
-  `sha256:636e0ed0b8cd4ae2f307e3a90f99050f7879f73c556b1ccbbabf2d3a383398fc`,
+- `cortex`: the original public v0.10.4 OCI index digest
+  `sha256:636e0ed0b8cd4ae2f307e3a90f99050f7879f73c556b1ccbbabf2d3a383398fc`
+  (override with `CORTEXDB_VERSION` in the scripts),
   listening on `127.0.0.1:3141` (`CORTEXDB_PORT`) with the static bearer
   `tinymemory-cortex-test` (`TINYMEMORY_TEST_CORTEX_KEY`). `CORTEXDB_VERSION`
   remains supported by the scripts to select a version tag; direct Compose

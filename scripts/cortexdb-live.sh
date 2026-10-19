@@ -10,7 +10,6 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-source "$root/scripts/cortexdb-image.sh"
 compose=(docker compose --project-name tinymemory-cortexdb-test -f "$root/integration/cortexdb/docker-compose.yml")
 port="${CORTEXDB_PORT:-3142}"
 # Compose reads the published port from the environment.
