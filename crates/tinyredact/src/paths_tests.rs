@@ -152,6 +152,24 @@ fn quoted_windows_and_unc_profiles_with_spaces_are_fully_scrubbed() {
 }
 
 #[test]
+fn unquoted_windows_profiles_with_spaces_are_bounded_by_their_descendants() {
+    assert_home_path_cases(&[
+        (r"C:\Users\Jane Doe\Documents", r"<HOME>\Documents"),
+        (r"\\server\Users\Jane Doe\Documents", r"<HOME>\Documents"),
+        (r#""C:\Users\Jane Doe\Documents""#, r#""<HOME>\Documents""#),
+        (r#""\\server\Users\Jane Doe\Documents""#, r#""<HOME>\Documents""#),
+        (
+            r"open C:\Users\alice and D:\Projects\report.txt",
+            r"open <HOME> and D:\Projects\report.txt",
+        ),
+        (
+            r"C:\Users\Jane Doe\Documents and /home/bob/docs",
+            r"<HOME>\Documents and <HOME>/docs",
+        ),
+    ]);
+}
+
+#[test]
 fn legacy_home_components_with_symbols_are_redacted_through_boundaries() {
     assert_home_path_cases(&[
         ("/Users/O'Connor/Documents", "<HOME>/Documents"),
