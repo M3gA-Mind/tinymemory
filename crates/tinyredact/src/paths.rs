@@ -1,21 +1,16 @@
 //! Home-directory path redaction for text that may be persisted or logged.
 
-use crate::pattern::literal;
-use regex::Regex;
-use std::sync::LazyLock;
-
-static UNICODE_MARK: LazyLock<Regex> = LazyLock::new(|| literal(r"\A\p{M}\z"));
-
 /// Replace recognized home-directory prefixes with `<HOME>`, preserving the
 /// path below the user's home directory and all surrounding text.
 ///
 /// Recognizes `/home/<user>`, `/Users/<user>`, drive-qualified Windows
 /// `Users` paths, UNC `Users` and `home` paths, and tilde paths (`~` or
 /// `~<user>`). Matching is case-insensitive for the conventional directory
-/// names. A username token starts with a Unicode letter or digit (or `_`) and
-/// may continue with Unicode marks, letters, digits, `_`, `-`, and `.`;
-/// whitespace and other punctuation end it. Trailing dots are kept as
-/// surrounding punctuation. A bare `~` is recognized at end of input or
+/// names. After one of these explicit home prefixes, the nonempty profile
+/// component is redacted through its path separator, including arbitrary UTF-8
+/// and symbols. When no descendant separator is present, whitespace and clear
+/// closing punctuation end the component; terminal dots, commas and semicolons
+/// remain surrounding text. A bare `~` is recognized at end of input or
 /// before whitespace or a closing delimiter; `~.` and `~.name` are relative
 /// paths and are left unchanged. Other absolute paths are left unchanged.
 /// Quoted Windows drive and UNC paths may have spaces in the profile component;
@@ -122,64 +117,65 @@ fn username_end(bytes: &[u8], start: usize) -> Option<usize> {
     let text = std::str::from_utf8(&bytes[start..]).ok()?;
     let mut end = start;
     for (offset, character) in text.char_indices() {
-        if (offset == 0 && !is_username_start(character)) || !is_username_character(character) {
+        if matches!(character, '/' | '\\') || character.is_whitespace() {
+            break;
+        }
+        if is_bare_component_boundary(character, text, offset) {
             break;
         }
         end = start + offset + character.len_utf8();
     }
 
-    // A final period is usually sentence punctuation rather than part of the
-    // account name. Interior dots remain valid (`alice.smith`).
-    while end > start && bytes[end - 1] == b'.' {
+    // Terminal punctuation belongs to surrounding text; interior symbols
+    // remain part of the profile component.
+    while end > start && matches!(bytes[end - 1], b'.' | b',' | b';') {
         end -= 1;
     }
     (end > start).then_some(end)
 }
 
-/// Recognize a space-containing Windows profile component only when its path
-/// starts inside a matching quoted string. The next separator marks the end of
-/// a profile with descendants; otherwise the closing quote marks a bare home.
-/// Unquoted text keeps the normal single-token rule so prose is never consumed.
+fn is_bare_component_boundary(character: char, text: &str, offset: usize) -> bool {
+    if matches!(character, ')' | ']' | '}' | '>' | ',' | ';' | '.') {
+        return true;
+    }
+    if matches!(character, '\'' | '"') {
+        let after = offset + character.len_utf8();
+        return text[after..].chars().next().is_none_or(|next| {
+            next.is_whitespace() || matches!(next, ',' | ';' | ')' | ']' | '}')
+        });
+    }
+    false
+}
+
+/// Use an enclosing quote or the next path separator to bound a Windows
+/// profile. A quoted bare profile ends at the matching quote; a profile with
+/// descendants ends at the first separator. Quoted names may contain spaces
+/// and symbols without consuming following prose.
 fn quoted_profile_end(bytes: &[u8], path_start: usize, username_start: usize) -> Option<usize> {
     let quote = *bytes.get(path_start.checked_sub(1)?)?;
     if !matches!(quote, b'\'' | b'"') {
         return None;
     }
 
-    let quote_end = bytes[username_start..]
-        .iter()
-        .position(|byte| *byte == quote)
-        .map(|offset| username_start + offset)?;
-    if quote_end == username_start {
-        return None;
+    let suffix = std::str::from_utf8(&bytes[username_start..]).ok()?;
+    for (offset, character) in suffix.char_indices() {
+        if matches!(character, '/' | '\\') {
+            return (offset > 0).then_some(username_start + offset);
+        }
+        if character as u32 == quote as u32 {
+            let after = offset + character.len_utf8();
+            if suffix[after..].chars().next().is_none_or(|next| {
+                next.is_whitespace() || matches!(next, ',' | ';' | ')' | ']' | '}')
+            }) {
+                return (offset > 0).then_some(username_start + offset);
+            }
+        }
     }
-
-    let component_end = bytes[username_start..quote_end]
-        .iter()
-        .position(|byte| is_separator(*byte))
-        .map_or(quote_end, |offset| username_start + offset);
-    let component = std::str::from_utf8(&bytes[username_start..component_end]).ok()?;
-    if !component.chars().any(char::is_whitespace) {
-        return None;
-    }
-
-    Some(component_end)
+    None
 }
 
 fn is_username_start(character: char) -> bool {
     character.is_alphanumeric() || character == '_'
-}
-
-fn is_username_character(character: char) -> bool {
-    is_username_start(character)
-        || character == '-'
-        || character == '.'
-        || is_unicode_mark(character)
-}
-
-fn is_unicode_mark(character: char) -> bool {
-    let mut encoded = [0; 4];
-    UNICODE_MARK.is_match(character.encode_utf8(&mut encoded))
 }
 
 fn is_closing_delimiter(character: char) -> bool {

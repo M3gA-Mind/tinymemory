@@ -158,10 +158,7 @@ fn legacy_home_components_with_symbols_are_redacted_through_boundaries() {
         ("/home/alice+dev/work", "<HOME>/work"),
         ("/Users/service$/Documents", "<HOME>/Documents"),
         ("/Users/alice\u{200d}dev/Documents", "<HOME>/Documents"),
-        (
-            r#""C:\Users\O'Connor\Documents""#,
-            r#""<HOME>\Documents""#,
-        ),
+        (r#""C:\Users\O'Connor\Documents""#, r#""<HOME>\Documents""#),
         (r"C:\Users\alice+dev\Documents", r"<HOME>\Documents"),
         (r"C:\Users\service$\Documents", r"<HOME>\Documents"),
         ("/home/$service/work", "<HOME>/work"),
