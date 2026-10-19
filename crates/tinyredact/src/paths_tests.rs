@@ -294,6 +294,58 @@ fn empty_file_uri_roots_are_unchanged_without_panicking() {
 }
 
 #[test]
+fn matched_quote_context_resumes_redaction_after_each_uri() {
+    for (input, expected) in [
+        (
+            r#"'https://example.test/a','/home/bob/b'"#,
+            r#"'https://example.test/a','<HOME>/b'"#,
+        ),
+        (
+            r#"'file:///Users/alice/a','file:///home/bob/b'"#,
+            r#"'file:///<HOME>/a','file:///<HOME>/b'"#,
+        ),
+        (
+            r#"'file://server/Users/alice/a','/home/bob/b'"#,
+            r#"'file://server/<HOME>/a','<HOME>/b'"#,
+        ),
+        (
+            r#"'file:///Users/O'Connor/Documents'"#,
+            r#"'file:///<HOME>/Documents'"#,
+        ),
+        (
+            "`https://example.test/a`,`/Users/bob/b`",
+            "`https://example.test/a`,`<HOME>/b`",
+        ),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
+fn balanced_uri_wrappers_do_not_truncate_parenthesized_profiles() {
+    for (input, expected) in [
+        (
+            "(file://server/home/alice(foo),smith/Documents)",
+            "(file://server/<HOME>/Documents)",
+        ),
+        (
+            "(file://server/home/alice(foo(bar),baz),smith/Documents)",
+            "(file://server/<HOME>/Documents)",
+        ),
+        (
+            "file:///Users/alice!$&'()*+,;=:@-._~%20/Documents",
+            "file:///<HOME>/Documents",
+        ),
+        (
+            "[file](file:///home/alice(foo),smith/Documents),(/Users/bob)",
+            "[file](file:///<HOME>/Documents),(<HOME>)",
+        ),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
 fn unrelated_absolute_paths_and_non_paths_are_unchanged() {
     for input in [
         "/var/log/openhuman.log",

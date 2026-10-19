@@ -114,24 +114,69 @@ fn has_uri_token_boundary(text: &str, start: usize) -> bool {
     })
 }
 
-fn is_uri_token_end(character: char) -> bool {
-    character.is_whitespace() || matches!(character, '"' | '`' | '<' | '>' | ']' | '}')
-}
-
 fn uri_token_end(text: &str, start: usize) -> usize {
+    let quote_context = text[..start]
+        .chars()
+        .next_back()
+        .filter(|character| matches!(character, '\'' | '"' | '`'));
+    let has_enclosing_parenthesis = text[..start].ends_with('(');
+    let mut nested_parentheses = 0usize;
+
     for (relative, character) in text[start..].char_indices() {
         let position = start + relative;
-        if is_uri_token_end(character)
-            || (character == ')'
-                && text[..start].ends_with('(')
-                && text[position + 1..].chars().next().is_none_or(|next| {
-                    next.is_whitespace() || matches!(next, ',' | ';' | ')' | ']' | '}' | '>' | '"')
-                }))
-        {
+        if character.is_whitespace() || matches!(character, '<' | '>' | ']' | '}') {
             return position;
+        }
+
+        if let Some(quote) = quote_context {
+            if character == quote && quote_closes_context(text, position + 1, quote) {
+                return position;
+            }
+        } else if matches!(character, '"' | '`') {
+            return position;
+        }
+
+        if has_enclosing_parenthesis {
+            if character == '(' {
+                nested_parentheses += 1;
+            } else if character == ')' {
+                if nested_parentheses > 0 {
+                    nested_parentheses -= 1;
+                } else if closes_parenthesized_context(text, position + 1) {
+                    return position;
+                }
+            }
         }
     }
     text.len()
+}
+
+fn quote_closes_context(text: &str, after_quote: usize, quote: char) -> bool {
+    let Some(next) = text[after_quote..].chars().next() else {
+        return true;
+    };
+    if next.is_whitespace() || matches!(next, ')' | ']' | '}' | '>' | '.' | ':' | '?') {
+        return true;
+    }
+    if matches!(next, ',' | ';') {
+        let after_separator = after_quote + next.len_utf8();
+        return text[after_separator..]
+            .chars()
+            .next()
+            .is_none_or(|following| {
+                following.is_whitespace()
+                    || following == quote
+                    || matches!(following, '[' | '(' | '{')
+            });
+    }
+    false
+}
+
+fn closes_parenthesized_context(text: &str, after_close: usize) -> bool {
+    let Some(next) = text[after_close..].chars().next() else {
+        return true;
+    };
+    next.is_whitespace() || matches!(next, ',' | ';' | ')' | ']' | '}' | '>' | '"' | '\'' | '`')
 }
 
 fn is_uri_scheme_byte(byte: u8) -> bool {
