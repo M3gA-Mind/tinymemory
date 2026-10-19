@@ -6,6 +6,7 @@
 #   ./scripts/cortexdb-live.sh            # boot, test, tear down
 #   KEEP=1 ./scripts/cortexdb-live.sh     # leave the server running after
 #   CORTEXDB_VERSION=v0.10.4 ./scripts/cortexdb-live.sh  # explicit version override
+#   CORTEXDB_IMAGE=registry/cortexdb@sha256:... ./scripts/cortexdb-live.sh
 
 set -euo pipefail
 

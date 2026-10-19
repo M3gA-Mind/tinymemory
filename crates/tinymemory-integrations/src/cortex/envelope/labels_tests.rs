@@ -90,6 +90,33 @@ fn channel_workspace_label_uses_the_private_path_digest_on_write_and_query() {
 }
 
 #[test]
+fn channel_workspace_label_matches_the_envelope_path_rule_on_every_platform() {
+    let meta = MemoryMeta {
+        channel: Some("support".into()),
+        workspace: None,
+        ..MemoryMeta::default()
+    };
+    for workspace in [
+        "/Users/alice/private-workspace",
+        "~/private-workspace",
+        r"C:\Users\alice\private-workspace",
+        r"\server\share\private-workspace",
+    ] {
+        let written = for_item("id", &meta, Some(&path_digest(workspace)));
+        let filter = MetaFilter {
+            channel: Some("support".into()),
+            workspace: Some(workspace.into()),
+            ..MetaFilter::default()
+        };
+        let queried = channel_narrowing(&filter).unwrap().remove(0);
+        assert!(
+            written.contains(&queried),
+            "query and envelope must digest the same absolute workspace: {workspace}"
+        );
+    }
+}
+
+#[test]
 fn a_path_digest_is_as_long_as_an_item_id_and_extends_the_label_digest() {
     let path = "/Users/priya/Documents";
     let long = path_digest(path);

@@ -144,7 +144,7 @@ pub struct TurnPack {
     /// The hits corresponding to `refs`, in citation order.
     #[serde(skip)]
     pub citations: Vec<Hit>,
-    /// A stable account-wide refusal code when recall was refused.
+    /// A stable code when recall was refused or could not be reached.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub refusal: Option<&'static str>,
 }
@@ -170,7 +170,8 @@ impl TurnPack {
                         .iter()
                         .find_map(|skipped| match &skipped.reason {
                             super::super::recall::SkipReason::Engine(error)
-                                if error.is_account_wide() =>
+                                if error.is_account_wide()
+                                    || matches!(error, Error::Unavailable(_)) =>
                             {
                                 Some((*error).clone())
                             }
@@ -200,7 +201,10 @@ impl TurnPack {
     }
 
     fn refused(error: &Error, engine: String) -> Option<Self> {
-        if !error.is_account_wide() {
+        // Unavailable describes this request's reachability, not proof that
+        // every request on the account is refused. Keep its truthful
+        // turn-local notice without classifying it as account-wide.
+        if !error.is_account_wide() && !matches!(error, Error::Unavailable(_)) {
             return None;
         }
         let why = match error {

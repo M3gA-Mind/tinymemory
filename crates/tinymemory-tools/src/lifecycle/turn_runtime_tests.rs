@@ -615,7 +615,6 @@ async fn every_typed_account_wide_skip_reason_maps_to_its_stable_refusal_code() 
             Error::InsufficientCredits("private detail".into()),
             "INSUFFICIENT_CREDITS",
         ),
-        (Error::Unavailable("private detail".into()), "UNAVAILABLE"),
     ] {
         let engine: Arc<dyn MemoryEngine> = Arc::new(HeldEngine {
             inner: ReferenceEngine::new(),
@@ -635,7 +634,7 @@ async fn every_typed_account_wide_skip_reason_maps_to_its_stable_refusal_code() 
 }
 
 #[tokio::test]
-async fn unreachable_recall_gets_an_account_wide_refusal_notice() {
+async fn unreachable_recall_gets_a_request_scoped_notice() {
     let engine: Arc<dyn MemoryEngine> = Arc::new(HeldEngine {
         inner: ReferenceEngine::new(),
         held_reads: false,
@@ -647,7 +646,8 @@ async fn unreachable_recall_gets_an_account_wide_refusal_notice() {
         .hooks
         .pre_turn(PreTurn::new("thread", 0, "hello"), options(true, true))
         .await
-        .expect("account-wide unavailable errors need a notice");
+        .expect("a request-level reachability failure needs a notice");
+    assert!(!Error::Unavailable("sensitive-payload".into()).is_account_wide());
     assert_eq!(pack.refusal, Some("UNAVAILABLE"));
     assert!(pack.markdown.contains("could not be reached"));
     assert!(!pack.markdown.contains("sensitive-payload"));
