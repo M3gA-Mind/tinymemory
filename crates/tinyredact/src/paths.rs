@@ -86,10 +86,7 @@ fn parse_uri(text: &str, start: usize) -> Option<ParsedUri> {
     }
 
     let authority_start = scheme_end + 3;
-    let end = text[start..]
-        .char_indices()
-        .find(|(_, character)| is_uri_token_end(*character))
-        .map_or(text.len(), |(relative, _)| start + relative);
+    let end = uri_token_end(text, start);
     let path_start = bytes[authority_start..end]
         .iter()
         .position(|byte| *byte == b'/')
@@ -118,11 +115,23 @@ fn has_uri_token_boundary(text: &str, start: usize) -> bool {
 }
 
 fn is_uri_token_end(character: char) -> bool {
-    character.is_whitespace()
-        || matches!(
-            character,
-            '"' | '`' | '<' | '>' | ')' | ']' | '}' | ',' | ';'
-        )
+    character.is_whitespace() || matches!(character, '"' | '`' | '<' | '>' | ']' | '}')
+}
+
+fn uri_token_end(text: &str, start: usize) -> usize {
+    for (relative, character) in text[start..].char_indices() {
+        let position = start + relative;
+        if is_uri_token_end(character)
+            || (character == ')'
+                && text[..start].ends_with('(')
+                && text[position + 1..].chars().next().is_none_or(|next| {
+                    next.is_whitespace() || matches!(next, ',' | ';' | ')' | ']' | '}' | '>' | '"')
+                }))
+        {
+            return position;
+        }
+    }
+    text.len()
 }
 
 fn is_uri_scheme_byte(byte: u8) -> bool {
@@ -136,7 +145,15 @@ fn file_uri_home_path_end(bytes: &[u8], path_start: usize) -> Option<(usize, usi
         return home_path_end(bytes, path_start).map(|end| (path_start, end));
     }
 
-    if bytes.get(path_start) == Some(&b'/') {
+    if bytes.get(path_start) == Some(&b'/')
+        && bytes
+            .get(path_start + 1)
+            .is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(path_start + 2) == Some(&b':')
+        && bytes
+            .get(path_start + 3)
+            .is_some_and(|byte| is_separator(*byte))
+    {
         let drive_start = path_start + 1;
         return home_path_end(bytes, drive_start).map(|end| (drive_start, end));
     }

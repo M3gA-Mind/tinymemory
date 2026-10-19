@@ -246,6 +246,54 @@ fn embedded_uri_schemes_follow_word_boundaries_and_suffixes_survive() {
 }
 
 #[test]
+fn uri_path_punctuation_stays_inside_profiles_and_non_file_resources() {
+    for (input, expected) in [
+        (
+            "file://server/home/alice;smith/Documents",
+            "file://server/<HOME>/Documents",
+        ),
+        (
+            "file://server/Users/alice)smith/Documents",
+            "file://server/<HOME>/Documents",
+        ),
+        (
+            "file:///Users/alice,smith/Documents",
+            "file:///<HOME>/Documents",
+        ),
+        (
+            "https://example.test/a,/home/alice/report.txt",
+            "https://example.test/a,/home/alice/report.txt",
+        ),
+        (
+            "https://example.test/a;/home/alice/report.txt",
+            "https://example.test/a;/home/alice/report.txt",
+        ),
+        (
+            "https://example.test/a)/home/alice/report.txt",
+            "https://example.test/a)/home/alice/report.txt",
+        ),
+        ("file:///~/Documents", "file:///~/Documents"),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
+fn empty_file_uri_roots_are_unchanged_without_panicking() {
+    for input in [
+        "file:///",
+        "file://server/",
+        "file://localhost/",
+        "file:///?q=a",
+        "file:///C:/",
+        "file:///Users/",
+        "file:///home/",
+    ] {
+        assert_eq!(redact_home_paths(input), input, "input={input:?}");
+    }
+}
+
+#[test]
 fn unrelated_absolute_paths_and_non_paths_are_unchanged() {
     for input in [
         "/var/log/openhuman.log",
