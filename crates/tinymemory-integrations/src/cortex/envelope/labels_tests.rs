@@ -47,7 +47,7 @@ fn a_filter_narrows_by_its_most_selective_labelled_field() {
     };
     assert_eq!(
         narrowing(&channel_and_workspace),
-        Some(vec![workspace("workspace")])
+        Some(vec![workspace(&digest("workspace"))])
     );
     assert_eq!(
         channel_narrowing(&channel_and_workspace),
