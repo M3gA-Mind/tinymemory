@@ -21,7 +21,9 @@ async fn both_kinds_resolve_to_their_token() {
 
 #[tokio::test]
 async fn callback_bearer_source_resolves_a_token() {
-    let source = CallbackBearerSource::new(|| async { Ok("host-session-token".to_owned()) });
+    let source = crate::cortex::CallbackBearerSource::new(|| async {
+        Ok("host-session-token".to_owned())
+    });
 
     assert_eq!(source.bearer().await.unwrap(), "host-session-token");
 }
@@ -31,7 +33,7 @@ async fn callback_bearer_source_resolves_each_token_dynamically() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     let calls = Arc::new(AtomicUsize::new(0));
-    let source = CallbackBearerSource::new({
+    let source = crate::cortex::CallbackBearerSource::new({
         let calls = calls.clone();
         move || {
             let call = calls.fetch_add(1, Ordering::SeqCst);
@@ -46,7 +48,7 @@ async fn callback_bearer_source_resolves_each_token_dynamically() {
 
 #[tokio::test]
 async fn callback_bearer_source_propagates_credential_errors() {
-    let source = CallbackBearerSource::new(|| async {
+    let source = crate::cortex::CallbackBearerSource::new(|| async {
         Err(crate::cortex::Error::Unauthorized("signed out".into()))
     });
 
