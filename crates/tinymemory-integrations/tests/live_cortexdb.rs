@@ -193,6 +193,160 @@ async fn the_live_server_upholds_the_contract_in_layout_v3() {
     );
 }
 
+/// A real channel filter must narrow CortexDB before its top-k budget. The
+/// broad control pack is deliberately filled with newer distractors, while
+/// the wanted item is only returned by the channel-specific supplement.
+#[tokio::test]
+async fn a_channel_filter_recalls_beyond_the_broad_pack_budget() {
+    let _alone = ONE_AT_A_TIME.lock().await;
+    let Ok(url) = std::env::var("TINYMEMORY_LIVE_CORTEXDB_URL") else {
+        eprintln!("TINYMEMORY_LIVE_CORTEXDB_URL unset; skipping");
+        return;
+    };
+    let key = std::env::var("TINYMEMORY_TEST_CORTEX_KEY").unwrap_or_else(|_| DEFAULT_KEY.into());
+    let engine = CortexEngine::direct(&url, CortexCredential::api_key(key))
+        .expect("a valid live CortexDB endpoint");
+    let run = run_id();
+    let namespace: tinymemory_api::Namespace = format!("project:channel-{run}")
+        .parse()
+        .expect("a valid namespace");
+    let workspace = format!("/tmp/tinymemory-channel-{run}");
+    let marker = format!("Cobalt channel budget marker {run}");
+    let make_meta = |channel: &str| MemoryMeta {
+        namespace: namespace.clone(),
+        workspace: Some(workspace.clone()),
+        channel: Some(channel.to_string()),
+        ..MemoryMeta::default()
+    };
+
+    let wanted = StoreItem::document(format!("{marker} wanted details"), make_meta("support"));
+    let wanted_id = wanted.fingerprint();
+    engine.store(wanted).await.expect("store the wanted item");
+    let mut distractor_ids = Vec::new();
+    for index in 0..4 {
+        let distractor = StoreItem::document(marker.clone(), make_meta("other"));
+        distractor_ids.push(distractor.fingerprint());
+        engine
+            .store(distractor)
+            .await
+            .expect("store a competing-channel item");
+    }
+
+    let reach = Some(tinymemory_api::Reach::subtree(namespace.clone()));
+    let broad_filter = MetaFilter {
+        workspace: Some(workspace.clone()),
+        reach: reach.clone(),
+        ..MetaFilter::kinds([ItemKind::Document])
+    };
+    let channel_filter = MetaFilter {
+        channel: Some("support".into()),
+        ..broad_filter.clone()
+    };
+
+    // Negative control: the unfiltered workspace pack is limited to the
+    // newest two events and cannot recover the older wanted item from below
+    // that server-side top-k cutoff.
+    let broad_deadline = Instant::now() + VISIBILITY;
+    let broad_result = loop {
+        let mut broad = RecallRequest::new(&marker, 1);
+        broad.filter = broad_filter.clone();
+        let answer = engine.recall(broad).await.expect("broad control recall");
+        if answer
+            .citations
+            .iter()
+            .any(|citation| distractor_ids.iter().any(|id| id == citation.id.as_str()))
+        {
+            break answer;
+        }
+        assert!(
+            Instant::now() < broad_deadline,
+            "broad control recall found no distractor"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+    let broad_ids: Vec<&str> = broad_result
+        .citations
+        .iter()
+        .map(|citation| citation.id.as_str())
+        .collect();
+    assert!(
+        broad_ids
+            .iter()
+            .any(|id| distractor_ids.iter().any(|other| other == id)),
+        "the broad control should return a competing-channel item: {broad_ids:?}"
+    );
+    assert!(
+        !broad_ids.contains(&wanted_id.as_str()),
+        "the wanted item must be outside the broad pack's top two: {broad_ids:?}"
+    );
+
+    let deadline = Instant::now() + VISIBILITY;
+    let channel_answer = loop {
+        let mut recall = RecallRequest::new(&marker, 1);
+        recall.filter = channel_filter.clone();
+        let answer = engine.recall(recall).await.expect("channel recall");
+        if answer
+            .citations
+            .iter()
+            .any(|citation| citation.id.as_str() == wanted_id)
+        {
+            break answer;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "channel recall did not return the wanted item"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+    assert_eq!(
+        channel_answer
+            .citations
+            .iter()
+            .map(|citation| citation.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![wanted_id.as_str()],
+        "recall excludes every competing channel"
+    );
+
+    let mut fetch = FetchRequest::new(&marker, FetchMode::Hybrid, 1);
+    fetch.filter = channel_filter.clone();
+    let fetched = engine.fetch(fetch).await.expect("channel fetch");
+    assert_eq!(
+        fetched
+            .hits
+            .iter()
+            .map(|hit| hit.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![wanted_id.as_str()],
+        "fetch supplements its broad pack before top-k"
+    );
+
+    let mut evidence = RecallRequest::new(&marker, 1);
+    evidence.mode = tinymemory_api::RecallMode::Evidence;
+    evidence.filter = channel_filter;
+    let evidence = engine
+        .recall(evidence)
+        .await
+        .expect("channel Evidence recall");
+    assert_eq!(
+        evidence
+            .citations
+            .iter()
+            .map(|citation| citation.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![wanted_id.as_str()],
+        "Evidence supplements its broad pack before top-k"
+    );
+
+    engine
+        .forget(ForgetTarget::Filter(MetaFilter {
+            reach: Some(tinymemory_api::Reach::subtree(namespace)),
+            ..MetaFilter::default()
+        }))
+        .await
+        .expect("forget the isolated fixture scope");
+}
+
 /// No write claims a v3 root: CortexDB registers only the scope a write
 /// lands in, and v3 never writes to the root itself. So a root written to
 /// before its owner registration (one that failed, say) is still free, and
