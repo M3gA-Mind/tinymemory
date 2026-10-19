@@ -98,6 +98,101 @@ fn file_uri_redaction_does_not_match_arbitrary_url_or_embedded_scheme_text() {
 }
 
 #[test]
+fn public_file_uri_probe_matrix_preserves_context_and_redacts_home_paths() {
+    for (input, expected) in [
+        (
+            "file:///Users/alice/Documents/report.txt",
+            "file:///<HOME>/Documents/report.txt",
+        ),
+        ("file:///home/bob/a", "file:///<HOME>/a"),
+        (
+            "open file:///Users/alice/Documents/report.txt now",
+            "open file:///<HOME>/Documents/report.txt now",
+        ),
+        (
+            "\"file:///home/alice/report.txt\"",
+            "\"file:///<HOME>/report.txt\"",
+        ),
+        (
+            "[report](file:///Users/alice/Documents/report.txt)",
+            "[report](file:///<HOME>/Documents/report.txt)",
+        ),
+        (
+            "📁 file:///home/用户/文書/report.txt",
+            "📁 file:///<HOME>/文書/report.txt",
+        ),
+        (
+            "file:///Users/alice/a to file:///home/bob/b",
+            "file:///<HOME>/a to file:///<HOME>/b",
+        ),
+        (
+            "file://server/Users/alice/Documents/report.txt",
+            "file://server/<HOME>/Documents/report.txt",
+        ),
+        (
+            "file://server/home/alice/report.txt",
+            "file://server/<HOME>/report.txt",
+        ),
+        (
+            "file://localhost/Users/alice/report.txt",
+            "file://localhost/<HOME>/report.txt",
+        ),
+        (
+            "open file://localhost/Users/alice/report.txt",
+            "open file://localhost/<HOME>/report.txt",
+        ),
+        (
+            "file:///C:/Users/alice/report.txt",
+            "file:///<HOME>/report.txt",
+        ),
+        (
+            "open file:///C:/Users/alice/report.txt",
+            "open file:///<HOME>/report.txt",
+        ),
+        (
+            "https://example.test/Users/alice/report.txt",
+            "https://example.test/Users/alice/report.txt",
+        ),
+        (
+            "open https://example.test/Users/alice/report.txt",
+            "open https://example.test/Users/alice/report.txt",
+        ),
+        (
+            "\"https://example.test/home/alice/report.txt\"",
+            "\"https://example.test/home/alice/report.txt\"",
+        ),
+        (
+            "prefix-file:///Users/alice/a",
+            "prefix-file:///Users/alice/a",
+        ),
+        (
+            "file:///Users/alice%20smith/My%20Documents/a%2Fb.txt",
+            "file:///<HOME>/My%20Documents/a%2Fb.txt",
+        ),
+        (
+            "file:///home/Zo\u{0308}eSmith/文書/報告.txt",
+            "file:///<HOME>/文書/報告.txt",
+        ),
+        (
+            "file:///Users/O'Connor/Documents",
+            "file:///<HOME>/Documents",
+        ),
+        ("file:///home/alice, done", "file:///<HOME>, done"),
+        ("//server/Users/alice/Documents", "<HOME>/Documents"),
+        (
+            "file:///var/users/alice/Documents",
+            "file:///var/users/alice/Documents",
+        ),
+        (
+            "hello 世界 /var/log/messages",
+            "hello 世界 /var/log/messages",
+        ),
+    ] {
+        assert_eq!(redact_home_paths(input), expected, "input={input:?}");
+    }
+}
+
+#[test]
 fn unrelated_absolute_paths_and_non_paths_are_unchanged() {
     for input in [
         "/var/log/openhuman.log",
