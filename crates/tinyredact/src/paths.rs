@@ -43,7 +43,23 @@ pub fn redact_home_paths(text: &str) -> String {
 fn has_path_boundary(text: &str, position: usize) -> bool {
     text[..position].chars().next_back().is_none_or(|previous| {
         !previous.is_alphanumeric() && previous != '_' && previous != '/' && previous != '\\'
-    })
+    }) || is_local_file_uri_path_start(&text[..position])
+}
+
+/// A file URI with an empty authority has one extra slash before its path:
+/// `file:///Users/...`. The slash that begins a Unix path, or precedes a
+/// Windows drive, is therefore not an ordinary text boundary. Recognize only
+/// the URI's exact path starts; do not treat nested paths or arbitrary URLs as
+/// file URI roots.
+fn is_local_file_uri_path_start(prefix: &str) -> bool {
+    [
+        "file://",
+        "file:///",
+        "file://localhost",
+        "file://localhost/",
+    ]
+    .iter()
+    .any(|start| prefix.eq_ignore_ascii_case(start))
 }
 
 fn home_path_end(bytes: &[u8], start: usize) -> Option<usize> {
@@ -93,6 +109,9 @@ fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
     if start + 2 > bytes.len() || !is_separator(bytes[start]) || !is_separator(bytes[start + 1]) {
         return None;
     }
+    if begins_uri_authority(bytes, start) {
+        return None;
+    }
     let server_end = segment_end(bytes, start + 2)?;
     if server_end == start + 2 || server_end == bytes.len() {
         return None;
@@ -110,6 +129,23 @@ fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
     quoted_profile_end(bytes, start, username_start)
         .or_else(|| unquoted_profile_end(bytes, username_start))
         .or_else(|| username_end(bytes, username_start))
+}
+
+/// A URI authority starts with `//` immediately after its scheme colon. It is
+/// not a UNC server path, even when its URL path happens to contain `/Users`.
+fn begins_uri_authority(bytes: &[u8], start: usize) -> bool {
+    let Some(colon) = bytes[..start].iter().rposition(|byte| *byte == b':') else {
+        return false;
+    };
+    if colon + 1 != start {
+        return false;
+    }
+    let scheme = &bytes[..colon];
+    !scheme.is_empty()
+        && scheme[0].is_ascii_alphabetic()
+        && scheme
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
 }
 
 fn segment_end(bytes: &[u8], start: usize) -> Option<usize> {
