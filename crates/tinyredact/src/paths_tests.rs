@@ -49,12 +49,16 @@ fn unix_home_paths_in_empty_authority_file_uris_are_scrubbed() {
     for (input, expected) in [
         (
             "file:///Users/alice/Documents/report.txt",
-            "file://<HOME>/Documents/report.txt",
+            "file:///<HOME>/Documents/report.txt",
         ),
-        ("file:///home/alice/a", "file://<HOME>/a"),
+        ("file:///home/alice/a", "file:///<HOME>/a"),
+        (
+            "file:///Users/alice%20smith/My%20Documents/report.txt",
+            "file:///<HOME>/My%20Documents/report.txt",
+        ),
         (
             "FILE:///Users/alice/Documents/report.txt,",
-            "FILE://<HOME>/Documents/report.txt,",
+            "FILE:///<HOME>/Documents/report.txt,",
         ),
     ] {
         assert_eq!(redact_home_paths(input), expected, "input={input:?}");
@@ -66,7 +70,7 @@ fn local_file_uri_platform_forms_preserve_uri_context() {
     for (input, expected) in [
         (
             "file://localhost/Users/alice/Documents/report.txt",
-            "file://localhost<HOME>/Documents/report.txt",
+            "file://localhost/<HOME>/Documents/report.txt",
         ),
         (
             "file:///C:/Users/alice/Documents/report.txt",
@@ -85,6 +89,7 @@ fn local_file_uri_platform_forms_preserve_uri_context() {
 fn file_uri_redaction_does_not_match_arbitrary_url_or_embedded_scheme_text() {
     for input in [
         "https://example.test/Users/alice/Documents/report.txt",
+        "file://files.example.test/Users/alice/Documents/report.txt",
         "prefix-file:///Users/alice/Documents/report.txt",
         "file:///var/users/alice/Documents/report.txt",
     ] {

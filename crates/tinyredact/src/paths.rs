@@ -25,6 +25,9 @@ pub fn redact_home_paths(text: &str) -> String {
         if has_path_boundary(text, position)
             && let Some(consumed) = home_path_end(bytes, position)
         {
+            if is_local_file_uri_unix_path_start(&text[..position]) {
+                output.push('/');
+            }
             output.push_str("<HOME>");
             position = consumed;
         } else {
@@ -60,6 +63,12 @@ fn is_local_file_uri_path_start(prefix: &str) -> bool {
     ]
     .iter()
     .any(|start| prefix.eq_ignore_ascii_case(start))
+}
+
+fn is_local_file_uri_unix_path_start(prefix: &str) -> bool {
+    ["file://", "file://localhost"]
+        .iter()
+        .any(|start| prefix.eq_ignore_ascii_case(start))
 }
 
 fn home_path_end(bytes: &[u8], start: usize) -> Option<usize> {
