@@ -43,7 +43,7 @@ use serde_json::{Value, json};
 use tinymemory_api::{Citation, ItemId, Namespace, Reach, RecallAnswer, RecallMode, RecallRequest};
 
 use super::CortexEngine;
-use super::fetch::{interleave, ranked, recall_body, recall_bodies, whole_items_budget};
+use super::fetch::{interleave, ranked, recall_bodies, whole_items_budget};
 use super::items::{admitted, located_meta};
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
@@ -226,15 +226,6 @@ impl CortexEngine {
             req.instructions.as_deref(),
         );
         Ok((per_pack, self.log.answer(&body).await))
-    }
-
-    /// A recall pack for `req` over exactly `scope`, sized for `req.limit`
-    /// citations. It includes the derived layers the answer route reads,
-    /// after the events the citations come from.
-    pub(super) async fn pack(&self, req: &RecallRequest, scope: &str) -> Result<Value> {
-        self.packs(req, scope).await?.into_iter().next().ok_or_else(|| {
-            Error::Engine("CortexDB recall produced no packs".to_string())
-        })
     }
 
     /// Broad legacy pack plus a targeted channel pack, each with a real
