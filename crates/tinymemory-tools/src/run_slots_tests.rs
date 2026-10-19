@@ -1,6 +1,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
+use std::time::Duration;
 
 use super::{RunGuard, RunSlots, StartGate};
 
@@ -32,6 +33,8 @@ fn shared_gate_excludes_peer_runs_across_separate_slot_registries() {
     let migration_slots = RunSlots::new();
     let key = String::from("workspace");
     let barrier = Arc::new(Barrier::new(2));
+    let (import_tx, import_rx) = mpsc::channel();
+    let (migration_tx, migration_rx) = mpsc::channel();
 
     let import_thread = {
         let gate = gate.clone();
@@ -41,7 +44,9 @@ fn shared_gate_excludes_peer_runs_across_separate_slot_registries() {
         let key = key.clone();
         thread::spawn(move || {
             barrier.wait();
-            reserve_if_peer_idle(&gate, &own, &peer, key)
+            import_tx
+                .send(reserve_if_peer_idle(&gate, &own, &peer, key))
+                .unwrap();
         })
     };
     let migration_thread = {
@@ -52,12 +57,20 @@ fn shared_gate_excludes_peer_runs_across_separate_slot_registries() {
         let key = key.clone();
         thread::spawn(move || {
             barrier.wait();
-            reserve_if_peer_idle(&gate, &own, &peer, key)
+            migration_tx
+                .send(reserve_if_peer_idle(&gate, &own, &peer, key))
+                .unwrap();
         })
     };
 
-    let import_reservation = import_thread.join().unwrap();
-    let migration_reservation = migration_thread.join().unwrap();
+    let import_reservation = import_rx
+        .recv_timeout(Duration::from_secs(30))
+        .expect("import reservation should finish without deadlock");
+    let migration_reservation = migration_rx
+        .recv_timeout(Duration::from_secs(30))
+        .expect("migration reservation should finish without deadlock");
+    import_thread.join().unwrap();
+    migration_thread.join().unwrap();
 
     assert_ne!(
         import_reservation.is_some(),
