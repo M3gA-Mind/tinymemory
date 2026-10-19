@@ -9,7 +9,7 @@
 //! Neither type ever prints its token: `Debug` is redacted, and the transport
 //! marks the header it builds sensitive.
 
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, sync::Arc};
 
 use async_trait::async_trait;
 
@@ -44,15 +44,8 @@ pub trait BearerSource: Send + Sync {
 /// errors are returned unchanged; the engine handles unavailable credentials
 /// as unauthorized and does not send a request. Neither this type nor its
 /// [`Debug`] output exposes the callback or any token.
-type CallbackFuture = Pin<Box<dyn Future<Output = Result<String>> + Send>>;
-
-/// A host callback and the adapter that boxes its future for the object-safe
-/// [`BearerSource`] interface.
-type CallbackFutureFactory<F> = fn(&F) -> CallbackFuture;
-
 pub struct CallbackBearerSource<F> {
     callback: F,
-    future: CallbackFutureFactory<F>,
 }
 
 impl<F> CallbackBearerSource<F> {
@@ -64,18 +57,7 @@ impl<F> CallbackBearerSource<F> {
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<String>> + Send + 'static,
     {
-        fn boxed_future<F, Fut>(callback: &F) -> CallbackFuture
-        where
-            F: Fn() -> Fut,
-            Fut: Future<Output = Result<String>> + Send + 'static,
-        {
-            Box::pin(callback())
-        }
-
-        Self {
-            callback,
-            future: boxed_future::<F, Fut>,
-        }
+        Self { callback }
     }
 }
 
@@ -86,9 +68,13 @@ impl<F> std::fmt::Debug for CallbackBearerSource<F> {
 }
 
 #[async_trait]
-impl<F: Send + Sync> BearerSource for CallbackBearerSource<F> {
+impl<F, Fut> BearerSource for CallbackBearerSource<F>
+where
+    F: Fn() -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<String>> + Send + 'static,
+{
     async fn bearer(&self) -> Result<String> {
-        (self.future)(&self.callback).await
+        (self.callback)().await
     }
 }
 
