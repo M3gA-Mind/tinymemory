@@ -293,7 +293,10 @@ async fn turn_cache_is_idle_tracks_active_pending_and_drained_work() {
     release.notify_one();
     wait_for_workers(&pool, 1).await;
     assert_eq!(pending_runs.load(std::sync::atomic::Ordering::SeqCst), 1);
-    assert!(cache.is_idle(&"thread"), "the key is idle after its queue drains");
+    assert!(
+        cache.is_idle(&"thread"),
+        "the key is idle after its queue drains"
+    );
 }
 
 #[tokio::test]
@@ -317,8 +320,15 @@ async fn turn_cache_is_idle_does_not_imply_invalidated_work_finished() {
     assert!(!cache.is_idle(&"thread"));
 
     registry.invalidate_all();
-    assert!(cache.is_idle(&"thread"), "a cleared entry is missing and idle");
-    assert_eq!(pool.available(), 0, "the invalidated worker is still active");
+    assert!(
+        cache.is_idle(&"thread"),
+        "a cleared entry is missing and idle"
+    );
+    assert_eq!(
+        pool.available(),
+        0,
+        "the invalidated worker is still active"
+    );
 
     release.notify_one();
     wait_for_workers(&pool, 1).await;
@@ -358,10 +368,12 @@ fn turn_cache_is_idle_after_runtime_shutdown_and_allows_a_retry() {
         );
         wait_for_workers(&pool, 1).await;
         assert!(cache.is_idle(&"thread"));
-        assert!(cache
-            .completed(&"thread")
-            .unwrap()
-            .markdown
-            .contains("retry after shutdown"));
+        assert!(
+            cache
+                .completed(&"thread")
+                .unwrap()
+                .markdown
+                .contains("retry after shutdown")
+        );
     });
 }
