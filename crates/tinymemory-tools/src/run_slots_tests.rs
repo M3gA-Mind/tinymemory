@@ -9,6 +9,19 @@ fn shared_gate() -> impl StartGate + Clone {
     super::RunStartGate::new()
 }
 
+#[test]
+fn default_gate_forwards_false_and_remains_usable() {
+    let gate = super::RunStartGate::default();
+    let mut called = false;
+
+    assert!(!gate.with_gate(&mut || {
+        called = true;
+        false
+    }));
+    assert!(called, "the callback result is returned");
+    assert!(gate.with_gate(&mut || true), "the gate remains reusable");
+}
+
 fn reserve_if_peer_idle<G: StartGate>(
     gate: &G,
     own: &RunSlots<String>,
