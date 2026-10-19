@@ -16,12 +16,18 @@ the first 16 lowercase hex digits (64 bits) of the SHA-256 of the value:
 | `tm:a:` | `meta.agent_id` | when set |
 | `tm:l:` | `meta.language` | when set |
 | `tm:c:` | `meta.channel` | when set |
-| `tm:cw:` | `meta.channel` + NUL + `meta.workspace` | when both are set |
+| `tm:cw:` | `meta.channel` + NUL + workspace identity | when both are set |
 | `tm:k:` | the source kind (`meta.source.kind`) | every event |
 
 A label holds a **digest**, not the value, because the engine splits a label
 filter on commas and bounds a label's length, and a path or source id may be
 long or hold a comma.
+
+For `tm:cw:`, workspace identity is the workspace value when it is not an
+absolute local path. For an absolute path it is the full 40-hex `path_digest`
+already kept in the envelope's private path metadata. The query computes the
+same identity before hashing the composite, so the workspace path never enters
+the event labels.
 
 Reads use labels two ways:
 

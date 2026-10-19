@@ -179,7 +179,7 @@ concepts are derived from it. `context.observed_at` carries the turn's
 SHA-256 digest: `tm:i:` (item id) on every event, plus `tm:t:` thread,
 `tm:s:` source id, `tm:r:` repo, `tm:w:` workspace, `tm:a:` agent,
 `tm:l:` language, `tm:k:` source kind, `tm:c:` channel and `tm:cw:` channel
-plus workspace. Channel recall keeps the existing broad pack for records
+plus workspace identity (the private path digest for absolute workspaces). Channel recall keeps the existing broad pack for records
 written before these labels existed and adds a pack narrowed by `tm:c:` or
 `tm:cw:` for newer records. Other reads keep their existing broad label so
 old records stay visible. Each pack re-applies the full `MetaFilter`
