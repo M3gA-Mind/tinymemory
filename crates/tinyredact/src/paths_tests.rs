@@ -373,6 +373,29 @@ fn every_quote_transition_keeps_adjacent_home_tokens_visible_to_redaction() {
 }
 
 #[test]
+fn quoted_uris_end_before_unquoted_home_tokens_after_separators() {
+    let quote_types = ['\'', '"', '`'];
+    let separators = [',', ';'];
+    let following_paths = [
+        ("/home/bob/b", "<HOME>/b"),
+        ("file:///Users/bob/b", "file:///<HOME>/b"),
+        ("//server/home/bob/b", "<HOME>/b"),
+        (r"C:\Users\bob\docs", r"<HOME>\docs"),
+    ];
+
+    for quote in quote_types {
+        for separator in separators {
+            for (path, redacted_path) in following_paths {
+                let input = format!("{quote}https://example.test/a{quote}{separator}{path}");
+                let expected =
+                    format!("{quote}https://example.test/a{quote}{separator}{redacted_path}");
+                assert_eq!(redact_home_paths(&input), expected, "input={input:?}");
+            }
+        }
+    }
+}
+
+#[test]
 fn punctuation_inside_quoted_profiles_survives_until_the_descendant_separator() {
     for (input, expected) in [
         (
