@@ -19,12 +19,12 @@ pub fn redact_home_paths(text: &str) -> String {
             output.push_str("<HOME>");
             position = consumed;
         } else {
-            let character = text[position..]
-                .chars()
-                .next()
-                .expect("position is a character boundary");
-            output.push(character);
-            position += character.len_utf8();
+            if let Some(character) = text[position..].chars().next() {
+                output.push(character);
+                position += character.len_utf8();
+            } else {
+                break;
+            }
         }
     }
 
@@ -56,7 +56,8 @@ fn home_path_end(bytes: &[u8], start: usize) -> Option<usize> {
         && bytes[start].is_ascii_alphabetic()
         && bytes[start + 1] == b':'
         && is_separator(bytes[start + 2])
-        && starts_with_ascii_case_insensitive(&bytes[start + 3..], b"users\\")
+        && starts_with_ascii_case_insensitive(&bytes[start + 3..start + 8], b"users")
+        && is_separator(bytes[start + 8])
     {
         return username_end(bytes, start + 9);
     }

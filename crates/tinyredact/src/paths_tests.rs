@@ -5,6 +5,7 @@ fn openhuman_home_path_cases_map_to_home_marker() {
     for (input, expected) in [
         ("open /Users/oxoxdev/work/openhuman", "open <HOME>/work/openhuman"),
         (r"C:\Users\oxoxdev\work\openhuman", r"<HOME>\work\openhuman"),
+        ("C:/Users/oxoxdev/work/openhuman", "<HOME>/work/openhuman"),
         ("/home/jane/project", "<HOME>/project"),
         (r"c:\users\alice\work", r"<HOME>\work"),
         ("/HOME/alice/work", "<HOME>/work"),
@@ -43,6 +44,9 @@ fn unrelated_absolute_paths_and_non_paths_are_unchanged() {
         r"D:\Projects\openhuman",
         "hello world",
         "prefix/home/alice/file",
+        "/home/",
+        "/Users/",
+        r"\server\Users\alice\data",
     ] {
         assert_eq!(redact_home_paths(input), input);
     }
