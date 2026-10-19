@@ -11,6 +11,8 @@
 /// as surrounding punctuation. A bare `~` is recognized at end of input or
 /// before whitespace or a closing delimiter; `~.` and `~.name` are relative
 /// paths and are left unchanged. Other absolute paths are left unchanged.
+/// Quoted Windows drive and UNC paths may have spaces in the profile component;
+/// the matching quote or the next path separator bounds that component.
 pub fn redact_home_paths(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut output = String::with_capacity(text.len());
@@ -60,7 +62,9 @@ fn home_path_end(bytes: &[u8], start: usize) -> Option<usize> {
         && starts_with_ascii_case_insensitive(&bytes[start + 3..start + 8], b"users")
         && is_separator(bytes[start + 8])
     {
-        return username_end(bytes, start + 9);
+        let username_start = start + 9;
+        return quoted_profile_end(bytes, start, username_start)
+            .or_else(|| username_end(bytes, username_start));
     }
 
     unc_home_end(bytes, start)
@@ -98,7 +102,8 @@ fn unc_home_end(bytes: &[u8], start: usize) -> Option<usize> {
     if !root.eq_ignore_ascii_case(b"users") && !root.eq_ignore_ascii_case(b"home") {
         return None;
     }
-    username_end(bytes, root_end + 1)
+    let username_start = root_end + 1;
+    quoted_profile_end(bytes, start, username_start).or_else(|| username_end(bytes, username_start))
 }
 
 fn segment_end(bytes: &[u8], start: usize) -> Option<usize> {
@@ -122,6 +127,36 @@ fn username_end(bytes: &[u8], start: usize) -> Option<usize> {
         end -= 1;
     }
     (end > start).then_some(end)
+}
+
+/// Recognize a space-containing Windows profile component only when its path
+/// starts inside a matching quoted string. The next separator marks the end of
+/// a profile with descendants; otherwise the closing quote marks a bare home.
+/// Unquoted text keeps the normal single-token rule so prose is never consumed.
+fn quoted_profile_end(bytes: &[u8], path_start: usize, username_start: usize) -> Option<usize> {
+    let quote = *bytes.get(path_start.checked_sub(1)?)?;
+    if !matches!(quote, b'\'' | b'"') {
+        return None;
+    }
+
+    let quote_end = bytes[username_start..]
+        .iter()
+        .position(|byte| *byte == quote)
+        .map(|offset| username_start + offset)?;
+    if quote_end == username_start {
+        return None;
+    }
+
+    let component_end = bytes[username_start..quote_end]
+        .iter()
+        .position(|byte| is_separator(*byte))
+        .map_or(quote_end, |offset| username_start + offset);
+    let component = std::str::from_utf8(&bytes[username_start..component_end]).ok()?;
+    if !component.chars().any(char::is_whitespace) {
+        return None;
+    }
+
+    Some(component_end)
 }
 
 fn is_username_start(character: char) -> bool {
