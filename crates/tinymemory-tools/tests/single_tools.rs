@@ -1222,8 +1222,8 @@ async fn cancelling_an_in_flight_drain_leaves_the_unsettled_entry_durable() {
     assert!(queue.entries().expect("retry clears the entry").is_empty());
 }
 
-#[path = "single_tools_padded_action_tests.rs"]
+#[path = "single_tools/padded_action_tests.rs"]
 mod padded_action_tests;
 
-#[path = "single_tools_detailed_call_tests.rs"]
+#[path = "single_tools/detailed_call_tests.rs"]
 mod detailed_call_tests;
