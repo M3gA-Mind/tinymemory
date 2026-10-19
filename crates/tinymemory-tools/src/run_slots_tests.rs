@@ -1,3 +1,5 @@
+//! Tests for shared start gates and per-driver run-slot reservations.
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Barrier, mpsc};
 use std::thread;

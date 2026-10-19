@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 /// A synchronous interlock around checking peer work and reserving this run.
 ///
-/// Implementations hold the host's common start lock while calling
+/// Implementations hold the shared start lock while calling
 /// `reserve`. The callback must not await: imports and migrations use it to
 /// make their peer check plus slot reservation one atomic decision.
 pub trait StartGate: Send + Sync {
@@ -25,6 +25,37 @@ impl StartGate for Mutex<()> {
     fn with_gate(&self, reserve: &mut dyn FnMut() -> bool) -> bool {
         let _guard = self.lock().unwrap_or_else(PoisonError::into_inner);
         reserve()
+    }
+}
+
+/// A library-owned start gate shared by related background drivers.
+///
+/// Clones use the same critical section. Give them to drivers that must check
+/// each other's activity before reserving their own [`RunSlots`]; keep those
+/// registries separate so each driver's running status remains accurate.
+#[derive(Clone, Default)]
+pub struct RunStartGate {
+    gate: Arc<Mutex<()>>,
+}
+
+impl RunStartGate {
+    /// Creates a gate with a new shared critical section.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl StartGate for RunStartGate {
+    fn with_gate(&self, reserve: &mut dyn FnMut() -> bool) -> bool {
+        let _guard = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+        reserve()
+    }
+}
+
+impl std::fmt::Debug for RunStartGate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunStartGate").finish_non_exhaustive()
     }
 }
 
