@@ -166,9 +166,11 @@ fn an_invalid_entry_is_refused() {
 #[test]
 fn account_wide_failures_are_told_from_item_failures() {
     let wide = |error| SyncError::Engine(error).is_account_wide();
+    assert!(wide(Error::Off("disabled".into())));
     assert!(wide(Error::Unauthorized("x".into())));
-    assert!(wide(Error::Unavailable("x".into())));
     assert!(wide(Error::InsufficientCredits("top up".into())));
+    assert!(!wide(Error::Unavailable("request timed out".into())));
+    assert!(!wide(Error::Unavailable("rate limited".into())));
     assert!(!wide(Error::Engine("[OTHER] nope".into())));
     assert!(!wide(Error::InvalidRequest("x".into())));
     assert!(!SyncError::Read("x".into()).is_account_wide());
@@ -296,13 +298,38 @@ async fn nothing_stored_surfaces_the_item_error() {
 
 #[tokio::test]
 async fn an_account_wide_refusal_stops_without_retrying_item_by_item() {
-    let mut engine = Scripted::new();
-    engine.account = Some(Error::Unavailable("down".into()));
-    let error = store_all(&engine, "s", placed(3, "source:files"))
-        .await
-        .unwrap_err();
-    assert!(error.is_account_wide());
-    assert_eq!(engine.singles.load(Ordering::SeqCst), 0);
+    for error in [
+        Error::Off("disabled".into()),
+        Error::Unauthorized("rejected".into()),
+        Error::InsufficientCredits("top up".into()),
+    ] {
+        let mut engine = Scripted::new();
+        engine.account = Some(error);
+        let error = store_all(&engine, "s", placed(3, "source:files"))
+            .await
+            .unwrap_err();
+        assert!(error.is_account_wide());
+        assert_eq!(engine.singles.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn request_timeouts_and_rate_limits_retry_batch_items_individually() {
+    for message in ["request timed out", "rate limited"] {
+        let mut engine = Scripted::new();
+        engine.account = Some(Error::Unavailable(message.into()));
+        let error = store_all(&engine, "s", placed(3, "source:files"))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, SyncError::Engine(Error::Unavailable(_))));
+        assert!(!error.is_account_wide());
+        assert_eq!(engine.batches.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            engine.singles.load(Ordering::SeqCst),
+            3,
+            "a request-specific transient batch failure must not stop its siblings"
+        );
+    }
 }
 
 #[tokio::test]
