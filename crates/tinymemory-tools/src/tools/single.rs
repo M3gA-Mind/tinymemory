@@ -300,13 +300,13 @@ impl SingleTool {
         args: Value,
         context: CallContext,
     ) -> tinymemory_api::Result<SingleToolOutcome> {
-        let action = action(&args)
-            .map(str::trim)
-            .ok_or_else(|| args::invalid(TOOL_NAME, "action is required"))?;
+        let raw_action =
+            action(&args).ok_or_else(|| args::invalid(TOOL_NAME, "action is required"))?;
+        let action = raw_action.trim();
         if !ACTIONS.contains(&action) {
             return Err(args::invalid(
                 TOOL_NAME,
-                &format!("unknown action {action}; use recall, fetch, learn or forget"),
+                &format!("unknown action {raw_action}; use recall, fetch, learn or forget"),
             ));
         }
         if matches!(action, "learn" | "forget") && !self.tools.scope.writes {

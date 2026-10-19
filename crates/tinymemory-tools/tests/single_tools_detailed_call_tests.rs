@@ -176,6 +176,7 @@ async fn call_with_details_preserves_action_errors() {
         (&writable, json!({ "action": "recall", "question": " " })),
         (&writable, json!({ "action": "recall" })),
         (&writable, json!({ "action": "learn", "text": "a fact" })),
+        (&writable, json!({ "action": " unknown " })),
         (&read_only, json!({ "action": "learn", "text": "a fact" })),
     ] {
         let legacy = tool.call(args.clone(), CallContext::default()).await;
@@ -189,6 +190,16 @@ async fn call_with_details_preserves_action_errors() {
             (_, Ok(_)) => panic!("detailed call unexpectedly accepted invalid input"),
         }
     }
+
+    let padded_unknown = writable
+        .call_with_details(json!({ "action": " unknown " }), CallContext::default())
+        .await
+        .expect_err("padded unknown action is still rejected");
+    assert!(
+        padded_unknown
+            .to_string()
+            .contains("unknown action  unknown ;")
+    );
 }
 
 #[test]
