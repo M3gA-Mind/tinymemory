@@ -232,15 +232,26 @@ impl CortexEngine {
     /// server-issued id. The broad pack preserves records written before
     /// channel labels existed.
     pub(super) async fn packs(&self, req: &RecallRequest, scope: &str) -> Result<Vec<Value>> {
-        let bodies = recall_bodies(scope, &req.question, 0, &req.filter);
+        let bodies = self.pack_bodies(req, scope);
         let mut packs = Vec::with_capacity(bodies.len());
-        for mut body in bodies {
-            body["include"] = pack_layers();
-            body["budgets"]["per_layer_limits"] = pack_budgets(req.limit);
-            body["budgets"]["max_tokens"] = json!(whole_items_budget(req.limit.saturating_mul(3)));
+        for body in bodies {
             packs.push(self.log.recall(&body).await?);
         }
         Ok(packs)
+    }
+
+    /// Request bodies for a scope's broad pack and optional channel supplement.
+    pub(super) fn pack_bodies(&self, req: &RecallRequest, scope: &str) -> Vec<Value> {
+        recall_bodies(scope, &req.question, 0, &req.filter)
+            .into_iter()
+            .map(|mut body| {
+                body["include"] = pack_layers();
+                body["budgets"]["per_layer_limits"] = pack_budgets(req.limit);
+                body["budgets"]["max_tokens"] =
+                    json!(whole_items_budget(req.limit.saturating_mul(3)));
+                body
+            })
+            .collect()
     }
 }
 
