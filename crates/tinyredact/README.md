@@ -59,10 +59,10 @@ is redacted through its path separator, including arbitrary symbols and UTF-8.
 Without a descendant separator, whitespace and clear closing punctuation bound
 the bare component; terminal punctuation remains in the text. Bare `~` and
 `~<user>` are supported, while `~.`
-and `~.<name>` remain unchanged as relative paths. Quoted Windows drive and
-UNC paths may contain spaces and symbols in the profile name: the matching
-quote bounds a bare profile and the next path separator bounds a profile with
-descendants. This quoted-path rule does not expand to unquoted prose.
+and `~.<name>` remain unchanged as relative paths. Windows drive and UNC
+profiles may contain spaces when a descendant separator completes the same
+path; a new absolute path after prose ends the profile. Quoted paths use the
+matching quote to bound a bare profile, and the separator to bound descendants.
 
 ## What is blocked and what is redacted
 

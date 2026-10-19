@@ -13,8 +13,9 @@
 /// remain surrounding text. A bare `~` is recognized at end of input or
 /// before whitespace or a closing delimiter; `~.` and `~.name` are relative
 /// paths and are left unchanged. Other absolute paths are left unchanged.
-/// Quoted Windows drive and UNC paths may have spaces in the profile component;
-/// the matching quote or the next path separator bounds that component.
+/// Windows drive and UNC profiles may contain spaces when a descendant
+/// separator completes the path. A new absolute path after prose ends that
+/// profile; quoted paths use the matching quote to bound a bare profile.
 pub fn redact_home_paths(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut output = String::with_capacity(text.len());
