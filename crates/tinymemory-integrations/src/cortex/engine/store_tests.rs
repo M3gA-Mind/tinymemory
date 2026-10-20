@@ -1,6 +1,8 @@
 //! `store_many` on both wires: every item listed on return, ranked recall
 //! probed for the last item only.
 
+use std::sync::atomic::Ordering;
+
 use super::*;
 use crate::cortex::envelope::{Envelope, decode_event};
 use crate::cortex::testing::{Shared, both, sample_items};
@@ -281,6 +283,53 @@ async fn a_changed_channel_replays_only_inside_its_namespace() {
             request.contains("team%3Abeta%2Fapp%3Aconversations")
                 && !request.contains("team%3Aalpha%2Fapp%3Aconversations")
         }));
+    }
+}
+
+#[tokio::test]
+async fn a_changed_channel_retry_rechecks_history_after_a_prior_miss() {
+    for (engine, state) in both().await {
+        let wire = engine.wire();
+        let legacy = conversation("telegram", Some("thread-late"), "team:alpha");
+        let current = conversation("slack", Some("thread-late"), "team:alpha");
+        let thread_digest = labels::digest("thread-late");
+
+        // The first lookup sees no legacy event, then the write is refused.
+        // This leaves the same current item retryable without storing its new
+        // channel-neutral id.
+        let next_write = state.experience_calls.load(Ordering::SeqCst) + 1;
+        state
+            .fail_nth_experience
+            .store(next_write, Ordering::SeqCst);
+        assert!(engine.store(current.clone()).await.is_err(), "{wire:?}");
+        assert!(
+            state.requests().iter().any(|request| {
+                (request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events"))
+                    && request.contains(&thread_digest)
+            }),
+            "{wire:?}: first miss searched the thread history"
+        );
+
+        // A different, older writer can add the matching event after that
+        // negative lookup. Retrying must discover it rather than reuse a
+        // cached negative result and duplicate the conversation.
+        let legacy_id = seed_legacy_conversation(&engine, &state, &legacy, usize::MAX);
+        let writes_before_retry = event_write_count(&state);
+        let requests_before_retry = state.requests().len();
+        let receipt = engine.store(current).await.unwrap();
+        assert!(receipt.replayed, "{wire:?}");
+        assert_eq!(receipt.id.as_str(), legacy_id, "{wire:?}");
+        assert_eq!(event_write_count(&state), writes_before_retry, "{wire:?}");
+        assert!(
+            state.requests()[requests_before_retry..]
+                .iter()
+                .any(|request| {
+                    (request.starts_with("GET /v1/events")
+                        || request.starts_with("GET /memory/events"))
+                        && request.contains(&thread_digest)
+                }),
+            "{wire:?}: retry searched again after the new candidate appeared"
+        );
     }
 }
 
