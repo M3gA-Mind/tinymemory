@@ -1,11 +1,11 @@
 //! Tests for shared start gates and per-driver run-slot reservations.
 
+use super::*;
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
 use std::time::Duration;
-
-use super::{RunGuard, RunSlots, StartGate};
 
 fn shared_gate() -> impl StartGate + Clone {
     super::RunStartGate::new()

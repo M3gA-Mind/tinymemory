@@ -1,3 +1,5 @@
+//! Public API regressions for the engine-free queued memory tool.
+
 use super::*;
 
 #[derive(Default)]
