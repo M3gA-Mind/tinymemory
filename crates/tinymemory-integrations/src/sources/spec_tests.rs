@@ -139,9 +139,8 @@ fn namespace_validation_accepts_blank_as_unset_but_rejects_bad_values() {
 #[test]
 fn validate_new_rejects_a_namespace_that_cannot_form_a_memory_layout() {
     let mut source = spec(MemorySourceKind::Folder, "/notes");
-    source.namespace = Some(
-        "team:a/project:b/source:c/agent:d/ws:e/user:f/project:g/source:h".into(),
-    );
+    source.namespace =
+        Some("team:a/project:b/source:c/agent:d/ws:e/user:f/project:g/source:h".into());
     assert_eq!(source.namespace().unwrap().unwrap().depth(), 8);
     assert!(source.validate_new(&[]).is_err());
 }

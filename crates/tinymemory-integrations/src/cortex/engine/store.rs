@@ -97,19 +97,11 @@ impl CortexEngine {
         }
         let mut held: HashMap<String, HashSet<Option<u32>>> = HashMap::new();
         let mut by_scope: BTreeMap<KindScope, Vec<String>> = BTreeMap::new();
-        let mut legacy_ids_by_scope: BTreeMap<KindScope, Vec<(String, String)>> =
-            BTreeMap::new();
+        let mut legacy_ids_by_scope: BTreeMap<KindScope, Vec<(String, String)>> = BTreeMap::new();
         let mut conversation_scopes = Vec::with_capacity(items.len());
         for (item, id) in items.iter().zip(&ids) {
-            let scope = KindScope::new(
-                &self.layout,
-                item.meta().namespace.clone(),
-                item.kind(),
-            );
-            by_scope
-                .entry(scope.clone())
-                .or_default()
-                .push(id.clone());
+            let scope = KindScope::new(&self.layout, item.meta().namespace.clone(), item.kind());
+            by_scope.entry(scope.clone()).or_default().push(id.clone());
             if let Some(legacy_id) = item.legacy_conversation_fingerprint() {
                 legacy_ids_by_scope
                     .entry(scope.clone())
@@ -173,7 +165,10 @@ impl CortexEngine {
                 .or_insert(item);
         }
         for (scope, threads) in by_thread {
-            let thread_labels: Vec<String> = threads.keys().map(|thread| labels::thread(thread)).collect();
+            let thread_labels: Vec<String> = threads
+                .keys()
+                .map(|thread| labels::thread(thread))
+                .collect();
             let mut candidates: BTreeMap<String, Vec<Envelope>> = BTreeMap::new();
             for event in self.log.walk_labels(&scope.path, &thread_labels).await? {
                 let Some(decoded) = decode_event(&event) else {

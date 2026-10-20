@@ -2,7 +2,7 @@
 //! probed for the last item only.
 
 use super::*;
-use crate::cortex::envelope::{decode_event, Envelope};
+use crate::cortex::envelope::{Envelope, decode_event};
 use crate::cortex::testing::{Shared, both, sample_items};
 use tinymemory_api::{ListRequest, MemoryEngine, MemoryMeta, MetaFilter};
 
@@ -28,7 +28,11 @@ fn seed_legacy_conversation(
     let id = item
         .legacy_conversation_fingerprint()
         .expect("channel-bearing conversations have a legacy id");
-    for envelope in Envelope::for_item(item, &id).unwrap().into_iter().take(event_count) {
+    for envelope in Envelope::for_item(item, &id)
+        .unwrap()
+        .into_iter()
+        .take(event_count)
+    {
         let encoded = envelope.encode_checked().unwrap();
         let request = envelope.request(&encoded, &engine.layout);
         let (status, _) = state.log.lock().unwrap().append(&request);
@@ -286,7 +290,10 @@ async fn an_unidentified_logged_turn_still_skips_the_lookup() {
         .store_with(item.clone(), WriteOptions::accepted())
         .await
         .unwrap();
-    let retry = engine.store_with(item, WriteOptions::accepted()).await.unwrap();
+    let retry = engine
+        .store_with(item, WriteOptions::accepted())
+        .await
+        .unwrap();
     assert!(retry.replayed);
     assert_eq!(retry.id, first.id);
     assert_eq!(state.event_count(), 1);

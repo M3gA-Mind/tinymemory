@@ -149,9 +149,11 @@ fn legacy_conversation_fingerprint_keeps_the_old_channel_identity() {
 
     conversation.meta_mut().channel = None;
     assert!(conversation.legacy_conversation_fingerprint().is_none());
-    assert!(StoreItem::document("hello", MemoryMeta::default())
-        .legacy_conversation_fingerprint()
-        .is_none());
+    assert!(
+        StoreItem::document("hello", MemoryMeta::default())
+            .legacy_conversation_fingerprint()
+            .is_none()
+    );
 }
 
 #[test]
