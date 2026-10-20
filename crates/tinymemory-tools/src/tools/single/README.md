@@ -4,6 +4,12 @@ SingleTool presents recall, fetch, learn and forget under one configurable
 model-facing name. The host maps its name, description, parameter schema,
 permission class and concurrency class to the host tool runtime.
 
+Hosts that can accept writes before an engine is bound may use
+`SingleTool::queued(name, scope, sink)`. That facade advertises only learn and
+forget, reuses the same trusted metadata and WriteSink path, and returns
+`Unsupported` for recall and fetch until an engine-backed `SingleTool::new`
+can be constructed.
+
 ## Scope and reads
 
 MemoryTools supplies the engine and trusted ToolScope. Reads share the
