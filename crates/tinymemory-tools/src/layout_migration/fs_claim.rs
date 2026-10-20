@@ -67,16 +67,11 @@ impl FsLegacyClaim {
             Err(error) => Err(unreadable(&error)),
         }
     }
-}
 
-impl LegacyClaim for FsLegacyClaim {
-    fn held_by_other(&self) -> Result<bool> {
-        Ok(self
-            .recorded_owner()?
-            .is_some_and(|owner| owner != self.owner))
-    }
-
-    fn take(&self) -> Result<bool> {
+    fn take_with_directory_sync(
+        &self,
+        _sync_directory: impl Fn(&Path) -> std::io::Result<()>,
+    ) -> Result<bool> {
         if let Some(owner) = self.recorded_owner()? {
             return Ok(owner == self.owner);
         }
@@ -111,6 +106,18 @@ impl LegacyClaim for FsLegacyClaim {
     }
 }
 
+impl LegacyClaim for FsLegacyClaim {
+    fn held_by_other(&self) -> Result<bool> {
+        Ok(self
+            .recorded_owner()?
+            .is_some_and(|owner| owner != self.owner))
+    }
+
+    fn take(&self) -> Result<bool> {
+        self.take_with_directory_sync(|_| Ok(()))
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct Marker {
     endpoint: String,
@@ -130,3 +137,7 @@ fn normalize(endpoint: &str) -> String {
 fn unreadable(error: &dyn std::fmt::Display) -> Error {
     Error::State(format!("legacy tree claim unreadable: {error}"))
 }
+
+#[cfg(test)]
+#[path = "fs_claim_tests.rs"]
+mod tests;
