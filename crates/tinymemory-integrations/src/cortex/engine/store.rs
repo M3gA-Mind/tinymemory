@@ -21,9 +21,13 @@
 //! A key lasts 24 hours and changes with any byte of the body, so it does
 //! not replace the lookup: an unchanged file synced again a day later, or
 //! with a new `observed_at`, would be written again without it. The lookup
-//! is skipped only on the turn-logging hot path ([`looks_up`]): a Direct,
-//! accepted-only store of one single-turn conversation, which the agent
-//! lifecycle makes twice per turn, and where a retry is the replay to catch.
+//! is skipped only on the Direct, accepted-only hot path for a single-turn
+//! conversation with neither a channel nor a thread id. Channel- or
+//! thread-bearing conversations retain lookup so a pre-channel-neutral item
+//! id can be recovered. If the exact old id is unknown because the channel
+//! changed, recovery walks that hashed thread label in the same namespace/
+//! kind scope; its cost follows the events for that thread and is bounded by
+//! the ordinary listing page cap.
 //!
 //! With attribution on, an event observed from someone other than the owner
 //! names them, and a write refused for it is sent once more without
