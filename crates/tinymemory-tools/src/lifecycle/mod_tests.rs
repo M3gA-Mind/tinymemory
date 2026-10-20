@@ -1,6 +1,10 @@
 //! The agent lifecycle against the reference engine and a write-broken one.
 
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use tinymemory_api::conformance::ReferenceEngine;
@@ -13,6 +17,82 @@ use tinymemory_api::{
 use super::*;
 use crate::brain::BrainDocument;
 use crate::layout::BrainSource;
+
+fn recall_settings_hash(settings: &RecallSettings) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    settings.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[test]
+fn recall_settings_hashes_equal_values_equally() {
+    let settings = RecallSettings::default();
+
+    assert_eq!(
+        recall_settings_hash(&settings),
+        recall_settings_hash(&settings.clone())
+    );
+}
+
+#[test]
+fn recall_settings_hash_includes_each_setting() {
+    let settings = RecallSettings::default();
+    let original_hash = recall_settings_hash(&settings);
+    let variants = [
+        RecallSettings {
+            enabled: !settings.enabled,
+            ..settings.clone()
+        },
+        RecallSettings {
+            budget_tokens: settings.budget_tokens + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            learnings_limit: settings.learnings_limit + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            brain_limit: settings.brain_limit + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            history_limit: settings.history_limit + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            team_limit: settings.team_limit + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            build_beliefs_every: settings.build_beliefs_every + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            pre_turn_timeout_ms: settings.pre_turn_timeout_ms + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            date_hint: !settings.date_hint,
+            ..settings.clone()
+        },
+        RecallSettings {
+            compaction_timeout_ms: settings.compaction_timeout_ms + 1,
+            ..settings.clone()
+        },
+        RecallSettings {
+            build_delay_secs: settings.build_delay_secs + 1,
+            ..settings
+        },
+    ];
+
+    for variant in variants {
+        assert_ne!(
+            recall_settings_hash(&variant),
+            original_hash,
+            "changing a recall setting should change its hash"
+        );
+    }
+}
 
 fn memory(engine: &Arc<ReferenceEngine>, agent: &str) -> AgentMemory {
     AgentMemory::new(engine.clone(), MemoryLayout::default(), agent).unwrap()
