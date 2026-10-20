@@ -268,8 +268,8 @@ impl Backfiller {
             filter.thread_id = Some(thread_id.clone());
             let (first_live, stored) = match self.list_all(filter.clone()).await {
                 Ok(hits) => (
-                    first_live_turn_from_hits(&hits, &filter, &self.agent_id, &thread_id),
-                    stored_turns_from_hits(&hits, &filter, &self.agent_id, &thread_id, &turns),
+                    Self::first_live_turn_from_hits(&hits, &filter, &self.agent_id, &thread_id),
+                    Self::stored_turns_from_hits(&hits, &filter, &self.agent_id, &thread_id, &turns),
                 ),
                 Err(Error::Unsupported(_)) => (None, saved),
                 Err(error) => {
@@ -309,9 +309,7 @@ impl Backfiller {
             cursor = Some(next);
         }
     }
-}
-
-fn first_live_turn_from_hits(
+    fn first_live_turn_from_hits(
     hits: &[tinymemory_api::Hit],
     filter: &MetaFilter,
     agent_id: &str,
@@ -329,7 +327,7 @@ fn first_live_turn_from_hits(
         .min()
 }
 
-fn stored_turns_from_hits(
+    fn stored_turns_from_hits(
     hits: &[tinymemory_api::Hit],
     filter: &MetaFilter,
     agent_id: &str,
