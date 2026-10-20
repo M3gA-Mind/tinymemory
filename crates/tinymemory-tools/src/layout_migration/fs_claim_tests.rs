@@ -26,9 +26,7 @@ fn claim_is_not_reported_owned_until_parent_directory_sync_succeeds() {
 fn an_existing_claim_is_synced_again_after_a_failed_directory_sync() {
     let temp = tempfile::tempdir().unwrap();
     let claim = FsLegacyClaim::new(temp.path(), "http://127.0.0.1:3141", "user:a");
-    let first = claim.take_with_directory_sync(|_| {
-        Err(std::io::Error::other("sync failed"))
-    });
+    let first = claim.take_with_directory_sync(|_| Err(std::io::Error::other("sync failed")));
     assert!(first.is_err());
     assert!(claim.marker_path().is_file());
 

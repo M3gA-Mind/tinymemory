@@ -269,7 +269,13 @@ impl Backfiller {
             let (first_live, stored) = match self.list_all(filter.clone()).await {
                 Ok(hits) => (
                     Self::first_live_turn_from_hits(&hits, &filter, &self.agent_id, &thread_id),
-                    Self::stored_turns_from_hits(&hits, &filter, &self.agent_id, &thread_id, &turns),
+                    Self::stored_turns_from_hits(
+                        &hits,
+                        &filter,
+                        &self.agent_id,
+                        &thread_id,
+                        &turns,
+                    ),
                 ),
                 Err(Error::Unsupported(_)) => (None, saved),
                 Err(error) => {
@@ -310,32 +316,32 @@ impl Backfiller {
         }
     }
     fn first_live_turn_from_hits(
-    hits: &[tinymemory_api::Hit],
-    filter: &MetaFilter,
-    agent_id: &str,
-    thread_id: &str,
-) -> Option<usize> {
-    hits.iter()
-        .filter(|hit| {
-            filter.matches(hit.kind, &hit.meta)
-                && hit.meta.agent_id.as_deref() == Some(agent_id)
-                && hit.meta.thread_id.as_deref() == Some(thread_id)
-                && hit.kind == ItemKind::Conversation
-                && !hit.meta.tags.iter().any(|tag| tag == BACKFILL_TAG)
-        })
-        .filter_map(|hit| hit.meta.turns.map(|turns| turns.first as usize / 2))
-        .min()
-}
+        hits: &[tinymemory_api::Hit],
+        filter: &MetaFilter,
+        agent_id: &str,
+        thread_id: &str,
+    ) -> Option<usize> {
+        hits.iter()
+            .filter(|hit| {
+                filter.matches(hit.kind, &hit.meta)
+                    && hit.meta.agent_id.as_deref() == Some(agent_id)
+                    && hit.meta.thread_id.as_deref() == Some(thread_id)
+                    && hit.kind == ItemKind::Conversation
+                    && !hit.meta.tags.iter().any(|tag| tag == BACKFILL_TAG)
+            })
+            .filter_map(|hit| hit.meta.turns.map(|turns| turns.first as usize / 2))
+            .min()
+    }
 
     fn stored_turns_from_hits(
-    hits: &[tinymemory_api::Hit],
-    filter: &MetaFilter,
-    agent_id: &str,
-    thread_id: &str,
-    turns: &[PastTurn],
-) -> u32 {
-    let mut stored_items = HashSet::new();
-    for hit in hits {
+        hits: &[tinymemory_api::Hit],
+        filter: &MetaFilter,
+        agent_id: &str,
+        thread_id: &str,
+        turns: &[PastTurn],
+    ) -> u32 {
+        let mut stored_items = HashSet::new();
+        for hit in hits {
             if !filter.matches(hit.kind, &hit.meta)
                 || hit.meta.agent_id.as_deref() != Some(agent_id)
                 || hit.meta.thread_id.as_deref() != Some(thread_id)
@@ -361,10 +367,10 @@ impl Backfiller {
             if expected {
                 stored_items.insert(turn_range.first);
             }
-    }
+        }
 
-    let mut complete = 0usize;
-    for (index, turn) in turns.iter().enumerate() {
+        let mut complete = 0usize;
+        for (index, turn) in turns.iter().enumerate() {
             let user_expected = !turn.user.trim().is_empty();
             let assistant_expected = !turn.assistant.trim().is_empty();
             let user_stored = !user_expected || stored_items.contains(&turn_index(index, false));
@@ -374,8 +380,8 @@ impl Backfiller {
                 break;
             }
             complete = index + 1;
-    }
-    u32::try_from(complete).unwrap_or(u32::MAX)
+        }
+        u32::try_from(complete).unwrap_or(u32::MAX)
     }
 
     fn last_batch(&self, plans: &[ThreadPlan]) -> Option<(usize, usize)> {

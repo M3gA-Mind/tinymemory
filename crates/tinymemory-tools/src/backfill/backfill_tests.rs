@@ -409,11 +409,7 @@ async fn status_and_begin_list_each_thread_once_for_live_and_backfilled_turns() 
         )]),
         ..Default::default()
     };
-    let backfiller = backfiller(
-        engine,
-        source,
-        Arc::new(TestCounterStore::default()),
-    );
+    let backfiller = backfiller(engine, source, Arc::new(TestCounterStore::default()));
 
     let view = backfiller.status(false).await.unwrap();
     assert_eq!(view.pending_threads, 1);
@@ -607,7 +603,7 @@ async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
             waits: Arc::default(),
             fail_store_on: None,
             store_calls: AtomicUsize::new(0),
-        list_calls: Arc::new(AtomicUsize::new(0)),
+            list_calls: Arc::new(AtomicUsize::new(0)),
         });
         assert!(
             backfiller(engine, source.clone(), store.clone())
