@@ -225,7 +225,8 @@ async fn a_changed_channel_replays_only_inside_its_namespace() {
         assert!(replay.replayed, "{:?}", engine.wire());
         assert_eq!(replay.id.as_str(), legacy_id, "{:?}", engine.wire());
         assert_eq!(event_write_count(&state), writes, "{:?}", engine.wire());
-        let replay_reads: Vec<_> = state.requests()[before_replay..]
+        let requests_after_replay = state.requests();
+        let replay_reads: Vec<_> = requests_after_replay[before_replay..]
             .iter()
             .filter(|request| {
                 request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events")
