@@ -38,7 +38,7 @@ use super::CortexEngine;
 use super::attribution;
 use super::scopes::KindScope;
 use crate::cortex::descriptor::CortexWire;
-use crate::cortex::envelope::{Encoded, Envelope};
+use crate::cortex::envelope::{Encoded, Envelope, decode_event, labels};
 use crate::cortex::error::{Error, Result};
 use crate::cortex::log::Written;
 
@@ -93,23 +93,132 @@ impl CortexEngine {
         }
         let mut held: HashMap<String, HashSet<Option<u32>>> = HashMap::new();
         let mut by_scope: BTreeMap<KindScope, Vec<String>> = BTreeMap::new();
+        let mut legacy_ids_by_scope: BTreeMap<KindScope, Vec<(String, String)>> =
+            BTreeMap::new();
+        let mut conversation_scopes = Vec::with_capacity(items.len());
         for (item, id) in items.iter().zip(&ids) {
+            let scope = KindScope::new(
+                &self.layout,
+                item.meta().namespace.clone(),
+                item.kind(),
+            );
             by_scope
-                .entry(KindScope::new(
-                    &self.layout,
-                    item.meta().namespace.clone(),
-                    item.kind(),
-                ))
+                .entry(scope.clone())
                 .or_default()
                 .push(id.clone());
+            if let Some(legacy_id) = item.legacy_conversation_fingerprint() {
+                legacy_ids_by_scope
+                    .entry(scope.clone())
+                    .or_default()
+                    .push((id.clone(), legacy_id));
+            }
+            conversation_scopes.push(scope);
         }
         let lookup = looks_up(self.wire(), &items, wait);
+        let mut aliases = HashMap::<String, String>::new();
         let looking = Instant::now();
         for (scope, of_scope) in by_scope.iter().filter(|_| lookup) {
-            for (id, events) in self.item_events(scope, of_scope).await? {
+            let mut lookup_ids = of_scope.clone();
+            let mut seen_ids: HashSet<String> = lookup_ids.iter().cloned().collect();
+            if let Some(legacy_ids) = legacy_ids_by_scope.get(scope) {
+                for (_, legacy_id) in legacy_ids {
+                    if seen_ids.insert(legacy_id.clone()) {
+                        lookup_ids.push(legacy_id.clone());
+                    }
+                }
+            }
+            for (id, events) in self.item_events(scope, &lookup_ids).await? {
                 held.entry(id)
                     .or_default()
                     .extend(events.iter().map(|decoded| decoded.envelope.part()));
+            }
+            if let Some(legacy_ids) = legacy_ids_by_scope.get(scope) {
+                for (current_id, legacy_id) in legacy_ids {
+                    if !held.contains_key(current_id) && held.contains_key(legacy_id) {
+                        aliases
+                            .entry(current_id.clone())
+                            .or_insert_with(|| legacy_id.clone());
+                    }
+                }
+            }
+        }
+
+        // A stored conversation may have a different old channel, so its old
+        // fingerprint is unknowable from the new item alone. On an ID miss,
+        // scan only the exact namespace/kind scope for the hashed thread id,
+        // then compare turn content and the envelope's path-safe metadata.
+        let mut by_thread: BTreeMap<KindScope, BTreeMap<String, BTreeMap<String, &StoreItem>>> =
+            BTreeMap::new();
+        for (index, (item, id)) in items.iter().zip(&ids).enumerate() {
+            if held.contains_key(id) || aliases.contains_key(id) {
+                continue;
+            }
+            let StoreItem::Conversation { meta, .. } = item else {
+                continue;
+            };
+            let Some(thread_id) = meta.thread_id.as_deref().filter(|id| !id.trim().is_empty())
+            else {
+                continue;
+            };
+            by_thread
+                .entry(conversation_scopes[index].clone())
+                .or_default()
+                .entry(thread_id.to_string())
+                .or_default()
+                .entry(id.clone())
+                .or_insert(item);
+        }
+        for (scope, threads) in by_thread {
+            let thread_labels: Vec<String> = threads.keys().map(|thread| labels::thread(thread)).collect();
+            let mut candidates: BTreeMap<String, Vec<Envelope>> = BTreeMap::new();
+            for event in self.log.walk_labels(&scope.path, &thread_labels).await? {
+                let Some(decoded) = decode_event(&event) else {
+                    continue;
+                };
+                let Some(thread_id) = decoded.envelope.meta.thread_id.as_deref() else {
+                    continue;
+                };
+                if threads.contains_key(thread_id) {
+                    candidates
+                        .entry(decoded.envelope.id.clone())
+                        .or_default()
+                        .push(decoded.envelope);
+                }
+            }
+            for (legacy_id, events) in candidates {
+                let mut matches = Vec::new();
+                for items_for_thread in threads.values() {
+                    for (current_id, item) in items_for_thread {
+                        if let Some(parts) = legacy_conversation_parts(item, &events) {
+                            matches.push((current_id.clone(), parts));
+                        }
+                    }
+                    if matches.len() > 1 {
+                        break;
+                    }
+                }
+                if let [(current_id, parts)] = matches.as_slice()
+                    && !held.contains_key(current_id)
+                    && !aliases.contains_key(current_id)
+                {
+                    aliases.insert(current_id.clone(), legacy_id.clone());
+                    held.insert(legacy_id, parts.clone());
+                }
+            }
+        }
+
+        let effective_ids: Vec<String> = ids
+            .iter()
+            .map(|id| aliases.get(id).unwrap_or(id).clone())
+            .collect();
+        for ((events, current_id), effective_id) in planned.iter_mut().zip(&ids).zip(&effective_ids)
+        {
+            if current_id == effective_id {
+                continue;
+            }
+            for (_, envelope, encoded) in events {
+                envelope.id.clone_from(effective_id);
+                *encoded = envelope.encode_checked()?;
             }
         }
         let lookup_ms = looking.elapsed().as_millis();
@@ -119,7 +228,7 @@ impl CortexEngine {
         let mut receipts = Vec::with_capacity(items.len());
         let mut written_here: HashSet<String> = HashSet::new();
         let mut last_per_scope: Vec<Written> = Vec::new();
-        for (events, id) in planned.into_iter().zip(ids) {
+        for (events, id) in planned.into_iter().zip(effective_ids) {
             let present = held.get(&id);
             let mut requests = Vec::new();
             let mut attributed = false;
@@ -233,7 +342,51 @@ fn looks_up(wire: CortexWire, items: &[StoreItem], wait: WaitFor) -> bool {
         items,
         [StoreItem::Conversation { turns, .. }] if turns.len() == 1
     );
-    !(wire == CortexWire::Direct && wait == WaitFor::Accepted && hot)
+    let can_have_legacy_id = items.iter().any(|item| {
+        matches!(
+            item,
+            StoreItem::Conversation { meta, .. }
+                if meta.channel.is_some() || meta.thread_id.is_some()
+        )
+    });
+    !(wire == CortexWire::Direct && wait == WaitFor::Accepted && hot && !can_have_legacy_id)
+}
+
+/// The parts of a pre-channel-neutral conversation that are already stored,
+/// if every returned event belongs to this item's exact identity. The turn
+/// count disambiguates a partial multi-turn item from a shorter conversation
+/// sharing its first turn.
+fn legacy_conversation_parts(
+    item: &StoreItem,
+    events: &[Envelope],
+) -> Option<HashSet<Option<u32>>> {
+    let StoreItem::Conversation { turns, meta } = item else {
+        return None;
+    };
+    if turns.is_empty() || events.is_empty() {
+        return None;
+    }
+    let mut parts = HashSet::new();
+    for event in events {
+        let info = event.turn.as_ref()?;
+        if event.kind != tinymemory_api::ItemKind::Conversation
+            || usize::try_from(info.count).ok()? != turns.len()
+            || !event.matches_meta_identity(meta)
+        {
+            return None;
+        }
+        let index = usize::try_from(info.index).ok()?;
+        let expected = turns.get(index)?;
+        if event.text != expected.text
+            || info.role != expected.role
+            || info.at != expected.at
+            || info.tool_calls != expected.tool_calls
+            || !parts.insert(Some(info.index))
+        {
+            return None;
+        }
+    }
+    Some(parts)
 }
 
 #[cfg(test)]
