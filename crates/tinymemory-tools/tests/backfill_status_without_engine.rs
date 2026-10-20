@@ -81,7 +81,10 @@ async fn status_without_engine_uses_saved_counters_and_only_marks_stale_runs() {
     let source = Source {
         threads: vec!["first".into(), "second".into()],
         messages: BTreeMap::from([
-            ("first".into(), messages(&[("q0", "a0"), ("q1", "a1"), ("q2", "a2")])),
+            (
+                "first".into(),
+                messages(&[("q0", "a0"), ("q1", "a1"), ("q2", "a2")]),
+            ),
             ("second".into(), messages(&[("q0", "a0"), ("q1", "a1")])),
         ]),
         ..Source::default()
