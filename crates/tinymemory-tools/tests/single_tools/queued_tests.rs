@@ -11,7 +11,7 @@ impl WriteSink for RecordingSink {
     fn preflight(&self, scope: &ToolScope) -> tinymemory_api::Result<()> {
         self.preflights
             .lock()
-            .expect("preflights")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(scope.clone());
         match &self.preflight_error {
             Some(error) => Err(error.clone()),
@@ -28,7 +28,7 @@ impl WriteSink for RecordingSink {
         };
         self.writes
             .lock()
-            .expect("writes")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push((operation, scope.clone()));
         Ok(ack)
     }
