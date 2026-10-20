@@ -420,7 +420,7 @@ impl AgentMemory {
     ///
     /// [`Error::InvalidRequest`] for a blank thread id or user text. Engine
     /// failures never fail the call.
-    pub async fn pre_turn_read(&self, turn: &PreTurn) -> Result<ContextPack> {
+    pub(crate) async fn pre_turn_read(&self, turn: &PreTurn) -> Result<ContextPack> {
         let thread_id = non_blank(&turn.thread_id, "thread id")?;
         let text = non_blank(&turn.user_text, "user text")?;
         let mut sections = Vec::new();

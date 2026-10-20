@@ -70,8 +70,8 @@ pub struct ToolScope {
     /// The agent that made the call.
     pub agent_id: Option<String>,
     /// The provider-assigned call name and id. The single facade preserves
-    /// them; its configured tool name is used only when the provider supplied
-    /// no name.
+    /// them; its configured tool name is used only when no call reference is
+    /// set.
     pub tool_call: Option<tinymemory_api::ToolCallRef>,
 }
 
