@@ -9,18 +9,17 @@ struct RecordingSink {
 
 impl WriteSink for RecordingSink {
     fn preflight(&self, scope: &ToolScope) -> tinymemory_api::Result<()> {
-        self.preflights.lock().expect("preflights").push(scope.clone());
+        self.preflights
+            .lock()
+            .expect("preflights")
+            .push(scope.clone());
         match &self.preflight_error {
             Some(error) => Err(error.clone()),
             None => Ok(()),
         }
     }
 
-    fn enqueue(
-        &self,
-        operation: WriteOperation,
-        scope: &ToolScope,
-    ) -> tinymemory_api::Result<Ack> {
+    fn enqueue(&self, operation: WriteOperation, scope: &ToolScope) -> tinymemory_api::Result<Ack> {
         let ack = match &operation {
             WriteOperation::Learn { .. } => Ack::Learned {
                 id: "queued-learning".into(),
@@ -56,7 +55,10 @@ async fn queued_facade_queues_learn_and_forget_with_trusted_metadata_and_acks() 
     let tool = SingleTool::queued("community_memory", scope.clone(), sink.clone());
     let spec = tool.spec();
     assert_eq!(spec.name, "community_memory");
-    assert_eq!(spec.parameters["properties"]["action"]["enum"], json!(["learn", "forget"]));
+    assert_eq!(
+        spec.parameters["properties"]["action"]["enum"],
+        json!(["learn", "forget"])
+    );
     assert_eq!(spec.parameters["oneOf"].as_array().map(Vec::len), Some(2));
     assert!(spec.parameters.to_string().find("enum\":[]").is_none());
 
@@ -121,10 +123,16 @@ async fn queued_facade_preserves_readonly_and_preflight_ordering() {
     let sink = Arc::new(RecordingSink::default());
     let tool = SingleTool::queued("memory", readonly, sink.clone());
     assert!(matches!(
-        tool.call(json!({"action":"learn"}), CallContext::default()).await,
+        tool.call(json!({"action":"learn"}), CallContext::default())
+            .await,
         Err(Error::Unsupported(_))
     ));
-    assert!(sink.preflights.lock().expect("no preflight in read-only scope").is_empty());
+    assert!(
+        sink.preflights
+            .lock()
+            .expect("no preflight in read-only scope")
+            .is_empty()
+    );
 
     let denied = Arc::new(RecordingSink {
         preflight_error: Some(Error::Unsupported("memory is disabled".into())),
@@ -132,31 +140,60 @@ async fn queued_facade_preserves_readonly_and_preflight_ordering() {
     });
     let tool = SingleTool::queued("memory", trusted_scope(true), denied.clone());
     assert!(matches!(
-        tool.call(json!({"action":"learn","unexpected":true}), CallContext::default()).await,
+        tool.call(
+            json!({"action":"learn","unexpected":true}),
+            CallContext::default()
+        )
+        .await,
         Err(Error::Unsupported(message)) if message == "memory is disabled"
     ));
-    assert_eq!(denied.preflights.lock().expect("preflight before parsing").len(), 1);
-    assert!(denied.writes.lock().expect("denied before enqueue").is_empty());
+    assert_eq!(
+        denied
+            .preflights
+            .lock()
+            .expect("preflight before parsing")
+            .len(),
+        1
+    );
+    assert!(
+        denied
+            .writes
+            .lock()
+            .expect("denied before enqueue")
+            .is_empty()
+    );
 
     let accepting = Arc::new(RecordingSink::default());
     let tool = SingleTool::queued("memory", trusted_scope(true), accepting.clone());
-    assert!(tool
-        .call(
+    assert!(
+        tool.call(
             json!({"action":"learn","unexpected":true}),
             CallContext::default()
         )
         .await
-        .is_err());
-    assert!(tool
-        .call(json!({"action":"unknown"}), CallContext::default())
-        .await
-        .is_err());
-    assert!(accepting.writes.lock().expect("invalid calls do not enqueue").is_empty());
+        .is_err()
+    );
+    assert!(
+        tool.call(json!({"action":"unknown"}), CallContext::default())
+            .await
+            .is_err()
+    );
+    assert!(
+        accepting
+            .writes
+            .lock()
+            .expect("invalid calls do not enqueue")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
 async fn queued_facade_rejects_reads_without_an_engine() {
-    let tool = SingleTool::queued("memory", trusted_scope(true), Arc::new(RecordingSink::default()));
+    let tool = SingleTool::queued(
+        "memory",
+        trusted_scope(true),
+        Arc::new(RecordingSink::default()),
+    );
     for args in [
         json!({"action":"recall","question":"anything"}),
         json!({"action":"fetch","query":"anything"}),
