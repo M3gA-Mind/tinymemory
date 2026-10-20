@@ -2,11 +2,43 @@
 //! probed for the last item only.
 
 use super::*;
-use crate::cortex::testing::both;
+use crate::cortex::envelope::{decode_event, Envelope};
+use crate::cortex::testing::{Shared, both, sample_items};
 use tinymemory_api::{ListRequest, MemoryEngine, MemoryMeta, MetaFilter};
 
 fn doc(text: &str) -> StoreItem {
     StoreItem::document(text, MemoryMeta::default())
+}
+
+fn conversation(channel: &str, thread: Option<&str>, namespace: &str) -> StoreItem {
+    let mut items = sample_items();
+    let mut item = items.remove(1);
+    item.meta_mut().channel = Some(channel.to_string());
+    item.meta_mut().thread_id = thread.map(str::to_string);
+    item.meta_mut().namespace = namespace.parse().unwrap();
+    item
+}
+
+fn seed_legacy_conversation(
+    engine: &CortexEngine,
+    state: &Shared,
+    item: &StoreItem,
+    event_count: usize,
+) -> String {
+    let id = item
+        .legacy_conversation_fingerprint()
+        .expect("channel-bearing conversations have a legacy id");
+    for envelope in Envelope::for_item(item, &id).unwrap().into_iter().take(event_count) {
+        let encoded = envelope.encode_checked().unwrap();
+        let request = envelope.request(&encoded, &engine.layout);
+        let (status, _) = state.log.lock().unwrap().append(&request);
+        assert_eq!(status, 202);
+    }
+    id
+}
+
+fn event_write_count(state: &Shared) -> usize {
+    state.seen.lock().unwrap().writes.len()
 }
 
 #[tokio::test]
@@ -139,6 +171,67 @@ async fn a_single_store_is_listed_and_settled_on_return_like_a_batch_of_one() {
             ),
             "{wire:?}"
         );
+    }
+}
+
+#[tokio::test]
+async fn a_channel_inclusive_legacy_id_without_a_thread_is_replayed() {
+    for (engine, state) in both().await {
+        let item = conversation("telegram", None, "root");
+        let legacy_id = seed_legacy_conversation(&engine, &state, &item, usize::MAX);
+        let writes = event_write_count(&state);
+
+        let receipt = engine.store(item).await.unwrap();
+
+        assert!(receipt.replayed, "{:?}", engine.wire());
+        assert_eq!(receipt.id.as_str(), legacy_id, "{:?}", engine.wire());
+        assert_eq!(event_write_count(&state), writes, "{:?}", engine.wire());
+    }
+}
+
+#[tokio::test]
+async fn a_changed_channel_replays_only_inside_its_namespace() {
+    for (engine, state) in both().await {
+        let legacy = conversation("telegram", Some("thread-1"), "team:alpha");
+        let legacy_id = seed_legacy_conversation(&engine, &state, &legacy, usize::MAX);
+        let writes = event_write_count(&state);
+
+        let same_scope = conversation("slack", Some("thread-1"), "team:alpha");
+        let replay = engine.store(same_scope).await.unwrap();
+        assert!(replay.replayed, "{:?}", engine.wire());
+        assert_eq!(replay.id.as_str(), legacy_id, "{:?}", engine.wire());
+        assert_eq!(event_write_count(&state), writes, "{:?}", engine.wire());
+
+        let other_scope = conversation("slack", Some("thread-1"), "team:beta");
+        let new_id = other_scope.fingerprint();
+        let isolated = engine.store(other_scope).await.unwrap();
+        assert!(!isolated.replayed, "{:?}", engine.wire());
+        assert_eq!(isolated.id.as_str(), new_id, "{:?}", engine.wire());
+    }
+}
+
+#[tokio::test]
+async fn a_partial_legacy_conversation_continues_under_its_existing_id() {
+    for (engine, state) in both().await {
+        let item = conversation("telegram", Some("thread-2"), "team:alpha");
+        let legacy_id = seed_legacy_conversation(&engine, &state, &item, 2);
+
+        let receipt = engine.store(item.clone()).await.unwrap();
+
+        assert!(!receipt.replayed, "{:?}", engine.wire());
+        assert_eq!(receipt.id.as_str(), legacy_id, "{:?}", engine.wire());
+        let mut stored: Vec<_> = state
+            .log
+            .lock()
+            .unwrap()
+            .events
+            .iter()
+            .filter_map(decode_event)
+            .filter(|event| event.envelope.id == legacy_id)
+            .map(|event| event.envelope.turn.unwrap().index)
+            .collect();
+        stored.sort_unstable();
+        assert_eq!(stored, vec![0, 1, 2], "{:?}", engine.wire());
     }
 }
 
