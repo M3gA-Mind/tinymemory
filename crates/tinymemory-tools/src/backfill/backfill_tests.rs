@@ -382,6 +382,49 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
 }
 
 #[tokio::test]
+async fn status_and_begin_list_each_thread_once_for_live_and_backfilled_turns() {
+    let inner = ReferenceEngine::new();
+    let layout = MemoryLayout::default();
+    for item in turn_items(&layout, MAIN_AGENT, "thread", 0, &turn("old", "answer")) {
+        inner.store(item).await.unwrap();
+    }
+    for mut item in turn_items(&layout, MAIN_AGENT, "thread", 2, &turn("live", "answer")) {
+        item.meta_mut().tags.clear();
+        inner.store(item).await.unwrap();
+    }
+    let list_calls = Arc::new(AtomicUsize::new(0));
+    let engine = Arc::new(TestListingEngine {
+        inner,
+        fail: None,
+        waits: Arc::default(),
+        fail_store_on: None,
+        store_calls: AtomicUsize::new(0),
+        list_calls: Arc::clone(&list_calls),
+    });
+    let source = TestThreadSource {
+        threads: vec!["thread".to_string()],
+        messages: BTreeMap::from([(
+            "thread".to_string(),
+            source_messages(&[("old", "answer"), ("missing", "answer"), ("live", "answer")]),
+        )]),
+        ..Default::default()
+    };
+    let backfiller = backfiller(
+        engine,
+        source,
+        Arc::new(TestCounterStore::default()),
+    );
+
+    let view = backfiller.status(false).await.unwrap();
+    assert_eq!(view.pending_threads, 1);
+    assert_eq!(view.pending_turns, 1);
+    assert_eq!(list_calls.load(Ordering::SeqCst), 1);
+
+    let _run = backfiller.begin().await.unwrap();
+    assert_eq!(list_calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
 async fn a_user_only_turn_is_complete_when_its_expected_user_item_is_visible() {
     let engine = Arc::new(ReferenceEngine::new());
     let layout = MemoryLayout::default();
