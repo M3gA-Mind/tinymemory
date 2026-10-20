@@ -440,11 +440,7 @@ async fn source_threads(
     Ok(threads)
 }
 
-fn plan_thread(
-    thread: SourceThread,
-    first_live: Option<usize>,
-    stored: u32,
-) -> Option<ThreadPlan> {
+fn plan_thread(thread: SourceThread, first_live: Option<usize>, stored: u32) -> Option<ThreadPlan> {
     let range = pending_range(thread.turns.len(), first_live, stored);
     (!range.is_empty()).then_some(ThreadPlan {
         thread_id: thread.thread_id,
