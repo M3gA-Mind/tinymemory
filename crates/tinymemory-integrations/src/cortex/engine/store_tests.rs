@@ -1,6 +1,8 @@
 //! `store_many` on both wires: every item listed on return, ranked recall
 //! probed for the last item only.
 
+use std::sync::atomic::Ordering;
+
 use super::*;
 use crate::cortex::envelope::{Envelope, decode_event};
 use crate::cortex::testing::{Shared, both, sample_items};
