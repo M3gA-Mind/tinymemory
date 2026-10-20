@@ -27,7 +27,11 @@
 //! id can be recovered. If the exact old id is unknown because the channel
 //! changed, recovery walks that hashed thread label in the same namespace/
 //! kind scope; its cost follows the events for that thread and is bounded by
-//! the ordinary listing page cap.
+//! the ordinary listing page cap. A changed-channel miss is not cached across
+//! calls: the Events listing has no revision watermark to detect legacy
+//! records written by another client (or removed by forget), so a later retry
+//! must search again. A walk past the page cap fails instead of returning an
+//! incomplete candidate set.
 //!
 //! With attribution on, an event observed from someone other than the owner
 //! names them, and a write refused for it is sent once more without
