@@ -4,7 +4,7 @@
 use super::*;
 use crate::cortex::envelope::{Envelope, decode_event};
 use crate::cortex::testing::{Shared, both, sample_items};
-use tinymemory_api::{ListRequest, MemoryEngine, MemoryMeta, MetaFilter};
+use tinymemory_api::{ListRequest, MemoryEngine, MemoryMeta, MetaFilter, WriteOptions};
 
 fn doc(text: &str) -> StoreItem {
     StoreItem::document(text, MemoryMeta::default())
@@ -186,7 +186,10 @@ async fn a_channel_inclusive_legacy_id_without_a_thread_is_replayed() {
         let current_id = item.fingerprint();
         let writes = event_write_count(&state);
 
-        let receipt = engine.store(item).await.unwrap();
+        let receipt = engine
+            .store_with(item, WriteOptions::accepted())
+            .await
+            .unwrap();
 
         assert!(receipt.replayed, "{:?}", engine.wire());
         assert_eq!(receipt.id.as_str(), legacy_id, "{:?}", engine.wire());
