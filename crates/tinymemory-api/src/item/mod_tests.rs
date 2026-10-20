@@ -139,6 +139,25 @@ fn conversation_channel_is_metadata_not_turn_identity() {
 }
 
 #[test]
+fn legacy_conversation_fingerprint_keeps_the_old_channel_identity() {
+    let mut conversation = StoreItem::Conversation {
+        turns: vec![Turn::user("hello")],
+        meta: MemoryMeta::default(),
+    };
+    conversation.meta_mut().channel = Some("telegram".into());
+    let legacy = conversation
+        .legacy_conversation_fingerprint()
+        .expect("channel-bearing conversations have a legacy fingerprint");
+    assert_ne!(legacy, conversation.fingerprint());
+
+    conversation.meta_mut().channel = None;
+    assert!(conversation.legacy_conversation_fingerprint().is_none());
+    assert!(StoreItem::document("hello", MemoryMeta::default())
+        .legacy_conversation_fingerprint()
+        .is_none());
+}
+
+#[test]
 fn retried_learning_ignores_the_provider_tool_call_id() {
     let mut first = StoreItem::learning(
         "Prefers tea",
