@@ -140,10 +140,7 @@ fn conversation_channel_is_metadata_not_turn_identity() {
 
 #[test]
 fn legacy_conversation_fingerprint_keeps_the_old_channel_identity() {
-    let mut conversation = StoreItem::Conversation {
-        turns: vec![Turn::user("hello")],
-        meta: MemoryMeta::default(),
-    };
+    let mut conversation = conversation(&["hello"]);
     conversation.meta_mut().channel = Some("telegram".into());
     let legacy = conversation
         .legacy_conversation_fingerprint()
