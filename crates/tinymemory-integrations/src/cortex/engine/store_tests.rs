@@ -302,10 +302,13 @@ async fn a_changed_channel_retry_rechecks_history_after_a_prior_miss() {
             .fail_nth_experience
             .store(next_write, Ordering::SeqCst);
         assert!(engine.store(current.clone()).await.is_err(), "{wire:?}");
-        assert!(state.requests().iter().any(|request| {
-            (request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events"))
-                && request.contains(&thread_digest)
-        }), "{wire:?}: first miss searched the thread history");
+        assert!(
+            state.requests().iter().any(|request| {
+                (request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events"))
+                    && request.contains(&thread_digest)
+            }),
+            "{wire:?}: first miss searched the thread history"
+        );
 
         // A different, older writer can add the matching event after that
         // negative lookup. Retrying must discover it rather than reuse a
@@ -317,10 +320,16 @@ async fn a_changed_channel_retry_rechecks_history_after_a_prior_miss() {
         assert!(receipt.replayed, "{wire:?}");
         assert_eq!(receipt.id.as_str(), legacy_id, "{wire:?}");
         assert_eq!(event_write_count(&state), writes_before_retry, "{wire:?}");
-        assert!(state.requests()[requests_before_retry..].iter().any(|request| {
-            (request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events"))
-                && request.contains(&thread_digest)
-        }), "{wire:?}: retry searched again after the new candidate appeared");
+        assert!(
+            state.requests()[requests_before_retry..]
+                .iter()
+                .any(|request| {
+                    (request.starts_with("GET /v1/events")
+                        || request.starts_with("GET /memory/events"))
+                        && request.contains(&thread_digest)
+                }),
+            "{wire:?}: retry searched again after the new candidate appeared"
+        );
     }
 }
 
