@@ -260,20 +260,33 @@ impl SingleTool {
     /// The single tool's name, description, and parameter schema.
     #[must_use]
     pub fn spec(&self) -> SingleToolSpec {
+        let (description, parameters) = if let Some(tools) = &self.tools {
+            (
+                concat!(
+                    "Long-term memory. Set action to recall evidence for a question, fetch matching ",
+                    "items five at a time, learn a fact or preference, or forget items by id. ",
+                    "Recall before asking for information the user may already have shared. ",
+                    "Learn and forget responses acknowledge durable local queueing; they do not ",
+                    "mean a remote write has finished."
+                )
+                .to_string(),
+                schema(tools.engine.descriptor().fetch_modes.as_slice()),
+            )
+        } else {
+            (
+                concat!(
+                    "Long-term memory writes. Set action to learn a fact or preference, or ",
+                    "forget items by id. Responses acknowledge durable local queueing; they ",
+                    "do not mean a remote write has finished."
+                )
+                .to_string(),
+                write_schema(),
+            )
+        };
         SingleToolSpec {
             name: self.name.clone(),
-            description: concat!(
-                "Long-term memory. Set action to recall evidence for a question, fetch matching ",
-                "items five at a time, learn a fact or preference, or forget items by id. ",
-                "Recall before asking for information the user may already have shared. ",
-                "Learn and forget responses acknowledge durable local queueing; they do not ",
-                "mean a remote write has finished."
-            )
-            .to_string(),
-            parameters: self.tools.as_ref().map_or_else(
-                write_schema,
-                |tools| schema(tools.engine.descriptor().fetch_modes.as_slice()),
-            ),
+            description,
+            parameters,
         }
     }
 
@@ -656,6 +669,37 @@ fn schema(fetch_modes: &[FetchMode]) -> Value {
             "type": "string",
             "enum": ACTIONS,
             "description": "Which memory operation to perform."
+        }),
+    );
+    for branch in &branches {
+        if let Some(branch_properties) = branch["properties"].as_object() {
+            for (key, value) in branch_properties {
+                if key != "action" {
+                    properties
+                        .entry(key.clone())
+                        .or_insert_with(|| value.clone());
+                }
+            }
+        }
+    }
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": ["action"],
+        "oneOf": branches,
+        "additionalProperties": false
+    })
+}
+
+fn write_schema() -> Value {
+    let branches = [branch("learn", learn_schema()), branch("forget", forget_schema())];
+    let mut properties = Map::new();
+    properties.insert(
+        "action".into(),
+        json!({
+            "type": "string",
+            "enum": ["learn", "forget"],
+            "description": "Which memory write operation to perform."
         }),
     );
     for branch in &branches {
