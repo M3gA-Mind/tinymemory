@@ -597,9 +597,10 @@ async fn an_accepted_batch_returns_without_waiting_to_be_listed() {
         let wanted: Vec<String> = items().iter().map(StoreItem::fingerprint).collect();
         assert_eq!(ids, wanted, "{wire:?}: a receipt per item, in order");
         let polled = listings(&state) - before;
-        assert!(
-            polled <= items().len(),
-            "{wire:?}: only the replay lookups (one per scope), no visibility polling: {polled}"
+        assert_eq!(
+            polled,
+            items().len() + 1,
+            "{wire:?}: one lookup per scope plus the conversation's legacy thread scan, no visibility polling"
         );
 
         let fresh = vec![StoreItem::document(

@@ -395,8 +395,8 @@ async fn a_conversation_is_ordered_single_writes_and_one_wait() {
     assert!(!requests.iter().any(|r| r.contains("bulk")));
     assert_eq!(
         state.count("GET /memory/events"),
-        2,
-        "one replay lookup and one visibility wait for the whole conversation"
+        3,
+        "current id lookup, changed-channel thread fallback, and one visibility wait"
     );
 }
 
