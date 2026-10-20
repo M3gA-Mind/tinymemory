@@ -1227,3 +1227,6 @@ mod padded_action_tests;
 
 #[path = "single_tools/detailed_call_tests.rs"]
 mod detailed_call_tests;
+
+#[path = "single_tools/queued_tests.rs"]
+mod queued_tests;
