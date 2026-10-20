@@ -362,19 +362,6 @@ impl Importer {
     /// retry leaves the import `Done` with its failed items, so Retry stays
     /// available.
     pub fn record_resume_failure(&self, error: &str) {
-        let mut file = self.store.load();
-        if file.retrying {
-            file.state.phase = ImportPhase::Done;
-            file.state.error = Some(format!(
-                "the retry could not resume: {error}; press Retry again"
-            ));
-            file.retrying = false;
-        } else {
-            file.state.phase = ImportPhase::Error;
-            file.state.error = Some(format!("the import could not resume: {error}"));
-        }
-        // Not resumed again on its own: the failure would recur.
-        file.paused_for_credits = false;
-        self.save(&file);
+        super::record_resume_failure(self.store.as_ref(), error);
     }
 }

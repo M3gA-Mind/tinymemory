@@ -343,6 +343,90 @@ async fn touched_nodes_are_the_ones_that_received_items() {
     assert!(nodes.contains(&"source:files".to_string()));
 }
 
+#[tokio::test]
+async fn store_placed_files_items_and_builds_one_job_per_touched_node() {
+    use tinymemory_api::{ConsolidateRequest, Consolidation, ItemKind, Reach};
+    use tinymemory_tools::BackgroundJob;
+
+    let engine = ReferenceEngine::new().with_consolidation(Consolidation::OnDemand);
+    let files: Namespace = "team:acme/source:files".parse().unwrap();
+    let github: Namespace = "team:acme/source:github".parse().unwrap();
+    let items = vec![
+        StoreItem::document(
+            "notes",
+            MemoryMeta {
+                agent_id: Some("agent-1".into()),
+                ..MemoryMeta::default()
+            },
+        ),
+        StoreItem::document("repo", MemoryMeta::default()),
+        StoreItem::document("another note", MemoryMeta::default()),
+    ];
+    let mut index = 0;
+    let result = store_placed(&engine, "source-1", items, |_| {
+        index += 1;
+        Ok(if index == 2 {
+            github.clone()
+        } else {
+            files.clone()
+        })
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(result.stored.stored, 3);
+    assert_eq!(
+        result.stored.touched,
+        [files.clone(), github.clone()].into()
+    );
+    assert_eq!(
+        result.jobs,
+        vec![
+            BackgroundJob::BuildBeliefs {
+                request: ConsolidateRequest::new(Reach::exact(files.clone()))
+                    .kinds([ItemKind::Document]),
+            },
+            BackgroundJob::BuildBeliefs {
+                request: ConsolidateRequest::new(Reach::exact(github.clone()))
+                    .kinds([ItemKind::Document]),
+            },
+        ]
+    );
+    let listed = engine
+        .list(tinymemory_api::ListRequest::new(
+            tinymemory_api::MetaFilter::default(),
+            10,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(listed.items[0].meta.namespace, files);
+    assert_eq!(listed.items[0].meta.agent_id, None);
+}
+
+#[tokio::test]
+async fn store_placed_skips_jobs_without_on_demand_consolidation() {
+    use tinymemory_api::Consolidation;
+
+    let node: Namespace = "source:files".parse().unwrap();
+    for mode in [
+        Consolidation::None,
+        Consolidation::Scheduled,
+        Consolidation::Automatic,
+    ] {
+        let engine = ReferenceEngine::new().with_consolidation(mode);
+        let result = store_placed(
+            &engine,
+            "source-1",
+            vec![StoreItem::document("notes", MemoryMeta::default())],
+            |_| Ok(node.clone()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.stored.stored, 1, "{mode:?}");
+        assert!(result.jobs.is_empty(), "{mode:?}");
+    }
+}
+
 #[cfg(feature = "sources-network")]
 #[tokio::test]
 async fn a_folder_source_is_read_into_items() {

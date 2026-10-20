@@ -1717,6 +1717,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "url",
  "walkdir",
  "zip",
 ]
@@ -1730,12 +1731,16 @@ dependencies = [
  "chrono",
  "futures",
  "log",
+ "schemars",
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "tempfile",
  "thiserror",
  "tinymemory-api",
  "tokio",
+ "toml",
+ "url",
  "uuid",
 ]
 

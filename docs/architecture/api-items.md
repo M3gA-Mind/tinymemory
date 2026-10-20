@@ -112,10 +112,13 @@ enforce (`Namespace` is checked when parsed).
 
 `fingerprint()` is a stable 40-character lowercase hex string: the first 20
 bytes of the SHA-256 of the item's JSON serialisation, with
-`meta.observed_at`, `meta.observed_actor` and `meta.tool_call.id` cleared first. It covers **everything else**: kind, text,
-title, turns, learning kind, confidence, evidence, and every metadata field
-including `namespace` (a root namespace is not serialised, so root items hash
-as they did before namespaces existed).
+`meta.observed_at`, `meta.observed_actor` and `meta.tool_call.id` cleared
+first. For conversations, `meta.channel` is cleared too: channel records
+where a turn was observed, while its thread and turn positions define its
+identity. The fingerprint covers **everything else**: kind, text, title,
+turns, learning kind, confidence, evidence, and every metadata field including
+`namespace` (a root namespace is not serialised, so root items hash as they did
+before namespaces existed).
 
 `observed_at` is excluded because it records *when* the item was seen, not
 *what* it is. A host stamps it on every store; hashing it would turn a retried

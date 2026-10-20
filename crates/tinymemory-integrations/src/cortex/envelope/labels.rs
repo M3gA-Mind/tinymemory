@@ -62,6 +62,12 @@ pub(crate) fn item(id: &str) -> String {
     format!("tm:i:{}", digest(id))
 }
 
+/// The hashed thread label used to locate conversations when recovering a
+/// pre-channel-neutral item identity in one exact kind scope.
+pub(crate) fn thread(thread_id: &str) -> String {
+    format!("tm:t:{}", digest(thread_id))
+}
+
 /// One labelled metadata field: its label prefix, how to read it from
 /// stored metadata, and how to read the wanted value from a filter.
 struct MetaField {

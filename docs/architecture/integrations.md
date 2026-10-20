@@ -25,17 +25,18 @@ has its own README with the full detail:
 
 ## How the pieces compose
 
-The modules do not call each other's engines or schedule anything; the host
-composes them into the write path:
+Sources and converters do not schedule or call engines. The host chooses those
+steps; the registry's `EngineBinder` always places safety and timing around a
+configured, host-installed or transient engine:
 
 ```text
-sources ──▶ documents ──▶ safety ──▶ engine.store
+sources ──▶ documents ──▶ EngineBinder ──▶ TimedEngine ──▶ ScrubbingEngine ──▶ engine
 ```
 
 `sources` depends on `documents` for conversion (the `sources` feature implies
-`documents`). `safety` and `import` stand alone. Nothing here scrubs, converts
-or schedules on an engine's behalf: scheduling, credentials, OAuth and egress
-budgets are the host's.
+`documents`). The `cortex` feature implies `safety` so every `EngineBinder` path
+has the scrubber available. Scheduling, credential resolution, OAuth and
+egress budgets remain the host's.
 
 ## Errors
 
@@ -157,8 +158,9 @@ identifiers from every free text a `StoreItem` carries, returning a
 `Sanitized<StoreItem>` whose report tallies what changed. It runs on-device with
 regular expressions and checksums, makes no network calls, never fails, and
 errs toward redacting a harmless string rather than letting a secret into a
-long-lived store. It is not called by any engine: the host runs it between
-conversion and `store`.
+long-lived store. `ScrubbingEngine` applies it to every write method. The
+registry's `EngineBinder` composes that decorator non-optionally for every
+engine it returns.
 
 What it does, in order, on a text:
 

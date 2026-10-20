@@ -515,6 +515,23 @@ impl Envelope {
         })
     }
 
+    /// Whether the persisted metadata describes the same fingerprint identity
+    /// as `meta`, ignoring the conversation channel and volatile provenance.
+    /// Local paths are compared through the digests the envelope stores.
+    pub(crate) fn matches_meta_identity(&self, meta: &MemoryMeta) -> bool {
+        let mut expected = wire_meta(meta);
+        let mut held = self.meta.clone();
+        for value in [&mut expected, &mut held] {
+            value.channel = None;
+            value.observed_at = None;
+            value.observed_actor = None;
+            if let Some(call) = value.tool_call.as_mut() {
+                call.id = None;
+            }
+        }
+        held == expected && self.paths == PathDigests::of(meta)
+    }
+
     /// Labels a person reading the events can make sense of: the item kind,
     /// the agent (`agent:<id>`), an app thread (`thread:thread-<uuid>`, never
     /// a channel's thread), and for a document its file, and a piece's pages
