@@ -275,6 +275,23 @@ impl StoreItem {
     /// item once attribution is turned on.
     #[must_use]
     pub fn fingerprint(&self) -> String {
+        self.fingerprint_with_channel(false)
+    }
+
+    /// The former conversation fingerprint, which included its channel.
+    ///
+    /// Engines use this only to find items persisted before conversation
+    /// fingerprints became channel-neutral. New writes must use
+    /// [`Self::fingerprint`]. Returns `None` unless this is a conversation
+    /// with a channel.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn legacy_conversation_fingerprint(&self) -> Option<String> {
+        matches!(self, Self::Conversation { meta, .. } if meta.channel.is_some())
+            .then(|| self.fingerprint_with_channel(true))
+    }
+
+    fn fingerprint_with_channel(&self, include_channel: bool) -> String {
         let mut identity = self.clone();
         identity.meta_mut().observed_at = None;
         identity.meta_mut().observed_actor = None;
@@ -287,7 +304,7 @@ impl StoreItem {
         // Channel identifies where a conversation turn was observed, not the
         // thread/turn itself. Adding a channel to an existing log must not
         // create a second copy of the same turn.
-        if let Self::Conversation { meta, .. } = &mut identity {
+        if !include_channel && let Self::Conversation { meta, .. } = &mut identity {
             meta.channel = None;
         }
         // Serialising a struct cannot fail: every field is a plain string,
