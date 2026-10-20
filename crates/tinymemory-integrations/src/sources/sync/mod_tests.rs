@@ -404,21 +404,27 @@ async fn store_placed_files_items_and_builds_one_job_per_touched_node() {
 }
 
 #[tokio::test]
-async fn store_placed_skips_jobs_for_automatic_consolidation() {
+async fn store_placed_skips_jobs_without_on_demand_consolidation() {
     use tinymemory_api::Consolidation;
 
-    let engine = ReferenceEngine::new().with_consolidation(Consolidation::Automatic);
     let node: Namespace = "source:files".parse().unwrap();
-    let result = store_placed(
-        &engine,
-        "source-1",
-        vec![StoreItem::document("notes", MemoryMeta::default())],
-        |_| Ok(node.clone()),
-    )
-    .await
-    .unwrap();
-    assert_eq!(result.stored.stored, 1);
-    assert!(result.jobs.is_empty());
+    for mode in [
+        Consolidation::None,
+        Consolidation::Scheduled,
+        Consolidation::Automatic,
+    ] {
+        let engine = ReferenceEngine::new().with_consolidation(mode);
+        let result = store_placed(
+            &engine,
+            "source-1",
+            vec![StoreItem::document("notes", MemoryMeta::default())],
+            |_| Ok(node.clone()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.stored.stored, 1, "{mode:?}");
+        assert!(result.jobs.is_empty(), "{mode:?}");
+    }
 }
 
 #[cfg(feature = "sources-network")]
