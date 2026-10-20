@@ -236,11 +236,7 @@ impl SingleTool {
     /// metadata stamping, preflight, and durable acknowledgement path as
     /// [`SingleTool::new`]. Recall and fetch are unsupported by this facade.
     #[must_use]
-    pub fn queued(
-        name: impl Into<String>,
-        scope: ToolScope,
-        sink: Arc<dyn WriteSink>,
-    ) -> Self {
+    pub fn queued(name: impl Into<String>, scope: ToolScope, sink: Arc<dyn WriteSink>) -> Self {
         Self {
             name: name.into(),
             tools: None,
@@ -355,13 +351,14 @@ impl SingleTool {
         }
         match action {
             "recall" => match self.tools.as_ref() {
-                Some(_) => self
-                    .recall_with_details(&args, &context)
-                    .await
-                    .map(|(value, recall)| SingleToolOutcome {
-                        value,
-                        recall: Some(recall),
-                    }),
+                Some(_) => {
+                    self.recall_with_details(&args, &context)
+                        .await
+                        .map(|(value, recall)| SingleToolOutcome {
+                            value,
+                            recall: Some(recall),
+                        })
+                }
                 None => Err(Error::Unsupported(
                     "memory reads are not configured for this queued tool".into(),
                 )),
@@ -503,7 +500,9 @@ impl SingleTool {
         }
         ids.sort();
         ids.dedup();
-        let reach = self.scope.reach
+        let reach = self
+            .scope
+            .reach
             .clone()
             .unwrap_or_else(|| Reach::subtree(Namespace::ROOT));
         match sink.enqueue(WriteOperation::Forget { ids, reach }, &self.scope)? {
@@ -535,20 +534,19 @@ impl SingleTool {
                 })
             })
             .transpose()?;
-        let mut item =
-            MemoryOps::new(confinement(&self.scope)).learning_item(LearningOptions {
-                text: args.required_string("text")?,
-                kind,
-                confidence: if args.has("confidence") {
-                    Some(args.unit("confidence", DEFAULT_CONFIDENCE)?)
-                } else {
-                    None
-                },
-                meta: None,
-                host_meta: Some(self.learn_meta()),
-                default_namespace: self.scope.place.clone(),
-                now: Utc::now(),
-            })?;
+        let mut item = MemoryOps::new(confinement(&self.scope)).learning_item(LearningOptions {
+            text: args.required_string("text")?,
+            kind,
+            confidence: if args.has("confidence") {
+                Some(args.unit("confidence", DEFAULT_CONFIDENCE)?)
+            } else {
+                None
+            },
+            meta: None,
+            host_meta: Some(self.learn_meta()),
+            default_namespace: self.scope.place.clone(),
+            now: Utc::now(),
+        })?;
         if let StoreItem::Learning {
             evidence: stored_evidence,
             ..
@@ -692,7 +690,10 @@ fn schema(fetch_modes: &[FetchMode]) -> Value {
 }
 
 fn write_schema() -> Value {
-    let branches = [branch("learn", learn_schema()), branch("forget", forget_schema())];
+    let branches = [
+        branch("learn", learn_schema()),
+        branch("forget", forget_schema()),
+    ];
     let mut properties = Map::new();
     properties.insert(
         "action".into(),
