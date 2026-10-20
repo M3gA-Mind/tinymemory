@@ -101,6 +101,7 @@ impl RecallSettings {
         validate_range("team_limit", self.team_limit, 0, 50)?;
         validate_range("build_beliefs_every", self.build_beliefs_every, 0, 1_000)?;
         validate_range("pre_turn_timeout_ms", self.pre_turn_timeout_ms, 100, 30_000)?;
+        validate_range("compaction_timeout_ms", self.compaction_timeout_ms, 100, 30_000)?;
         validate_build_delay_secs(self.build_delay_secs)?;
         Ok(())
     }
