@@ -335,12 +335,10 @@ impl CortexEngine {
     }
 }
 
-/// Whether a store looks its items up before writing. Always, except on the
-/// turn-logging hot path: a Direct store of one single-turn conversation
-/// that waits only for acceptance. There the body key catches a retry
-/// (Direct answers it as a replay), and a listing per turn would cost the
-/// turn latency. The hosted wire always looks up: its answer need not say
-/// it replayed.
+/// Whether a store looks its items up before writing. The Direct accepted-only
+/// hot path skips that lookup only for a single-turn conversation without a
+/// channel or thread id; those fields are needed to recover a pre-change id.
+/// The hosted wire always looks up because its answer need not say it replayed.
 fn looks_up(wire: CortexWire, items: &[StoreItem], wait: WaitFor) -> bool {
     let hot = matches!(
         items,

@@ -246,7 +246,7 @@ fn turn(text: &str) -> StoreItem {
 }
 
 #[tokio::test]
-async fn a_logged_turn_skips_the_lookup_and_a_retry_is_a_replay() {
+async fn a_logged_turn_checks_legacy_identity_and_a_retry_is_a_replay() {
     use tinymemory_api::WriteOptions;
     let (endpoint, state) = crate::cortex::testing::direct_double().await;
     let engine = crate::cortex::testing::direct_engine(&endpoint);
@@ -257,8 +257,8 @@ async fn a_logged_turn_skips_the_lookup_and_a_retry_is_a_replay() {
     assert!(!first.replayed);
     assert_eq!(
         state.count("GET /v1/events"),
-        0,
-        "no lookup on the hot path"
+        2,
+        "current id lookup plus the changed-channel thread fallback"
     );
     let retry = engine
         .store_with(turn("Ship it on Friday."), WriteOptions::accepted())
@@ -267,6 +267,29 @@ async fn a_logged_turn_skips_the_lookup_and_a_retry_is_a_replay() {
     assert!(retry.replayed, "CortexDB answered the retry as a replay");
     assert_eq!(retry.id, first.id);
     assert_eq!(state.event_count(), 1, "written once");
+    assert_eq!(state.count("GET /v1/events"), 3);
+}
+
+#[tokio::test]
+async fn an_unidentified_logged_turn_still_skips_the_lookup() {
+    use tinymemory_api::WriteOptions;
+    let (endpoint, state) = crate::cortex::testing::direct_double().await;
+    let engine = crate::cortex::testing::direct_engine(&endpoint);
+    let item = StoreItem::Conversation {
+        turns: vec![tinymemory_api::Turn::new(
+            tinymemory_api::Role::User,
+            "No thread or channel identity.",
+        )],
+        meta: MemoryMeta::default(),
+    };
+    let first = engine
+        .store_with(item.clone(), WriteOptions::accepted())
+        .await
+        .unwrap();
+    let retry = engine.store_with(item, WriteOptions::accepted()).await.unwrap();
+    assert!(retry.replayed);
+    assert_eq!(retry.id, first.id);
+    assert_eq!(state.event_count(), 1);
     assert_eq!(state.count("GET /v1/events"), 0);
 }
 
