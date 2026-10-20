@@ -123,7 +123,6 @@ struct ThreadPlan {
 struct SourceThread {
     thread_id: String,
     turns: Vec<PastTurn>,
-    stored: u32,
 }
 
 /// A planned backfill run, returned by [`Backfiller::begin`].
@@ -198,14 +197,17 @@ impl Backfiller {
     ) -> Result<BackfillView> {
         let file = store.load();
         let state = status_state(&file.state, running);
-        let threads = source_threads(source, &file.stored).await?;
-        let plans = threads
-            .into_iter()
-            .filter_map(|thread| {
-                let stored = thread.stored;
-                plan_thread(thread, None, stored)
-            })
-            .collect::<Vec<_>>();
+        let listed = list_thread_ids(source).await?;
+        let mut plans = Vec::new();
+        for thread_id in listed {
+            let stored = file.stored.get(&thread_id).copied().unwrap_or(0);
+            let Some(thread) = source_thread(source, thread_id).await else {
+                continue;
+            };
+            if let Some(plan) = plan_thread(thread, None, stored) {
+                plans.push(plan);
+            }
+        }
         Ok(status_view(state, &plans))
     }
 
@@ -279,13 +281,17 @@ impl Backfiller {
         // the selected agent. `conversations_filter` deliberately falls back
         // to a broad root filter when its optional agent cannot be resolved.
         self.layout.conversations(&self.agent_id)?;
-        let threads = source_threads(self.source.as_ref(), &file.stored).await?;
+        let listed = list_thread_ids(self.source.as_ref()).await?;
         let mut plans = Vec::new();
-        for thread in threads {
+        for thread_id in listed {
+            let saved = file.stored.get(&thread_id).copied().unwrap_or(0);
+            let Some(thread) = source_thread(self.source.as_ref(), thread_id).await else {
+                continue;
+            };
             let first_live = self.first_live_turn(&thread.thread_id).await;
             let stored = match self.stored_turns(&thread.thread_id, &thread.turns).await {
                 Ok(stored) => stored,
-                Err(Error::Unsupported(_)) => thread.stored,
+                Err(Error::Unsupported(_)) => saved,
                 Err(error) => return Err(error),
             };
             if let Some(plan) = plan_thread(thread, first_live, stored) {
@@ -414,35 +420,36 @@ impl Backfiller {
     }
 }
 
-async fn source_threads(
-    source: &dyn ThreadSource,
-    stored: &BTreeMap<String, u32>,
-) -> Result<Vec<SourceThread>> {
-    let listed = source
+async fn list_thread_ids(source: &dyn ThreadSource) -> Result<Vec<String>> {
+    source
         .list_threads()
         .await
-        .map_err(|error| Error::Engine(format!("reading chat threads failed: {error}")))?;
-    let mut threads = Vec::new();
-    for thread_id in listed {
-        let messages = match source.messages(&thread_id).await {
-            Ok(messages) => messages,
-            Err(error) => {
-                log::warn!("[memory:backfill] a thread was unreadable; skipped: {error}");
-                continue;
-            }
-        };
-        threads.push(SourceThread {
-            stored: stored.get(&thread_id).copied().unwrap_or(0),
-            thread_id,
-            turns: turns_of(&messages),
-        });
-    }
-    Ok(threads)
+        .map_err(|error| Error::Engine(format!("reading chat threads failed: {error}")))
+}
+
+async fn source_thread(
+    source: &dyn ThreadSource,
+    thread_id: String,
+) -> Option<SourceThread> {
+    let messages = match source.messages(&thread_id).await {
+        Ok(messages) => messages,
+        Err(error) => {
+            log::warn!("[memory:backfill] a thread was unreadable; skipped: {error}");
+            return None;
+        }
+    };
+    Some(SourceThread {
+        thread_id,
+        turns: turns_of(&messages),
+    })
 }
 
 fn plan_thread(thread: SourceThread, first_live: Option<usize>, stored: u32) -> Option<ThreadPlan> {
     let range = pending_range(thread.turns.len(), first_live, stored);
-    (!range.is_empty()).then_some(ThreadPlan {
+    if range.is_empty() {
+        return None;
+    }
+    Some(ThreadPlan {
         thread_id: thread.thread_id,
         turns: thread.turns,
         range,
