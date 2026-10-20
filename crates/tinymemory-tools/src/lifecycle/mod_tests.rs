@@ -195,6 +195,7 @@ fn recall_settings_validate_inclusive_host_ranges_without_mutating_settings() {
             team_limit: 0,
             build_beliefs_every: 0,
             pre_turn_timeout_ms: 100,
+            compaction_timeout_ms: 100,
             ..RecallSettings::default()
         },
         RecallSettings {
@@ -204,6 +205,7 @@ fn recall_settings_validate_inclusive_host_ranges_without_mutating_settings() {
             team_limit: 50,
             build_beliefs_every: 1_000,
             pre_turn_timeout_ms: 30_000,
+            compaction_timeout_ms: 30_000,
             ..RecallSettings::default()
         },
     ];
@@ -281,6 +283,20 @@ fn recall_settings_validate_inclusive_host_ranges_without_mutating_settings() {
                 ..RecallSettings::default()
             },
             "pre_turn_timeout_ms must be between 100 and 30000",
+        ),
+        (
+            RecallSettings {
+                compaction_timeout_ms: 99,
+                ..RecallSettings::default()
+            },
+            "compaction_timeout_ms must be between 100 and 30000",
+        ),
+        (
+            RecallSettings {
+                compaction_timeout_ms: 30_001,
+                ..RecallSettings::default()
+            },
+            "compaction_timeout_ms must be between 100 and 30000",
         ),
         (
             RecallSettings {

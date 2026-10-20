@@ -1,3 +1,5 @@
+//! Whitespace-padded actions dispatch to recall, fetch, learn, and forget.
+
 use super::*;
 
 async fn seed_green_tea(engine: &ReferenceEngine, scope: &ToolScope) -> tinymemory_api::Result<()> {

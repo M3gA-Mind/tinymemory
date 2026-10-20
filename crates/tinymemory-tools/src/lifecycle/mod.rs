@@ -412,6 +412,37 @@ impl AgentMemory {
         self.read(start.focus, sections).await
     }
 
+    /// Recalls the context for a turn without logging it. A resumed turn gets
+    /// its earlier thread history, while `in_prompt_from` excludes turns the
+    /// host already included in the prompt.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidRequest`] for a blank thread id or user text. Engine
+    /// failures never fail the call.
+    pub(crate) async fn pre_turn_read(&self, turn: &PreTurn) -> Result<ContextPack> {
+        let thread_id = non_blank(&turn.thread_id, "thread id")?;
+        let text = non_blank(&turn.user_text, "user text")?;
+        let mut sections = Vec::new();
+        if turn.resumed && self.policy.history_limit > 0 {
+            sections.push(self.thread_section(thread_id, self.policy.history_limit));
+        }
+        sections.extend(self.standard_sections());
+        let mut request = self.request(Some(text.to_string()), sections);
+        request.exclude_thread = Some(ThreadWindow {
+            thread_id: thread_id.to_string(),
+            from_turn: turn.in_prompt_from,
+        });
+        crate::recall::run(
+            self.engine.as_ref(),
+            &request,
+            None,
+            None,
+            self.team_exclusion(&request),
+        )
+        .await
+    }
+
     /// Logs the user's turn and, concurrently, recalls the context to inject
     /// before the model runs.
     ///

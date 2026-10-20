@@ -91,9 +91,10 @@ impl SourceSpec {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            namespace
+            let root = namespace
                 .parse::<Namespace>()
                 .map_err(|error| Error::Invalid(error.to_string()))?;
+            MemoryLayout::new(root).map_err(|error| Error::Invalid(error.to_string()))?;
         }
         Ok(target)
     }

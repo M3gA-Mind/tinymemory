@@ -19,7 +19,7 @@ use serde::Serialize;
 use tinymemory_api::{Error, Hit, TimeHint, ToolCallRef};
 
 use super::date_hint::{self, DateHintModel};
-use super::{AgentMemory, Compaction, PostTurn, PreTurn, SessionStart};
+use super::{AgentMemory, Compaction, PostTurn, PreTurn};
 use crate::background::BackgroundJob;
 
 /// Opening tag of an injected memory pack.
@@ -362,16 +362,7 @@ impl TurnHooks {
                     None
                 }
             } else if options.recall {
-                let outcome = if turn.resumed {
-                    memory
-                        .start_session(SessionStart {
-                            thread_id: Some(turn.thread_id),
-                            focus: Some(turn.user_text),
-                        })
-                        .await
-                } else {
-                    memory.recall(&turn.user_text).await
-                };
+                let outcome = memory.pre_turn_read(&turn).await;
                 TurnPack::from_outcome(outcome, true, engine_id)
             } else {
                 None

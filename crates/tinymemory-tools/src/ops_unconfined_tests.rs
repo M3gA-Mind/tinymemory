@@ -1,3 +1,5 @@
+//! Unconfined `MemoryOps` behavior: caller reach, namespaces, and deletion.
+
 use super::*;
 use tinymemory_api::GetRequest;
 

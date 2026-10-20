@@ -525,7 +525,7 @@ async fn resumed_pack_respects_budget_and_deduplicates_thread_hits_without_loggi
     }
     let before = stored_conversations(fixture.engine.as_ref().unwrap()).await;
     let mut request = PreTurn::new("thread", 8, "show the earlier project milestones");
-    request.in_prompt_from = 8;
+    request.in_prompt_from = 4;
     request.resumed = true;
     let recalled = fixture
         .hooks
@@ -533,6 +533,13 @@ async fn resumed_pack_respects_budget_and_deduplicates_thread_hits_without_loggi
         .await
         .expect("resumed nonlogging lookup returns earlier thread context");
     assert!(recalled.markdown.contains("Earlier in this thread"));
+    assert!(recalled.markdown.contains("project milestone 0"));
+    assert!(recalled.markdown.contains("project milestone 1"));
+    assert!(
+        !recalled.markdown.contains("project milestone 2"),
+        "turns already in the prompt are excluded"
+    );
+    assert!(!recalled.markdown.contains("project milestone 3"));
     assert!(recalled.tokens <= 180);
     let bullets: Vec<_> = recalled
         .markdown

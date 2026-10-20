@@ -69,8 +69,9 @@ pub struct ToolScope {
     pub thread_id: Option<String>,
     /// The agent that made the call.
     pub agent_id: Option<String>,
-    /// The provider-assigned call name and id. The single facade replaces the
-    /// name with its configured tool name before stamping a learning.
+    /// The provider-assigned call name and id. The single facade preserves
+    /// them; its configured tool name is used only when no call reference is
+    /// set.
     pub tool_call: Option<tinymemory_api::ToolCallRef>,
 }
 
