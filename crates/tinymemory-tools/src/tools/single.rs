@@ -559,7 +559,6 @@ impl SingleTool {
 
     fn learn_meta(&self) -> MemoryMeta {
         let call = self
-            .tools
             .scope
             .tool_call
             .clone()
