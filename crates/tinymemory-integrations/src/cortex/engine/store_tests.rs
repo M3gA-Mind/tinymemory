@@ -351,6 +351,8 @@ async fn a_logged_turn_checks_legacy_identity_and_a_retry_is_a_replay() {
         request.contains(&labels::digest("t-hot"))
             && request.contains("scope=app%3Atinymemory%2Fapp%3Aconversations")
     }));
+    let requests_before_retry = first_requests.len();
+    let writes_before_retry = event_write_count(&state);
     let retry = engine
         .store_with(turn("Ship it on Friday."), WriteOptions::accepted())
         .await
@@ -358,18 +360,18 @@ async fn a_logged_turn_checks_legacy_identity_and_a_retry_is_a_replay() {
     assert!(retry.replayed, "CortexDB answered the retry as a replay");
     assert_eq!(retry.id, first.id);
     assert_eq!(state.event_count(), 1, "written once");
+    assert_eq!(event_write_count(&state), writes_before_retry);
     assert_eq!(state.count("GET /v1/events"), 3);
     let all_requests = state.requests();
-    let retry_read = all_requests
-        .iter()
-        .rposition(|request| request.starts_with("GET /v1/events"))
-        .unwrap();
-    let retry_write = all_requests
-        .iter()
-        .rposition(|request| request.starts_with("POST /v1/experience"))
-        .unwrap();
-    assert!(retry_read < retry_write, "retry lookup precedes its write");
-    assert!(all_requests[retry_read].contains(&labels::digest(&first.id.0)));
+    let retry_requests = &all_requests[requests_before_retry..];
+    assert!(retry_requests.iter().any(|request| {
+        request.starts_with("GET /v1/events") && request.contains(&labels::digest(&first.id.0))
+    }));
+    assert!(
+        !retry_requests
+            .iter()
+            .any(|request| request.starts_with("POST /v1/experience"))
+    );
 }
 
 #[tokio::test]
