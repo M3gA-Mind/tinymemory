@@ -602,6 +602,44 @@ async fn an_accepted_batch_returns_without_waiting_to_be_listed() {
             items().len() + 1,
             "{wire:?}: one lookup per scope plus the conversation's legacy thread scan, no visibility polling"
         );
+        let requests = state.requests();
+        let read_requests: Vec<_> = requests
+            .iter()
+            .enumerate()
+            .filter(|(_, request)| {
+                request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events")
+            })
+            .collect();
+        let first_write = requests
+            .iter()
+            .position(|request| {
+                request.starts_with("POST /v1/experience")
+                    || request.starts_with("POST /memory/experience")
+            })
+            .unwrap();
+        assert!(read_requests.iter().all(|(index, _)| *index < first_write));
+        for item in items() {
+            let item_digest = crate::cortex::envelope::labels::digest(&item.fingerprint());
+            let scope = crate::cortex::envelope::scope_path(&item.meta().namespace, item.kind());
+            let encoded_scope = crate::cortex::transport::urlencode(&scope);
+            assert!(
+                read_requests.iter().any(|(_, request)| {
+                    request.contains(&item_digest)
+                        && request.contains(&format!("scope={encoded_scope}"))
+                }),
+                "{wire:?}: current id queried in its own scope: {scope}"
+            );
+        }
+        let thread_scope = crate::cortex::transport::urlencode(
+            &crate::cortex::envelope::scope_path(&items()[1].meta().namespace, items()[1].kind()),
+        );
+        assert!(
+            read_requests.iter().any(|(_, request)| {
+                request.contains(&crate::cortex::envelope::labels::digest("t-chat"))
+                    && request.contains(&format!("scope={thread_scope}"))
+            }),
+            "{wire:?}: compatibility fallback is confined to the conversation scope"
+        );
 
         let fresh = vec![StoreItem::document(
             "Visible stores wait for the listing.",

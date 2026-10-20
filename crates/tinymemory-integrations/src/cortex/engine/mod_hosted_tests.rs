@@ -389,7 +389,9 @@ async fn a_write_polls_until_its_event_is_listed() {
 async fn a_conversation_is_ordered_single_writes_and_one_wait() {
     let (endpoint, state) = hosted_double().await;
     let engine = hosted_engine(&endpoint);
-    engine.store(sample_items().remove(1)).await.unwrap();
+    let item = sample_items().remove(1);
+    let current_id = item.fingerprint();
+    engine.store(item.clone()).await.unwrap();
     let requests = state.requests();
     assert_eq!(state.count("POST /memory/experience"), 3, "{requests:?}");
     assert!(!requests.iter().any(|r| r.contains("bulk")));
@@ -397,6 +399,39 @@ async fn a_conversation_is_ordered_single_writes_and_one_wait() {
         state.count("GET /memory/events"),
         3,
         "current id lookup, changed-channel thread fallback, and one visibility wait"
+    );
+    let reads: Vec<_> = requests
+        .iter()
+        .enumerate()
+        .filter(|(_, request)| request.starts_with("GET /memory/events"))
+        .collect();
+    let writes: Vec<_> = requests
+        .iter()
+        .enumerate()
+        .filter(|(_, request)| request.starts_with("POST /memory/experience"))
+        .collect();
+    let first_write = writes.first().unwrap().0;
+    let last_write = writes.last().unwrap().0;
+    assert_eq!(reads.len(), 3);
+    assert!(reads[0].0 < first_write && reads[1].0 < first_write);
+    assert!(
+        reads[0]
+            .1
+            .contains(&crate::cortex::envelope::labels::digest(&current_id))
+    );
+    assert!(
+        reads[1]
+            .1
+            .contains(&crate::cortex::envelope::labels::digest("t-chat"))
+    );
+    assert!(
+        reads[2].0 > last_write,
+        "the final read confirms visibility"
+    );
+    assert!(
+        reads.iter().all(|(_, request)| {
+            request.contains("scope=app%3Atinymemory%2Fapp%3Aconversations")
+        })
     );
 }
 

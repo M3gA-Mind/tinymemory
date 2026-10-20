@@ -183,6 +183,7 @@ async fn a_channel_inclusive_legacy_id_without_a_thread_is_replayed() {
     for (engine, state) in both().await {
         let item = conversation("telegram", None, "root");
         let legacy_id = seed_legacy_conversation(&engine, &state, &item, usize::MAX);
+        let current_id = item.fingerprint();
         let writes = event_write_count(&state);
 
         let receipt = engine.store(item).await.unwrap();
@@ -190,6 +191,22 @@ async fn a_channel_inclusive_legacy_id_without_a_thread_is_replayed() {
         assert!(receipt.replayed, "{:?}", engine.wire());
         assert_eq!(receipt.id.as_str(), legacy_id, "{:?}", engine.wire());
         assert_eq!(event_write_count(&state), writes, "{:?}", engine.wire());
+        let reads: Vec<_> = state
+            .requests()
+            .into_iter()
+            .filter(|request| {
+                request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events")
+            })
+            .collect();
+        assert_eq!(
+            reads.len(),
+            1,
+            "{:?}: exact legacy id needs one lookup",
+            engine.wire()
+        );
+        assert!(reads[0].contains(&labels::digest(&current_id)));
+        assert!(reads[0].contains(&labels::digest(&legacy_id)));
+        assert!(reads[0].contains("scope=app%3Atinymemory%2Fapp%3Aconversations"));
     }
 }
 
@@ -201,16 +218,65 @@ async fn a_changed_channel_replays_only_inside_its_namespace() {
         let writes = event_write_count(&state);
 
         let same_scope = conversation("slack", Some("thread-1"), "team:alpha");
+        let current_id = same_scope.fingerprint();
+        let new_channel_legacy_id = same_scope.legacy_conversation_fingerprint().unwrap();
+        let before_replay = state.requests().len();
         let replay = engine.store(same_scope).await.unwrap();
         assert!(replay.replayed, "{:?}", engine.wire());
         assert_eq!(replay.id.as_str(), legacy_id, "{:?}", engine.wire());
         assert_eq!(event_write_count(&state), writes, "{:?}", engine.wire());
+        let replay_reads: Vec<_> = state.requests()[before_replay..]
+            .iter()
+            .filter(|request| {
+                request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events")
+            })
+            .collect();
+        assert_eq!(replay_reads.len(), 2, "{:?}", engine.wire());
+        assert!(replay_reads[0].contains("team%3Aalpha%2Fapp%3Aconversations"));
+        assert!(replay_reads[0].contains(&labels::digest(&current_id)));
+        assert!(replay_reads[0].contains(&labels::digest(&new_channel_legacy_id)));
+        assert!(replay_reads[1].contains("team%3Aalpha%2Fapp%3Aconversations"));
+        assert!(replay_reads[1].contains(&labels::digest("thread-1")));
 
         let other_scope = conversation("slack", Some("thread-1"), "team:beta");
         let new_id = other_scope.fingerprint();
+        let before_isolation = state.requests().len();
         let isolated = engine.store(other_scope).await.unwrap();
         assert!(!isolated.replayed, "{:?}", engine.wire());
         assert_eq!(isolated.id.as_str(), new_id, "{:?}", engine.wire());
+        let requests = state.requests();
+        let writes: Vec<_> = requests
+            .iter()
+            .enumerate()
+            .filter(|(_, request)| {
+                request.starts_with("POST /v1/experience")
+                    || request.starts_with("POST /memory/experience")
+            })
+            .collect();
+        let first_write = writes.first().unwrap().0;
+        let last_write = writes.last().unwrap().0;
+        let isolation_reads: Vec<_> = requests
+            .iter()
+            .enumerate()
+            .skip(before_isolation)
+            .filter(|(_, request)| {
+                request.starts_with("GET /v1/events") || request.starts_with("GET /memory/events")
+            })
+            .collect();
+        let before_write: Vec<_> = isolation_reads
+            .iter()
+            .filter(|(index, _)| *index < first_write)
+            .collect();
+        let after_write: Vec<_> = isolation_reads
+            .iter()
+            .filter(|(index, _)| *index > last_write)
+            .collect();
+        assert_eq!(before_write.len(), 2, "{:?}", engine.wire());
+        assert!(!after_write.is_empty(), "visible write confirms listing");
+        assert!(isolation_reads.iter().all(|(_, request)| {
+            request.contains("team%3Abeta%2Fapp%3Aconversations")
+                && !request.contains("team%3Aalpha%2Fapp%3Aconversations")
+        }));
     }
 }
 
@@ -264,6 +330,26 @@ async fn a_logged_turn_checks_legacy_identity_and_a_retry_is_a_replay() {
         2,
         "current id lookup plus the changed-channel thread fallback"
     );
+    let first_requests = state.requests();
+    let first_reads: Vec<_> = first_requests
+        .iter()
+        .enumerate()
+        .filter(|(_, request)| request.starts_with("GET /v1/events"))
+        .collect();
+    let first_write = first_requests
+        .iter()
+        .position(|request| request.starts_with("POST /v1/experience"))
+        .unwrap();
+    let current_id = turn("Ship it on Friday.").fingerprint();
+    assert!(first_reads.iter().all(|(index, _)| *index < first_write));
+    assert!(first_reads.iter().any(|(_, request)| {
+        request.contains(&labels::digest(&current_id))
+            && request.contains("scope=app%3Atinymemory%2Fapp%3Aconversations")
+    }));
+    assert!(first_reads.iter().any(|(_, request)| {
+        request.contains(&labels::digest("t-hot"))
+            && request.contains("scope=app%3Atinymemory%2Fapp%3Aconversations")
+    }));
     let retry = engine
         .store_with(turn("Ship it on Friday."), WriteOptions::accepted())
         .await
@@ -272,6 +358,17 @@ async fn a_logged_turn_checks_legacy_identity_and_a_retry_is_a_replay() {
     assert_eq!(retry.id, first.id);
     assert_eq!(state.event_count(), 1, "written once");
     assert_eq!(state.count("GET /v1/events"), 3);
+    let all_requests = state.requests();
+    let retry_read = all_requests
+        .iter()
+        .rposition(|request| request.starts_with("GET /v1/events"))
+        .unwrap();
+    let retry_write = all_requests
+        .iter()
+        .rposition(|request| request.starts_with("POST /v1/experience"))
+        .unwrap();
+    assert!(retry_read < retry_write, "retry lookup precedes its write");
+    assert!(all_requests[retry_read].contains(&labels::digest(&first.id.0)));
 }
 
 #[tokio::test]
