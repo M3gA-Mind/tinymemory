@@ -54,6 +54,11 @@ async fn queued_facade_queues_learn_and_forget_with_trusted_metadata_and_acks() 
     let scope = trusted_scope(true);
     let sink = Arc::new(RecordingSink::default());
     let tool = SingleTool::queued("community_memory", scope.clone(), sink.clone());
+    let spec = tool.spec();
+    assert_eq!(spec.name, "community_memory");
+    assert_eq!(spec.parameters["properties"]["action"]["enum"], json!(["learn", "forget"]));
+    assert_eq!(spec.parameters["oneOf"].as_array().map(Vec::len), Some(2));
+    assert!(spec.parameters.to_string().find("enum\":[]").is_none());
 
     let learn = tool
         .call(
@@ -97,7 +102,7 @@ async fn queued_facade_queues_learn_and_forget_with_trusted_metadata_and_acks() 
             && workspace.as_deref() == Some("/trusted/workspace")
             && thread_id.as_deref() == Some("trusted-thread")
             && agent_id.as_deref() == Some("trusted-agent")
-            && tool_call.name == "community_memory"
+            && tool_call.name == "provider-memory"
             && tool_call.id.as_deref() == Some("call-queued-1")
     ));
     assert!(matches!(
@@ -132,6 +137,21 @@ async fn queued_facade_preserves_readonly_and_preflight_ordering() {
     ));
     assert_eq!(denied.preflights.lock().expect("preflight before parsing").len(), 1);
     assert!(denied.writes.lock().expect("denied before enqueue").is_empty());
+
+    let accepting = Arc::new(RecordingSink::default());
+    let tool = SingleTool::queued("memory", trusted_scope(true), accepting.clone());
+    assert!(tool
+        .call(
+            json!({"action":"learn","unexpected":true}),
+            CallContext::default()
+        )
+        .await
+        .is_err());
+    assert!(tool
+        .call(json!({"action":"unknown"}), CallContext::default())
+        .await
+        .is_err());
+    assert!(accepting.writes.lock().expect("invalid calls do not enqueue").is_empty());
 }
 
 #[tokio::test]
