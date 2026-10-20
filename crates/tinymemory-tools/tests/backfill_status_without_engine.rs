@@ -1,3 +1,5 @@
+//! Public API tests for backfill status while no memory engine is bound.
+
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
