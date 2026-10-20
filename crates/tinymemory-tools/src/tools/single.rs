@@ -201,7 +201,8 @@ impl<S: ListStore<Entry> + 'static> WriteSink for PendingWriteSink<S> {
 /// One model-facing name that dispatches its action to TinyMemory.
 pub struct SingleTool {
     name: String,
-    tools: MemoryTools,
+    tools: Option<MemoryTools>,
+    scope: ToolScope,
     write_sink: Option<Arc<dyn WriteSink>>,
 }
 
@@ -210,6 +211,7 @@ impl std::fmt::Debug for SingleTool {
         f.debug_struct("SingleTool")
             .field("name", &self.name)
             .field("tools", &self.tools)
+            .field("scope", &self.scope)
             .field("has_write_sink", &self.write_sink.is_some())
             .finish()
     }
@@ -221,8 +223,29 @@ impl SingleTool {
     pub fn new(name: impl Into<String>, tools: MemoryTools) -> Self {
         Self {
             name: name.into(),
-            tools,
+            scope: tools.scope.clone(),
+            tools: Some(tools),
             write_sink: None,
+        }
+    }
+
+    /// One write-only tool that queues learn and forget actions without
+    /// requiring a memory engine to be configured or available.
+    ///
+    /// The trusted scope and write sink are used by the same validation,
+    /// metadata stamping, preflight, and durable acknowledgement path as
+    /// [`SingleTool::new`]. Recall and fetch are unsupported by this facade.
+    #[must_use]
+    pub fn queued(
+        name: impl Into<String>,
+        scope: ToolScope,
+        sink: Arc<dyn WriteSink>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            tools: None,
+            scope,
+            write_sink: Some(sink),
         }
     }
 
@@ -247,7 +270,10 @@ impl SingleTool {
                 "mean a remote write has finished."
             )
             .to_string(),
-            parameters: schema(self.tools.engine.descriptor().fetch_modes.as_slice()),
+            parameters: self.tools.as_ref().map_or_else(
+                write_schema,
+                |tools| schema(tools.engine.descriptor().fetch_modes.as_slice()),
+            ),
         }
     }
 
@@ -309,26 +335,36 @@ impl SingleTool {
                 &format!("unknown action {raw_action}; use recall, fetch, learn or forget"),
             ));
         }
-        if matches!(action, "learn" | "forget") && !self.tools.scope.writes {
+        if matches!(action, "learn" | "forget") && !self.scope.writes {
             return Err(Error::Unsupported(
                 "memory writes are not offered in this read-only scope".into(),
             ));
         }
         match action {
-            "recall" => self
-                .recall_with_details(&args, &context)
-                .await
-                .map(|(value, recall)| SingleToolOutcome {
-                    value,
-                    recall: Some(recall),
-                }),
-            "fetch" => self
-                .fetch(&args, &context)
-                .await
-                .map(|value| SingleToolOutcome {
-                    value,
-                    recall: None,
-                }),
+            "recall" => match self.tools.as_ref() {
+                Some(_) => self
+                    .recall_with_details(&args, &context)
+                    .await
+                    .map(|(value, recall)| SingleToolOutcome {
+                        value,
+                        recall: Some(recall),
+                    }),
+                None => Err(Error::Unsupported(
+                    "memory reads are not configured for this queued tool".into(),
+                )),
+            },
+            "fetch" => match self.tools.as_ref() {
+                Some(_) => self
+                    .fetch(&args, &context)
+                    .await
+                    .map(|value| SingleToolOutcome {
+                        value,
+                        recall: None,
+                    }),
+                None => Err(Error::Unsupported(
+                    "memory reads are not configured for this queued tool".into(),
+                )),
+            },
             "learn" => self.learn(&args).map(|value| SingleToolOutcome {
                 value,
                 recall: None,
@@ -353,13 +389,17 @@ impl SingleTool {
             object.remove("instructions");
         }
         let answer = super::read::recall_answer_with_filter(
-            self.tools.engine.as_ref(),
-            &self.tools.scope,
+            self.tools
+                .as_ref()
+                .ok_or_else(|| Error::Unsupported("memory reads are not configured".into()))?
+                .engine
+                .as_ref(),
+            &self.scope,
             &value,
             filter,
             RecallMode::Evidence,
             None,
-            calling_thread(&self.tools.scope, context),
+            calling_thread(&self.scope, context),
         )
         .await?;
         // The read parser has validated this non-blank string and passes it
@@ -394,12 +434,16 @@ impl SingleTool {
         let filter = take_filter(&mut value)?;
         let value = without_model_limit(value);
         let page = super::read::fetch_page_first_with_filter(
-            self.tools.engine.as_ref(),
-            &self.tools.scope,
+            self.tools
+                .as_ref()
+                .ok_or_else(|| Error::Unsupported("memory reads are not configured".into()))?
+                .engine
+                .as_ref(),
+            &self.scope,
             &value,
             filter,
             Some(FETCH_TOP),
-            calling_thread(&self.tools.scope, context),
+            calling_thread(&self.scope, context),
         )
         .await?;
         let mut result = json!({
@@ -417,9 +461,9 @@ impl SingleTool {
             .write_sink
             .as_ref()
             .ok_or_else(|| Error::Unsupported("memory write queue is not configured".into()))?;
-        sink.preflight(&self.tools.scope)?;
+        sink.preflight(&self.scope)?;
         let item = self.learning_item(value)?;
-        match sink.enqueue(WriteOperation::Learn { item }, &self.tools.scope)? {
+        match sink.enqueue(WriteOperation::Learn { item }, &self.scope)? {
             Ack::Learned { id } => Ok(json!({ "id": id, "status": LEARN_QUEUED })),
             Ack::Forgotten { .. } => Err(Error::Unavailable(
                 "memory queue returned an acknowledgement for the wrong operation".into(),
@@ -432,7 +476,7 @@ impl SingleTool {
             .write_sink
             .as_ref()
             .ok_or_else(|| Error::Unsupported("memory write queue is not configured".into()))?;
-        sink.preflight(&self.tools.scope)?;
+        sink.preflight(&self.scope)?;
         let value = action_args(value, false)?;
         let args = Args::parse(TOOL_NAME, &value, &["ids"])?;
         let raw_ids = args.strings("ids")?;
@@ -446,13 +490,10 @@ impl SingleTool {
         }
         ids.sort();
         ids.dedup();
-        let reach = self
-            .tools
-            .scope
-            .reach
+        let reach = self.scope.reach
             .clone()
             .unwrap_or_else(|| Reach::subtree(Namespace::ROOT));
-        match sink.enqueue(WriteOperation::Forget { ids, reach }, &self.tools.scope)? {
+        match sink.enqueue(WriteOperation::Forget { ids, reach }, &self.scope)? {
             Ack::Forgotten { queued } => Ok(json!({
                 "queued": queued,
                 "status": FORGET_QUEUED
@@ -482,7 +523,7 @@ impl SingleTool {
             })
             .transpose()?;
         let mut item =
-            MemoryOps::new(confinement(&self.tools.scope)).learning_item(LearningOptions {
+            MemoryOps::new(confinement(&self.scope)).learning_item(LearningOptions {
                 text: args.required_string("text")?,
                 kind,
                 confidence: if args.has("confidence") {
@@ -492,7 +533,7 @@ impl SingleTool {
                 },
                 meta: None,
                 host_meta: Some(self.learn_meta()),
-                default_namespace: self.tools.scope.place.clone(),
+                default_namespace: self.scope.place.clone(),
                 now: Utc::now(),
             })?;
         if let StoreItem::Learning {
@@ -516,10 +557,10 @@ impl SingleTool {
                 id: None,
             });
         MemoryMeta {
-            namespace: self.tools.scope.place.clone(),
-            workspace: self.tools.scope.workspace.clone(),
-            thread_id: self.tools.scope.thread_id.clone(),
-            agent_id: self.tools.scope.agent_id.clone(),
+            namespace: self.scope.place.clone(),
+            workspace: self.scope.workspace.clone(),
+            thread_id: self.scope.thread_id.clone(),
+            agent_id: self.scope.agent_id.clone(),
             tool_call: Some(call),
             source: SourceRef {
                 kind: SourceKind::Agent,
