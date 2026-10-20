@@ -98,7 +98,9 @@ impl Binding {
 /// clears them. This preserves the constructed HTTP client when callers drop a
 /// temporary [`Binding`]. Endpoint/settings changes, credential identity,
 /// static credential values, and scrub policies all produce distinct entries.
-/// The cache is per binder (and therefore per host), not process-global.
+/// There is no automatic eviction: a host with high configuration churn
+/// should invalidate periodically or when its configuration is retired. The
+/// cache is per binder (and therefore per host), not process-global.
 pub struct EngineBinder {
     endpoint_source: Arc<EndpointSource>,
     cache: Mutex<HashMap<[u8; 32], BoundEngine>>,
@@ -217,7 +219,9 @@ impl EngineBinder {
     ///
     /// Hosts use this for a tenant- or profile-specific engine whose lifetime
     /// is limited to the current binding. It is protected by both decorators
-    /// just like configured and installed engines.
+    /// just like configured and installed engines. It is not inserted into
+    /// the configured-engine cache; dropping the returned binding releases its
+    /// wrapper and engine once no other references remain.
     #[must_use]
     pub fn bind_external(
         &self,
@@ -250,8 +254,10 @@ impl EngineBinder {
             .is_some()
     }
 
-    /// Drops configured-engine cache entries. An installed host engine is a
-    /// separate slot and remains installed.
+    /// Drops every configured-engine cache entry, releasing strong engine
+    /// references when callers also drop their bindings. Hosts should call
+    /// this when settings are retired and periodically under high churn. An
+    /// installed host engine is a separate slot and remains installed.
     pub fn invalidate(&self) {
         self.cache
             .lock()

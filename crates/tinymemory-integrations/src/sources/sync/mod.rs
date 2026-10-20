@@ -354,8 +354,7 @@ pub struct Stored {
     pub stored: u64,
     /// Items the engine refused one by one.
     pub failed: u64,
-    /// The nodes that received at least one item, for the host's belief
-    /// builds.
+    /// The nodes that received at least one item.
     pub touched: BTreeSet<Namespace>,
 }
 
@@ -364,14 +363,14 @@ pub struct Stored {
 pub struct Placed {
     /// Store result, including nodes that accepted items.
     pub stored: Stored,
-    /// One exact-node belief build for each node touched, unless the engine
-    /// consolidates automatically.
+    /// One exact-node belief build for each node touched by an on-demand
+    /// engine; empty for other consolidation modes.
     pub jobs: Vec<BackgroundJob>,
 }
 
-/// Places each item with the host's callback, stores it, and builds belief
-/// jobs for the nodes that accepted items. The host owns the callback and
-/// decides how to enqueue returned jobs.
+/// Places each item with the host's callback, stores it, and returns belief
+/// jobs for accepted nodes when the engine consolidates on demand. The host
+/// owns the callback and decides how to enqueue returned jobs.
 ///
 /// # Errors
 ///
@@ -391,9 +390,7 @@ pub async fn store_placed(
         ));
     }
     let stored = store_all(engine, source_id, placed).await?;
-    let jobs = if engine.descriptor().consolidation == Consolidation::Automatic {
-        Vec::new()
-    } else {
+    let jobs = if engine.descriptor().consolidation == Consolidation::OnDemand {
         stored
             .touched
             .iter()
@@ -402,6 +399,8 @@ pub async fn store_placed(
                 request: ConsolidateRequest::new(Reach::exact(node)).kinds([ItemKind::Document]),
             })
             .collect()
+    } else {
+        Vec::new()
     };
     Ok(Placed { stored, jobs })
 }

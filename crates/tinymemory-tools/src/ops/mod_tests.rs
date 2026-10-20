@@ -1167,5 +1167,5 @@ async fn thread_and_source_deletions_stay_inside_the_configured_reach() {
     }
 }
 
-#[path = "ops_unconfined_tests.rs"]
+#[path = "../ops_unconfined_tests.rs"]
 mod unconfined_tests;

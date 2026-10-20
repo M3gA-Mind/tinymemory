@@ -67,18 +67,17 @@ impl FsLegacyClaim {
             Err(error) => Err(unreadable(&error)),
         }
     }
-}
 
-impl LegacyClaim for FsLegacyClaim {
-    fn held_by_other(&self) -> Result<bool> {
-        Ok(self
-            .recorded_owner()?
-            .is_some_and(|owner| owner != self.owner))
-    }
-
-    fn take(&self) -> Result<bool> {
+    fn take_with_directory_sync(
+        &self,
+        sync_directory: impl Fn(&Path) -> std::io::Result<()>,
+    ) -> Result<bool> {
         if let Some(owner) = self.recorded_owner()? {
-            return Ok(owner == self.owner);
+            if owner != self.owner {
+                return Ok(false);
+            }
+            self.sync_parent_directory(&sync_directory)?;
+            return Ok(true);
         }
         let write = || -> std::io::Result<()> {
             if let Some(dir) = self.marker.parent() {
@@ -98,17 +97,60 @@ impl LegacyClaim for FsLegacyClaim {
         };
         match write() {
             Ok(()) => {
+                self.sync_parent_directory(&sync_directory)?;
                 log::info!("[memory:layout_migration] legacy tree claimed");
                 Ok(true)
             }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(self
-                .recorded_owner()?
-                .is_some_and(|owner| owner == self.owner)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if self
+                    .recorded_owner()?
+                    .is_some_and(|owner| owner == self.owner)
+                {
+                    self.sync_parent_directory(&sync_directory)?;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
             Err(error) => Err(Error::State(format!(
                 "legacy tree claim not saved: {error}"
             ))),
         }
     }
+
+    fn sync_parent_directory(
+        &self,
+        sync_directory: &impl Fn(&Path) -> std::io::Result<()>,
+    ) -> Result<()> {
+        let parent = self.marker.parent().unwrap_or(Path::new("."));
+        sync_directory(parent).map_err(|error| {
+            Error::State(format!("legacy tree claim directory not synced: {error}"))
+        })
+    }
+}
+
+impl LegacyClaim for FsLegacyClaim {
+    fn held_by_other(&self) -> Result<bool> {
+        Ok(self
+            .recorded_owner()?
+            .is_some_and(|owner| owner != self.owner))
+    }
+
+    fn take(&self) -> Result<bool> {
+        self.take_with_directory_sync(sync_directory)
+    }
+}
+
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> std::io::Result<()> {
+    std::fs::File::open(path)?.sync_all()
+}
+
+// Opening directories as files is not portable to Windows. The marker file
+// itself is still synced before linking there, preserving existing behavior.
+#[cfg(not(unix))]
+fn sync_directory(_path: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -130,3 +172,7 @@ fn normalize(endpoint: &str) -> String {
 fn unreadable(error: &dyn std::fmt::Display) -> Error {
     Error::State(format!("legacy tree claim unreadable: {error}"))
 }
+
+#[cfg(test)]
+#[path = "fs_claim_tests.rs"]
+mod tests;

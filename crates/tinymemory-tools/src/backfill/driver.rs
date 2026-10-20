@@ -288,11 +288,29 @@ impl Backfiller {
             let Some(thread) = source_thread(self.source.as_ref(), thread_id).await else {
                 continue;
             };
-            let first_live = self.first_live_turn(&thread.thread_id).await;
-            let stored = match self.stored_turns(&thread.thread_id, &thread.turns).await {
-                Ok(stored) => stored,
-                Err(Error::Unsupported(_)) => saved,
-                Err(error) => return Err(error),
+            let mut filter = self.layout.conversations_filter(Some(&self.agent_id));
+            filter.thread_id = Some(thread.thread_id.clone());
+            let (first_live, stored) = match self.list_all(filter.clone()).await {
+                Ok(hits) => (
+                    Self::first_live_turn_from_hits(
+                        &hits,
+                        &filter,
+                        &self.agent_id,
+                        &thread.thread_id,
+                    ),
+                    Self::stored_turns_from_hits(
+                        &hits,
+                        &filter,
+                        &self.agent_id,
+                        &thread.thread_id,
+                        &thread.turns,
+                    ),
+                ),
+                Err(Error::Unsupported(_)) => (None, saved),
+                Err(error) => {
+                    log::debug!("[memory:backfill] live turn lookup failed: {error}");
+                    return Err(error);
+                }
             };
             if let Some(plan) = plan_thread(thread, first_live, stored) {
                 plans.push(plan);
@@ -301,15 +319,55 @@ impl Backfiller {
         Ok(plans)
     }
 
-    async fn stored_turns(&self, thread_id: &str, turns: &[PastTurn]) -> Result<u32> {
-        let mut filter = self.layout.conversations_filter(Some(&self.agent_id));
-        filter.thread_id = Some(thread_id.to_string());
-        filter.tags_any = vec![BACKFILL_TAG.to_string()];
-        let hits = self.list_all(filter.clone()).await?;
+    async fn list_all(&self, filter: MetaFilter) -> Result<Vec<tinymemory_api::Hit>> {
+        let mut cursor = None;
+        let mut seen_cursors = HashSet::new();
+        let mut hits = Vec::new();
+        loop {
+            let mut request = ListRequest::new(filter.clone(), LIST_PAGE_LIMIT);
+            request.cursor = cursor;
+            let page = self.engine.list(request).await?;
+            hits.extend(page.items);
+            let Some(next) = page.next_cursor else {
+                return Ok(hits);
+            };
+            if !seen_cursors.insert(next.clone()) {
+                return Err(Error::Engine(
+                    "backfill listing repeated a pagination cursor".to_string(),
+                ));
+            }
+            cursor = Some(next);
+        }
+    }
+    fn first_live_turn_from_hits(
+        hits: &[tinymemory_api::Hit],
+        filter: &MetaFilter,
+        agent_id: &str,
+        thread_id: &str,
+    ) -> Option<usize> {
+        hits.iter()
+            .filter(|hit| {
+                filter.matches(hit.kind, &hit.meta)
+                    && hit.meta.agent_id.as_deref() == Some(agent_id)
+                    && hit.meta.thread_id.as_deref() == Some(thread_id)
+                    && hit.kind == ItemKind::Conversation
+                    && !hit.meta.tags.iter().any(|tag| tag == BACKFILL_TAG)
+            })
+            .filter_map(|hit| hit.meta.turns.map(|turns| turns.first as usize / 2))
+            .min()
+    }
+
+    fn stored_turns_from_hits(
+        hits: &[tinymemory_api::Hit],
+        filter: &MetaFilter,
+        agent_id: &str,
+        thread_id: &str,
+        turns: &[PastTurn],
+    ) -> u32 {
         let mut stored_items = HashSet::new();
         for hit in hits {
             if !filter.matches(hit.kind, &hit.meta)
-                || hit.meta.agent_id.as_deref() != Some(self.agent_id.as_str())
+                || hit.meta.agent_id.as_deref() != Some(agent_id)
                 || hit.meta.thread_id.as_deref() != Some(thread_id)
                 || !hit.meta.tags.iter().any(|tag| tag == BACKFILL_TAG)
             {
@@ -347,50 +405,7 @@ impl Backfiller {
             }
             complete = index + 1;
         }
-        Ok(u32::try_from(complete).unwrap_or(u32::MAX))
-    }
-
-    async fn first_live_turn(&self, thread_id: &str) -> Option<usize> {
-        let mut filter = self.layout.conversations_filter(Some(&self.agent_id));
-        filter.thread_id = Some(thread_id.to_string());
-        match self.list_all(filter.clone()).await {
-            Ok(hits) => hits
-                .iter()
-                .filter(|hit| {
-                    filter.matches(hit.kind, &hit.meta)
-                        && hit.meta.agent_id.as_deref() == Some(self.agent_id.as_str())
-                        && hit.meta.thread_id.as_deref() == Some(thread_id)
-                        && hit.kind == ItemKind::Conversation
-                        && !hit.meta.tags.iter().any(|tag| tag == BACKFILL_TAG)
-                })
-                .filter_map(|hit| hit.meta.turns.map(|turns| turns.first as usize / 2))
-                .min(),
-            Err(error) => {
-                log::debug!("[memory:backfill] live turn lookup failed: {error}");
-                None
-            }
-        }
-    }
-
-    async fn list_all(&self, filter: MetaFilter) -> Result<Vec<tinymemory_api::Hit>> {
-        let mut cursor = None;
-        let mut seen_cursors = HashSet::new();
-        let mut hits = Vec::new();
-        loop {
-            let mut request = ListRequest::new(filter.clone(), LIST_PAGE_LIMIT);
-            request.cursor = cursor;
-            let page = self.engine.list(request).await?;
-            hits.extend(page.items);
-            let Some(next) = page.next_cursor else {
-                return Ok(hits);
-            };
-            if !seen_cursors.insert(next.clone()) {
-                return Err(Error::Engine(
-                    "backfill listing repeated a pagination cursor".to_string(),
-                ));
-            }
-            cursor = Some(next);
-        }
+        u32::try_from(complete).unwrap_or(u32::MAX)
     }
 
     fn last_batch(&self, plans: &[ThreadPlan]) -> Option<(usize, usize)> {

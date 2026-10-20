@@ -1,3 +1,5 @@
+//! Detailed-call parity, recall details, and pure action classifiers.
+
 use super::*;
 use tinymemory_tools::{RecallDetails, SingleToolOutcome};
 

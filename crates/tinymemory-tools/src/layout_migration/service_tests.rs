@@ -1,3 +1,5 @@
+//! Layout migration scans, status, service, and filesystem-claim behavior.
+
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};

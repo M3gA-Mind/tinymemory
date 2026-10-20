@@ -71,6 +71,7 @@ pub trait MemoryEngine: Send + Sync {
 
 ```rust
 pub struct MemoryMeta {
+    pub namespace: Namespace,         // caller-owned memory scope
     pub workspace: Option<String>,   // absolute path or logical workspace id
     pub folder: Option<String>,      // containing folder (absolute or workspace-relative)
     pub file_path: Option<String>,

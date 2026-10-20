@@ -525,7 +525,7 @@ async fn resumed_pack_respects_budget_and_deduplicates_thread_hits_without_loggi
     }
     let before = stored_conversations(fixture.engine.as_ref().unwrap()).await;
     let mut request = PreTurn::new("thread", 8, "show the earlier project milestones");
-    request.in_prompt_from = 8;
+    request.in_prompt_from = 4;
     request.resumed = true;
     let recalled = fixture
         .hooks
@@ -533,6 +533,13 @@ async fn resumed_pack_respects_budget_and_deduplicates_thread_hits_without_loggi
         .await
         .expect("resumed nonlogging lookup returns earlier thread context");
     assert!(recalled.markdown.contains("Earlier in this thread"));
+    assert!(recalled.markdown.contains("project milestone 0"));
+    assert!(recalled.markdown.contains("project milestone 1"));
+    assert!(
+        !recalled.markdown.contains("project milestone 2"),
+        "turns already in the prompt are excluded"
+    );
+    assert!(!recalled.markdown.contains("project milestone 3"));
     assert!(recalled.tokens <= 180);
     let bullets: Vec<_> = recalled
         .markdown
@@ -615,7 +622,6 @@ async fn every_typed_account_wide_skip_reason_maps_to_its_stable_refusal_code() 
             Error::InsufficientCredits("private detail".into()),
             "INSUFFICIENT_CREDITS",
         ),
-        (Error::Unavailable("private detail".into()), "UNAVAILABLE"),
     ] {
         let engine: Arc<dyn MemoryEngine> = Arc::new(HeldEngine {
             inner: ReferenceEngine::new(),
@@ -635,7 +641,7 @@ async fn every_typed_account_wide_skip_reason_maps_to_its_stable_refusal_code() 
 }
 
 #[tokio::test]
-async fn unreachable_recall_gets_an_account_wide_refusal_notice() {
+async fn unreachable_recall_gets_a_request_scoped_notice() {
     let engine: Arc<dyn MemoryEngine> = Arc::new(HeldEngine {
         inner: ReferenceEngine::new(),
         held_reads: false,
@@ -647,7 +653,8 @@ async fn unreachable_recall_gets_an_account_wide_refusal_notice() {
         .hooks
         .pre_turn(PreTurn::new("thread", 0, "hello"), options(true, true))
         .await
-        .expect("account-wide unavailable errors need a notice");
+        .expect("a request-level reachability failure needs a notice");
+    assert!(!Error::Unavailable("sensitive-payload".into()).is_account_wide());
     assert_eq!(pack.refusal, Some("UNAVAILABLE"));
     assert!(pack.markdown.contains("could not be reached"));
     assert!(!pack.markdown.contains("sensitive-payload"));

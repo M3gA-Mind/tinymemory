@@ -109,6 +109,24 @@ fn a_hosted_failure_carries_its_code_and_402_is_insufficient_credits() {
 }
 
 #[test]
+fn an_uncoded_hosted_402_is_not_assumed_to_mean_credit_exhaustion() {
+    for body in ["{}", r#"{"error":"payment required"}"#] {
+        let error = hosted_status_error(
+            "api.example",
+            "memory/experience",
+            StatusCode::PAYMENT_REQUIRED,
+            body,
+        );
+        assert!(matches!(error, Error::Engine(_)), "{error:?}");
+        assert_eq!(error_code(&error), Some("HTTP_402"));
+        assert!(
+            !error.to_string().contains("insufficient credits"),
+            "an uncoded payment-required response must not claim credit exhaustion: {error}"
+        );
+    }
+}
+
+#[test]
 fn a_hosted_400_with_the_conflict_code_is_a_conflict() {
     // The backend's own envelope for memory-api's 409 (`memoryUpstreamError`).
     let body =

@@ -3,13 +3,13 @@ use tinymemory_api::Error;
 use super::*;
 
 #[test]
-fn a_direct_account_wide_error_uses_the_same_refusal_notice() {
+fn a_direct_unavailable_error_gets_a_request_scoped_notice() {
     let pack = TurnPack::from_outcome(
         Err(Error::Unavailable("private transport detail".into())),
         true,
         "test-engine".into(),
     )
-    .expect("account-wide direct errors should create a refusal notice");
+    .expect("a request-level reachability failure should create a notice");
     assert_eq!(pack.refusal, Some("UNAVAILABLE"));
     assert_eq!(pack.engine, "test-engine");
     assert!(pack.markdown.contains("could not be reached"));

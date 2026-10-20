@@ -12,7 +12,6 @@
 //! digest collision costs a wasted row, never a wrong answer.
 
 use sha2::{Digest, Sha256};
-use std::path::Path;
 use tinymemory_api::{MemoryMeta, MetaFilter};
 
 /// Hex digits of the SHA-256 a label keeps: 64 bits.
@@ -61,6 +60,12 @@ pub(crate) fn workspace(digest: &str) -> String {
 /// The label every event of item `id` carries.
 pub(crate) fn item(id: &str) -> String {
     format!("tm:i:{}", digest(id))
+}
+
+/// The hashed thread label used to locate conversations when recovering a
+/// pre-channel-neutral item identity in one exact kind scope.
+pub(crate) fn thread(thread_id: &str) -> String {
+    format!("tm:t:{}", digest(thread_id))
 }
 
 /// One labelled metadata field: its label prefix, how to read it from
@@ -156,7 +161,7 @@ pub(crate) fn channel_narrowing(filter: &MetaFilter) -> Option<Vec<String>> {
     let channel = filter.channel.as_deref()?;
     let label = match filter.workspace.as_deref() {
         Some(workspace) => {
-            let workspace = if Path::new(workspace).is_absolute() {
+            let workspace = if super::is_absolute(workspace) {
                 path_digest(workspace)
             } else {
                 workspace.to_string()

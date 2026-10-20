@@ -9,7 +9,7 @@ fn account_wide_refusals_are_told_from_an_items_own_failure() {
     assert_eq!(credits.code(), "INSUFFICIENT_CREDITS");
     assert!(Error::Off("signed out".into()).is_account_wide());
     assert!(Error::from(EngineError::Unauthorized("key".into())).is_account_wide());
-    assert!(Error::from(EngineError::Unavailable("down".into())).is_account_wide());
+    assert!(!Error::from(EngineError::Unavailable("request timed out".into())).is_account_wide());
     let plain = Error::from(EngineError::Engine("boom".into()));
     assert!(!plain.is_account_wide());
     assert_eq!(plain.code(), "ENGINE");

@@ -233,7 +233,7 @@ async fn a_failing_section_never_fails_the_pack() {
     assert!(matches!(
         &pack.skipped[0].reason,
         SkipReason::Engine(error @ Error::Unavailable(message))
-            if message == "fetch is down" && error.is_account_wide()
+            if message == "fetch is down" && !error.is_account_wide()
     ));
     assert!(pack.markdown.contains("## Learnings"));
 }
@@ -244,7 +244,6 @@ async fn account_wide_errors_keep_their_typed_cause_when_a_recall_section_is_ski
         Error::Off("opaque off detail".into()),
         Error::InsufficientCredits("opaque credit detail".into()),
         Error::Unauthorized("opaque auth detail".into()),
-        Error::Unavailable("opaque outage detail".into()),
     ];
 
     for error in errors {
