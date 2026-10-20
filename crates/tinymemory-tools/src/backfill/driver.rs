@@ -120,6 +120,12 @@ struct ThreadPlan {
     range: Range<usize>,
 }
 
+struct SourceThread {
+    thread_id: String,
+    turns: Vec<PastTurn>,
+    stored: u32,
+}
+
 /// A planned backfill run, returned by [`Backfiller::begin`].
 #[must_use = "a planned backfill does nothing until it is run"]
 #[derive(Debug)]
@@ -129,7 +135,9 @@ pub struct BackfillRun {
 }
 
 /// Plans and stores earlier conversations without owning the host's thread
-/// store, persistence format, consent flow, or task executor.
+/// store, persistence format, consent flow, or task executor. Its associated
+/// [`Backfiller::status_without_engine`] method reports saved-counter status
+/// without constructing a driver or binding an engine.
 pub struct Backfiller {
     engine: Arc<dyn MemoryEngine>,
     layout: MemoryLayout,
@@ -165,17 +173,40 @@ impl Backfiller {
     /// Returns an engine error if listing threads or stored items fails.
     pub async fn status(&self, running: bool) -> Result<BackfillView> {
         let file = self.store.load();
-        let mut state = file.state.clone();
-        if state.phase == BackfillPhase::Running && !running {
-            state.phase = BackfillPhase::Error;
-            state.error = Some("the sync was interrupted; start it again to resume".to_string());
-        }
+        let state = status_state(&file.state, running);
         let plans = self.plan(&file).await?;
-        Ok(BackfillView {
-            state,
-            pending_threads: plans.len() as u64,
-            pending_turns: plans.iter().map(|plan| plan.range.len() as u64).sum(),
-        })
+        Ok(status_view(state, &plans))
+    }
+
+    /// Progress and pending work from saved counters and the host thread
+    /// source, without requiring or querying a memory engine.
+    ///
+    /// Use this when a host reports backfill status while memory is off or
+    /// no engine is currently bound. Pending ranges use saved per-thread
+    /// counters and assume there is no live-logging cutoff to query. This
+    /// method never writes the state file; stale `Running` is reflected as
+    /// interrupted in the returned view only.
+    ///
+    /// # Errors
+    ///
+    /// Returns an engine error if listing threads fails. Individual unreadable
+    /// threads are skipped, as in engine-backed status.
+    pub async fn status_without_engine(
+        source: &dyn ThreadSource,
+        store: &dyn CounterStore,
+        running: bool,
+    ) -> Result<BackfillView> {
+        let file = store.load();
+        let state = status_state(&file.state, running);
+        let threads = source_threads(source, &file.stored).await?;
+        let plans = threads
+            .into_iter()
+            .filter_map(|thread| {
+                let stored = thread.stored;
+                plan_thread(thread, None, stored)
+            })
+            .collect::<Vec<_>>();
+        Ok(status_view(state, &plans))
     }
 
     /// Plans a run and persists its `Running` state. Consent and executor
@@ -248,35 +279,17 @@ impl Backfiller {
         // the selected agent. `conversations_filter` deliberately falls back
         // to a broad root filter when its optional agent cannot be resolved.
         self.layout.conversations(&self.agent_id)?;
-        let listed = self
-            .source
-            .list_threads()
-            .await
-            .map_err(|error| Error::Engine(format!("reading chat threads failed: {error}")))?;
+        let threads = source_threads(self.source.as_ref(), &file.stored).await?;
         let mut plans = Vec::new();
-        for thread_id in listed {
-            let messages = match self.source.messages(&thread_id).await {
-                Ok(messages) => messages,
-                Err(error) => {
-                    log::warn!("[memory:backfill] a thread was unreadable; skipped: {error}");
-                    continue;
-                }
-            };
-            let turns = turns_of(&messages);
-            let first_live = self.first_live_turn(&thread_id).await;
-            let saved = file.stored.get(&thread_id).copied().unwrap_or(0);
-            let stored = match self.stored_turns(&thread_id, &turns).await {
+        for thread in threads {
+            let first_live = self.first_live_turn(&thread.thread_id).await;
+            let stored = match self.stored_turns(&thread.thread_id, &thread.turns).await {
                 Ok(stored) => stored,
-                Err(Error::Unsupported(_)) => saved,
+                Err(Error::Unsupported(_)) => thread.stored,
                 Err(error) => return Err(error),
             };
-            let range = pending_range(turns.len(), first_live, stored);
-            if !range.is_empty() {
-                plans.push(ThreadPlan {
-                    thread_id,
-                    turns,
-                    range,
-                });
+            if let Some(plan) = plan_thread(thread, first_live, stored) {
+                plans.push(plan);
             }
         }
         Ok(plans)
@@ -398,6 +411,62 @@ impl Backfiller {
         if let Err(error) = self.store.save(file) {
             log::warn!("[memory:backfill] writing state failed: {error}");
         }
+    }
+}
+
+async fn source_threads(
+    source: &dyn ThreadSource,
+    stored: &BTreeMap<String, u32>,
+) -> Result<Vec<SourceThread>> {
+    let listed = source
+        .list_threads()
+        .await
+        .map_err(|error| Error::Engine(format!("reading chat threads failed: {error}")))?;
+    let mut threads = Vec::new();
+    for thread_id in listed {
+        let messages = match source.messages(&thread_id).await {
+            Ok(messages) => messages,
+            Err(error) => {
+                log::warn!("[memory:backfill] a thread was unreadable; skipped: {error}");
+                continue;
+            }
+        };
+        threads.push(SourceThread {
+            stored: stored.get(&thread_id).copied().unwrap_or(0),
+            thread_id,
+            turns: turns_of(&messages),
+        });
+    }
+    Ok(threads)
+}
+
+fn plan_thread(
+    thread: SourceThread,
+    first_live: Option<usize>,
+    stored: u32,
+) -> Option<ThreadPlan> {
+    let range = pending_range(thread.turns.len(), first_live, stored);
+    (!range.is_empty()).then_some(ThreadPlan {
+        thread_id: thread.thread_id,
+        turns: thread.turns,
+        range,
+    })
+}
+
+fn status_state(saved: &BackfillState, running: bool) -> BackfillState {
+    let mut state = saved.clone();
+    if state.phase == BackfillPhase::Running && !running {
+        state.phase = BackfillPhase::Error;
+        state.error = Some("the sync was interrupted; start it again to resume".to_string());
+    }
+    state
+}
+
+fn status_view(state: BackfillState, plans: &[ThreadPlan]) -> BackfillView {
+    BackfillView {
+        state,
+        pending_threads: plans.len() as u64,
+        pending_turns: plans.iter().map(|plan| plan.range.len() as u64).sum(),
     }
 }
 
