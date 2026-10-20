@@ -427,10 +427,7 @@ async fn list_thread_ids(source: &dyn ThreadSource) -> Result<Vec<String>> {
         .map_err(|error| Error::Engine(format!("reading chat threads failed: {error}")))
 }
 
-async fn source_thread(
-    source: &dyn ThreadSource,
-    thread_id: String,
-) -> Option<SourceThread> {
+async fn source_thread(source: &dyn ThreadSource, thread_id: String) -> Option<SourceThread> {
     let messages = match source.messages(&thread_id).await {
         Ok(messages) => messages,
         Err(error) => {
