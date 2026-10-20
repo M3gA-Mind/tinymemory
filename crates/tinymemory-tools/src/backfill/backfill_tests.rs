@@ -201,6 +201,7 @@ struct TestListingEngine {
     waits: Arc<Mutex<Vec<tinymemory_api::WaitFor>>>,
     fail_store_on: Option<usize>,
     store_calls: AtomicUsize,
+    list_calls: Arc<AtomicUsize>,
 }
 
 #[async_trait::async_trait]
@@ -260,6 +261,7 @@ impl MemoryEngine for TestListingEngine {
         &self,
         request: tinymemory_api::ListRequest,
     ) -> tinymemory_api::Result<tinymemory_api::ListPage> {
+        self.list_calls.fetch_add(1, Ordering::SeqCst);
         if let Some(error) = &self.fail {
             return Err(error.clone());
         }
@@ -325,6 +327,7 @@ async fn cursor_counts_only_contiguous_turns_with_every_expected_role() {
         waits: Arc::default(),
         fail_store_on: None,
         store_calls: AtomicUsize::new(0),
+        list_calls: Arc::new(AtomicUsize::new(0)),
     });
     let layout = MemoryLayout::default();
     // Turn zero is assistant-only, so its valid item has the odd turn index.
@@ -540,6 +543,7 @@ async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
         waits: Arc::default(),
         fail_store_on: None,
         store_calls: AtomicUsize::new(0),
+        list_calls: Arc::new(AtomicUsize::new(0)),
     });
     let view = backfiller(unsupported, source.clone(), store.clone())
         .status(false)
@@ -560,6 +564,7 @@ async fn persisted_turn_counts_fallback_only_for_unsupported_listing() {
             waits: Arc::default(),
             fail_store_on: None,
             store_calls: AtomicUsize::new(0),
+        list_calls: Arc::new(AtomicUsize::new(0)),
         });
         assert!(
             backfiller(engine, source.clone(), store.clone())
@@ -578,6 +583,7 @@ async fn backfiller_waits_for_accepted_batches_then_the_last_batch_to_be_visible
         waits: Arc::default(),
         fail_store_on: None,
         store_calls: AtomicUsize::new(0),
+        list_calls: Arc::new(AtomicUsize::new(0)),
     });
     let source = TestThreadSource {
         threads: vec!["thread".to_string()],
@@ -611,6 +617,7 @@ async fn failed_visible_batch_keeps_only_completed_counters_and_replays_the_miss
         waits: Arc::default(),
         fail_store_on: Some(2),
         store_calls: AtomicUsize::new(0),
+        list_calls: Arc::new(AtomicUsize::new(0)),
     });
     let source = TestThreadSource {
         threads: vec!["thread".to_string()],
@@ -679,6 +686,7 @@ async fn counter_store_save_failures_do_not_stop_the_backfill() {
         waits: Arc::default(),
         fail_store_on: None,
         store_calls: AtomicUsize::new(0),
+        list_calls: Arc::new(AtomicUsize::new(0)),
     });
     let source = TestThreadSource {
         threads: vec!["thread".to_string()],
@@ -717,6 +725,7 @@ async fn cursor_ignores_foreign_hits_but_honors_an_owned_live_turn() {
         waits: Arc::default(),
         fail_store_on: None,
         store_calls: AtomicUsize::new(0),
+        list_calls: Arc::new(AtomicUsize::new(0)),
     });
     let layout = MemoryLayout::default();
     let source_turn = turn("question", "answer");
