@@ -25,13 +25,21 @@ pub(super) fn pptx(bytes: &[u8]) -> Result<String> {
     let mut archive = open(bytes, "deck")?;
     // Numeric, not lexicographic: `slide10.xml` sorts before `slide2.xml` as
     // a string.
-    let mut slides: Vec<(u32, String)> = archive
-        .file_names()
-        .filter_map(|name| {
-            let number = name.strip_prefix(PREFIX)?.strip_suffix(".xml")?;
-            Some((number.parse().ok()?, name.to_string()))
-        })
-        .collect();
+    let mut slides = Vec::new();
+    for name in archive.file_names() {
+        let name = name.map_err(|error| {
+            unreadable(format!("the deck has an unreadable entry name: {error}"))
+        })?;
+        let Some(number) = name
+            .strip_prefix(PREFIX)
+            .and_then(|name| name.strip_suffix(".xml"))
+        else {
+            continue;
+        };
+        if let Ok(number) = number.parse::<u32>() {
+            slides.push((number, name.to_string()));
+        }
+    }
     slides.sort_unstable();
     let names: Vec<&str> = slides.iter().map(|(_, name)| name.as_str()).collect();
     read_parts(&mut archive, &names, "a:p", "a:t")

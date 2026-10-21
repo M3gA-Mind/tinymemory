@@ -124,8 +124,13 @@ fn with_detail(head: String, detail: &str) -> String {
 
 /// Maps a status to its variant, given the message head and detail.
 fn by_status(status: StatusCode, head: String, detail: &str) -> Error {
+    let insufficient_credits = head
+        .strip_prefix('[')
+        .and_then(|rest| rest.split_once("] "))
+        .is_some_and(|(code, _)| code == INSUFFICIENT_CREDITS_CODE);
     let message = with_detail(head, detail);
     match status.as_u16() {
+        402 if insufficient_credits => Error::InsufficientCredits(message),
         401 | 403 => Error::Unauthorized(message),
         404 => Error::NotFound(message),
         400 | 413 | 422 => Error::InvalidRequest(message),
@@ -219,10 +224,11 @@ pub(crate) fn hosted_status_error(
         403 => format!(
             "[{code}] memory API {label} on {host}: the request was refused (HTTP {status})"
         ),
-        402 => format!(
+        402 if code == INSUFFICIENT_CREDITS_CODE => format!(
             "[{code}] memory API {label} on {host}: the account has insufficient credits \
              (HTTP {status})"
         ),
+        402 => format!("[{code}] memory API {label} on {host} returned HTTP {status}"),
         _ => format!("[{code}] memory API {label} on {host} returned HTTP {status}"),
     };
     // memory-api's refusal of an already-claimed `Idempotency-Key` is relayed
@@ -274,11 +280,12 @@ fn clean_code(raw: &str) -> String {
         .to_ascii_uppercase()
 }
 
-/// The code a failure without an `errorCode` is filed under.
+/// The neutral code a failure without a usable `errorCode` is filed under.
+/// HTTP 402 does not establish credit exhaustion on its own.
 fn default_code(status: StatusCode) -> String {
     match status.as_u16() {
         401 | 403 => "UNAUTHORIZED".to_string(),
-        402 => INSUFFICIENT_CREDITS_CODE.to_string(),
+        402 => "HTTP_402".to_string(),
         429 => "RATE_LIMITED".to_string(),
         other => format!("HTTP_{other}"),
     }
