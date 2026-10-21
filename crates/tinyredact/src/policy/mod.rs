@@ -8,7 +8,7 @@
 /// How a bare (no separators) Luhn-valid 13-19 digit run is judged as a credit
 /// card by the content scrubber. Separated runs (`4111 1111 1111 1111`) are
 /// always Luhn-gated only.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum BareCardGate {
     /// Redact every Luhn-valid run. The strictest behaviour and the default.
     #[default]
@@ -21,7 +21,7 @@ pub enum BareCardGate {
 
 /// Tunables for content scrubbing. The default never redacts less than
 /// [`BareCardGate::LuhnOnly`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Policy {
     /// Gate applied to bare credit-card-shaped digit runs.
     pub bare_card: BareCardGate,

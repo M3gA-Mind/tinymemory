@@ -1,4 +1,4 @@
-//! Tests for the `[CODE]` prefix helpers.
+//! Tests for hosted backend error codes.
 
 use super::*;
 
@@ -16,12 +16,7 @@ fn an_unprefixed_message_has_no_code() {
 }
 
 #[test]
-fn insufficient_credits_needs_both_the_variant_and_the_code() {
-    let credits = Error::Engine(format!("[{INSUFFICIENT_CREDITS_CODE}] top up"));
-    assert!(is_insufficient_credits(&credits));
-    let wrong_variant = Error::Unavailable(format!("[{INSUFFICIENT_CREDITS_CODE}] top up"));
-    assert!(!is_insufficient_credits(&wrong_variant));
-    assert!(!is_insufficient_credits(&Error::Engine(
-        "[RATE_LIMITED] slow".into()
-    )));
+fn hosted_credit_errors_are_typed_and_keep_the_backend_code() {
+    let credits = Error::InsufficientCredits(format!("[{INSUFFICIENT_CREDITS_CODE}] top up"));
+    assert_eq!(error_code(&credits), Some(INSUFFICIENT_CREDITS_CODE));
 }

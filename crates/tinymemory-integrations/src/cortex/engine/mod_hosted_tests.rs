@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::cortex::StaticBearer;
-use crate::cortex::error::{error_code, is_insufficient_credits};
+use crate::cortex::error::error_code;
 use crate::cortex::testing::{hosted_double, hosted_engine, sample_items, serve};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -160,7 +160,7 @@ async fn a_402_is_insufficient_credits_and_codes_survive() {
     let engine = hosted_engine(&endpoint);
     *state.fail_all.lock().unwrap() = Some((402, "USER_INSUFFICIENT_CREDITS"));
     let error = engine.store(sample_items().remove(0)).await.unwrap_err();
-    assert!(is_insufficient_credits(&error), "{error:?}");
+    assert!(matches!(error, Error::InsufficientCredits(_)), "{error:?}");
     assert!(
         !error
             .to_string()
@@ -389,14 +389,49 @@ async fn a_write_polls_until_its_event_is_listed() {
 async fn a_conversation_is_ordered_single_writes_and_one_wait() {
     let (endpoint, state) = hosted_double().await;
     let engine = hosted_engine(&endpoint);
-    engine.store(sample_items().remove(1)).await.unwrap();
+    let item = sample_items().remove(1);
+    let current_id = item.fingerprint();
+    engine.store(item.clone()).await.unwrap();
     let requests = state.requests();
     assert_eq!(state.count("POST /memory/experience"), 3, "{requests:?}");
     assert!(!requests.iter().any(|r| r.contains("bulk")));
     assert_eq!(
         state.count("GET /memory/events"),
-        2,
-        "one replay lookup and one visibility wait for the whole conversation"
+        3,
+        "current id lookup, changed-channel thread fallback, and one visibility wait"
+    );
+    let reads: Vec<_> = requests
+        .iter()
+        .enumerate()
+        .filter(|(_, request)| request.starts_with("GET /memory/events"))
+        .collect();
+    let writes: Vec<_> = requests
+        .iter()
+        .enumerate()
+        .filter(|(_, request)| request.starts_with("POST /memory/experience"))
+        .collect();
+    let first_write = writes.first().unwrap().0;
+    let last_write = writes.last().unwrap().0;
+    assert_eq!(reads.len(), 3);
+    assert!(reads[0].0 < first_write && reads[1].0 < first_write);
+    assert!(
+        reads[0]
+            .1
+            .contains(&crate::cortex::envelope::labels::digest(&current_id))
+    );
+    assert!(
+        reads[1]
+            .1
+            .contains(&crate::cortex::envelope::labels::digest("t-chat"))
+    );
+    assert!(
+        reads[2].0 > last_write,
+        "the final read confirms visibility"
+    );
+    assert!(
+        reads.iter().all(|(_, request)| {
+            request.contains("scope=app%3Atinymemory%2Fapp%3Aconversations")
+        })
     );
 }
 
