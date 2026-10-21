@@ -19,6 +19,17 @@ fn queue() -> JobQueue<MemoryQueueStore> {
     JobQueue::new(MemoryQueueStore::default())
 }
 
+#[test]
+fn selection_from_id_uses_all_for_missing_or_blank_ids_and_preserves_nonblank_bytes() {
+    assert_eq!(Selection::from_id(None), Selection::All);
+    assert_eq!(Selection::from_id(Some(String::new())), Selection::All);
+    assert_eq!(Selection::from_id(Some(" \t\n ".into())), Selection::All);
+    assert_eq!(
+        Selection::from_id(Some(" job-7 ".into())),
+        Selection::One(" job-7 ".into())
+    );
+}
+
 #[tokio::test]
 async fn duplicates_merge_and_the_queue_survives_a_reload() {
     let store = Arc::new(MemoryQueueStore::default());

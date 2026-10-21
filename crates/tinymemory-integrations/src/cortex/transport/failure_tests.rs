@@ -2,7 +2,7 @@
 //! envelope.
 
 use super::*;
-use crate::cortex::error::{error_code, is_insufficient_credits};
+use crate::cortex::error::error_code;
 
 #[test]
 fn a_rustls_handshake_abort_is_named_tls_not_connect() {
@@ -82,8 +82,7 @@ fn a_hosted_failure_carries_its_code_and_402_is_insufficient_credits() {
         StatusCode::PAYMENT_REQUIRED,
         body,
     );
-    assert!(matches!(error, Error::Engine(_)), "{error:?}");
-    assert!(is_insufficient_credits(&error));
+    assert!(matches!(error, Error::InsufficientCredits(_)), "{error:?}");
     assert_eq!(error_code(&error), Some("USER_INSUFFICIENT_CREDITS"));
 
     let unauthorized = hosted_status_error("h", "memory/events", StatusCode::UNAUTHORIZED, "{}");
@@ -107,6 +106,24 @@ fn a_hosted_failure_carries_its_code_and_402_is_insufficient_credits() {
     );
     assert!(matches!(limited, Error::Unavailable(_)));
     assert_eq!(error_code(&limited), Some("RATE_LIMITED"));
+}
+
+#[test]
+fn an_uncoded_hosted_402_is_not_assumed_to_mean_credit_exhaustion() {
+    for body in ["{}", r#"{"error":"payment required"}"#] {
+        let error = hosted_status_error(
+            "api.example",
+            "memory/experience",
+            StatusCode::PAYMENT_REQUIRED,
+            body,
+        );
+        assert!(matches!(error, Error::Engine(_)), "{error:?}");
+        assert_eq!(error_code(&error), Some("HTTP_402"));
+        assert!(
+            !error.to_string().contains("insufficient credits"),
+            "an uncoded payment-required response must not claim credit exhaustion: {error}"
+        );
+    }
 }
 
 #[test]
