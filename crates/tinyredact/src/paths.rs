@@ -33,11 +33,13 @@ pub fn redact_home_paths(text: &str) -> String {
                     output.push('/');
                 }
                 output.push_str("<HOME>");
-                output.push_str(&text[end..uri.end]);
+                output.push_str(&text[end..uri.path_end]);
             } else {
-                output.push_str(&text[position..uri.end]);
+                output.push_str(&text[position..uri.path_end]);
             }
-            position = uri.end;
+            // A query or fragment (`?path=/Users/…`) is ordinary text: the
+            // scan below still redacts a home path inside it.
+            position = uri.path_end;
             continue;
         }
 
