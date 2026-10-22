@@ -122,10 +122,12 @@ fn backoff_doubles_and_is_capped() {
     assert_eq!(backoff.delay(50), Duration::minutes(10));
 }
 
-/// A store whose reads fail until `readable` is set, recording every save.
+/// A store whose reads fail until `readable` is set and whose next
+/// `failing_saves` saves fail, recording every save that succeeds.
 #[derive(Default)]
 struct Flaky {
     readable: std::sync::atomic::AtomicBool,
+    failing_saves: std::sync::atomic::AtomicUsize,
     stored: StdMutex<Vec<PendingDeletion>>,
     saves: StdMutex<Vec<Vec<PendingDeletion>>>,
 }
@@ -139,6 +141,17 @@ impl ListStore<PendingDeletion> for &Flaky {
         }
     }
     fn save(&self, all: &[PendingDeletion]) -> Result<(), crate::list_store::StoreError> {
+        let failing = &self.failing_saves;
+        if failing
+            .fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |left| left.checked_sub(1),
+            )
+            .is_ok()
+        {
+            return Err(crate::list_store::StoreError("full".into()));
+        }
         self.saves.lock().unwrap().push(all.to_vec());
         *self.stored.lock().unwrap() = all.to_vec();
         Ok(())
@@ -183,4 +196,28 @@ fn a_held_deletion_is_flushed_once_the_store_is_readable() {
 fn the_wire_shape_matches_the_legacy_file() {
     let json = serde_json::to_string(&thread("t")).unwrap();
     assert_eq!(json, r#"{"kind":"thread","thread_id":"t"}"#);
+}
+
+#[test]
+fn a_settled_deletion_is_not_restored_after_a_failed_save() {
+    let store = Flaky::default();
+    *store.stored.lock().unwrap() = vec![thread("a")];
+    let queue = DeletionQueue::new(&store, Backoff::default());
+    queue.enqueue(thread("b"));
+
+    // Settling `a` first fails to write the held `b` back, then saves `[b]`.
+    store
+        .readable
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    store
+        .failing_saves
+        .store(1, std::sync::atomic::Ordering::SeqCst);
+    queue.settle(&thread("a"));
+
+    assert_eq!(
+        queue.pending(),
+        vec![thread("b")],
+        "the settled deletion came back"
+    );
+    assert_eq!(*store.stored.lock().unwrap(), vec![thread("b")]);
 }

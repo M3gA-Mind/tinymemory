@@ -173,10 +173,16 @@ impl<S: ListStore<PendingDeletion>> DeletionQueue<S> {
     }
 
     /// Saves `all`; when that fails, holds it until the next read succeeds.
+    ///
+    /// Every list written holds every `held` deletion except one being
+    /// settled, so a successful save leaves nothing to hold.
     fn write(&self, all: &[PendingDeletion], held: &mut Vec<PendingDeletion>) {
-        if let Err(error) = self.store.save(all) {
-            log::warn!("[tinymemory:deletion] writing pending deletions failed: {error}");
-            merge(held, all.iter().cloned());
+        match self.store.save(all) {
+            Ok(()) => held.clear(),
+            Err(error) => {
+                log::warn!("[tinymemory:deletion] writing pending deletions failed: {error}");
+                merge(held, all.iter().cloned());
+            }
         }
     }
 
