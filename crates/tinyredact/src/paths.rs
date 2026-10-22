@@ -65,7 +65,6 @@ struct ParsedUri {
     is_file: bool,
     path_start: Option<usize>,
     path_end: usize,
-    end: usize,
 }
 
 fn parse_uri(text: &str, start: usize) -> Option<ParsedUri> {
@@ -108,7 +107,6 @@ fn parse_uri(text: &str, start: usize) -> Option<ParsedUri> {
         is_file: bytes[start..scheme_end].eq_ignore_ascii_case(b"file"),
         path_start,
         path_end,
-        end,
     })
 }
 
