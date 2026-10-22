@@ -22,6 +22,25 @@ pub fn redact_home_paths(text: &str) -> String {
     let mut position = 0;
 
     while position < text.len() {
+        if let Some(uri) = parse_uri(text, position) {
+            if uri.is_file
+                && let Some(path_start) = uri.path_start
+                && let Some((match_start, end)) =
+                    file_uri_home_path_end(&bytes[..uri.path_end], path_start)
+            {
+                output.push_str(&text[position..match_start]);
+                if match_start == path_start {
+                    output.push('/');
+                }
+                output.push_str("<HOME>");
+                output.push_str(&text[end..uri.end]);
+            } else {
+                output.push_str(&text[position..uri.end]);
+            }
+            position = uri.end;
+            continue;
+        }
+
         if has_path_boundary(text, position)
             && let Some(consumed) = home_path_end(bytes, position)
         {
@@ -38,6 +57,321 @@ pub fn redact_home_paths(text: &str) -> String {
     }
 
     output
+}
+
+struct ParsedUri {
+    is_file: bool,
+    path_start: Option<usize>,
+    path_end: usize,
+    end: usize,
+}
+
+fn parse_uri(text: &str, start: usize) -> Option<ParsedUri> {
+    let bytes = text.as_bytes();
+    if !bytes.get(start)?.is_ascii_alphabetic() || !has_uri_token_boundary(text, start) {
+        return None;
+    }
+
+    let mut scheme_end = start + 1;
+    while bytes
+        .get(scheme_end)
+        .is_some_and(|byte| is_uri_scheme_byte(*byte))
+    {
+        scheme_end += 1;
+    }
+    if bytes.get(scheme_end) != Some(&b':')
+        || bytes.get(scheme_end + 1..scheme_end + 3) != Some(b"//")
+    {
+        return None;
+    }
+
+    let authority_start = scheme_end + 3;
+    let profile_span = bytes[start..scheme_end]
+        .eq_ignore_ascii_case(b"file")
+        .then(|| file_uri_profile_span(text, start, scheme_end))
+        .flatten();
+    let end = uri_token_end(text, start, profile_span);
+    let path_start = bytes[authority_start..end]
+        .iter()
+        .position(|byte| *byte == b'/')
+        .map(|relative| authority_start + relative);
+    let path_end = path_start.map_or(end, |path_start| {
+        bytes[path_start..end]
+            .iter()
+            .position(|byte| matches!(*byte, b'?' | b'#'))
+            .map_or(end, |relative| path_start + relative)
+    });
+
+    Some(ParsedUri {
+        is_file: bytes[start..scheme_end].eq_ignore_ascii_case(b"file"),
+        path_start,
+        path_end,
+        end,
+    })
+}
+
+fn has_uri_token_boundary(text: &str, start: usize) -> bool {
+    text[..start].chars().next_back().is_none_or(|previous| {
+        !previous.is_alphanumeric()
+            && previous != '_'
+            && !(previous.is_ascii() && is_uri_scheme_byte(previous as u8))
+    })
+}
+
+fn uri_token_end(text: &str, start: usize, profile_span: Option<(usize, usize)>) -> usize {
+    let quote_context = text[..start]
+        .chars()
+        .next_back()
+        .filter(|character| matches!(character, '\'' | '"' | '`'));
+    let has_enclosing_parenthesis = text[..start].ends_with('(');
+    let mut nested_parentheses = 0usize;
+
+    for (relative, character) in text[start..].char_indices() {
+        let position = start + relative;
+        if profile_span.is_some_and(|(profile_start, profile_end)| {
+            (profile_start..profile_end).contains(&position)
+        }) {
+            continue;
+        }
+        if character.is_whitespace() || matches!(character, '<' | '>' | ']' | '}') {
+            return position;
+        }
+
+        if let Some(quote) = quote_context {
+            if character == quote && quote_closes_context(text, position + 1) {
+                return position;
+            }
+        } else if matches!(character, '"' | '`') {
+            return position;
+        }
+
+        if has_enclosing_parenthesis {
+            if character == '(' {
+                nested_parentheses += 1;
+            } else if character == ')' {
+                if nested_parentheses > 0 {
+                    nested_parentheses -= 1;
+                } else if closes_parenthesized_context(text, position + 1) {
+                    return position;
+                }
+            }
+        }
+    }
+    text.len()
+}
+
+fn quote_closes_context(text: &str, after_quote: usize) -> bool {
+    let Some(next) = text[after_quote..].chars().next() else {
+        return true;
+    };
+    if next.is_whitespace() {
+        return true;
+    }
+    if matches!(next, ',' | ';') {
+        let after_separator = after_quote + next.len_utf8();
+        return text[after_separator..]
+            .chars()
+            .next()
+            .is_none_or(|following| {
+                following.is_whitespace() || matches!(following, '\'' | '"' | '`' | '[' | '(' | '{')
+            })
+            || starts_home_token_at(text, after_separator);
+    }
+    if matches!(next, ')' | ']' | '}' | '>') {
+        return closes_after_delimiter(text, after_quote + next.len_utf8());
+    }
+    if matches!(next, '.' | ':' | '?' | '!') {
+        return closes_after_delimiter(text, after_quote + next.len_utf8());
+    }
+    false
+}
+
+fn closes_parenthesized_context(text: &str, after_close: usize) -> bool {
+    let Some(next) = text[after_close..].chars().next() else {
+        return true;
+    };
+    if next.is_whitespace() || matches!(next, ')' | ']' | '}' | '>' | '"' | '\'' | '`') {
+        return true;
+    }
+    if matches!(next, ',' | ';') {
+        let after_separator = after_close + next.len_utf8();
+        return text[after_separator..]
+            .chars()
+            .next()
+            .is_none_or(|following| {
+                following.is_whitespace() || matches!(following, '\'' | '"' | '`' | '[' | '(' | '{')
+            })
+            || starts_home_token_at(text, after_separator);
+    }
+    false
+}
+
+fn closes_after_delimiter(text: &str, after_delimiter: usize) -> bool {
+    let Some(next) = text[after_delimiter..].chars().next() else {
+        return true;
+    };
+    if next.is_whitespace() || matches!(next, ')' | ']' | '}' | '>') {
+        return true;
+    }
+    if matches!(next, ',' | ';') {
+        let after_separator = after_delimiter + next.len_utf8();
+        return text[after_separator..]
+            .chars()
+            .next()
+            .is_none_or(|following| {
+                following.is_whitespace() || matches!(following, '\'' | '"' | '`' | '[' | '(' | '{')
+            })
+            || starts_home_token_at(text, after_separator);
+    }
+    false
+}
+
+fn starts_home_token_at(text: &str, start: usize) -> bool {
+    if text
+        .as_bytes()
+        .get(start)
+        .is_some_and(|_| home_path_end(text.as_bytes(), start).is_some())
+    {
+        return true;
+    }
+
+    let bytes = text.as_bytes();
+    if !starts_with_ascii_case_insensitive(&bytes[start..], b"file://") {
+        return false;
+    }
+    let scheme_end = start + 4;
+    let Some(path_start) = uri_path_start(text, start, scheme_end + 3) else {
+        return false;
+    };
+    starts_with_ascii_case_insensitive(&bytes[path_start..], b"/users/")
+        || starts_with_ascii_case_insensitive(&bytes[path_start..], b"/home/")
+        || (bytes
+            .get(path_start + 1)
+            .is_some_and(u8::is_ascii_alphabetic)
+            && bytes.get(path_start + 2) == Some(&b':')
+            && bytes
+                .get(path_start + 3)
+                .is_some_and(|byte| is_separator(*byte))
+            && starts_with_ascii_case_insensitive(&bytes[path_start + 4..], b"users/"))
+}
+
+/// Find only the current URI's home-profile component, stopping at its
+/// descendant separator or an enclosing context boundary. The main scanner
+/// visits the URI token once afterward; this never scans the document suffix.
+fn file_uri_profile_span(text: &str, start: usize, scheme_end: usize) -> Option<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let authority_start = scheme_end + 3;
+    let path_start = uri_path_start(text, start, authority_start)?;
+    let username_start = if starts_with_ascii_case_insensitive(&bytes[path_start..], b"/users/") {
+        path_start + 7
+    } else if starts_with_ascii_case_insensitive(&bytes[path_start..], b"/home/") {
+        path_start + 6
+    } else if bytes.get(path_start) == Some(&b'/')
+        && bytes
+            .get(path_start + 1)
+            .is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(path_start + 2) == Some(&b':')
+        && bytes
+            .get(path_start + 3)
+            .is_some_and(|byte| is_separator(*byte))
+        && starts_with_ascii_case_insensitive(&bytes[path_start + 4..], b"users/")
+    {
+        path_start + 10
+    } else {
+        return None;
+    };
+
+    let quote_context = text[..start]
+        .chars()
+        .next_back()
+        .filter(|character| matches!(character, '\'' | '"' | '`'));
+    let has_enclosing_parenthesis = text[..start].ends_with('(');
+    let mut nested_parentheses = 0usize;
+    for (relative, character) in text[username_start..].char_indices() {
+        let position = username_start + relative;
+        if character == '/' {
+            return (position > username_start).then_some((username_start, position));
+        }
+        if character.is_whitespace() || matches!(character, '?' | '#' | '<' | '>') {
+            return None;
+        }
+        if quote_context
+            .is_some_and(|quote| character == quote && quote_closes_context(text, position + 1))
+        {
+            return None;
+        }
+        if has_enclosing_parenthesis {
+            if character == '(' {
+                nested_parentheses += 1;
+            } else if character == ')' {
+                if nested_parentheses > 0 {
+                    nested_parentheses -= 1;
+                } else if closes_parenthesized_context(text, position + 1) {
+                    return None;
+                }
+            }
+        }
+    }
+    None
+}
+
+fn uri_path_start(text: &str, uri_start: usize, authority_start: usize) -> Option<usize> {
+    let quote_context = text[..uri_start]
+        .chars()
+        .next_back()
+        .filter(|character| matches!(character, '\'' | '"' | '`'));
+    let has_enclosing_parenthesis = text[..uri_start].ends_with('(');
+    for (relative, character) in text[authority_start..].char_indices() {
+        let position = authority_start + relative;
+        if character == '/' {
+            return Some(position);
+        }
+        if character.is_whitespace() || matches!(character, '?' | '#' | '<' | '>' | ']' | '}') {
+            return None;
+        }
+        if quote_context
+            .is_some_and(|quote| character == quote && quote_closes_context(text, position + 1))
+        {
+            return None;
+        }
+        if quote_context.is_none() && matches!(character, '"' | '`') {
+            return None;
+        }
+        if has_enclosing_parenthesis
+            && character == ')'
+            && closes_parenthesized_context(text, position + 1)
+        {
+            return None;
+        }
+    }
+    None
+}
+
+fn is_uri_scheme_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.')
+}
+
+fn file_uri_home_path_end(bytes: &[u8], path_start: usize) -> Option<(usize, usize)> {
+    if starts_with_ascii_case_insensitive(&bytes[path_start..], b"/users/")
+        || starts_with_ascii_case_insensitive(&bytes[path_start..], b"/home/")
+    {
+        return home_path_end(bytes, path_start).map(|end| (path_start, end));
+    }
+
+    if bytes.get(path_start) == Some(&b'/')
+        && bytes
+            .get(path_start + 1)
+            .is_some_and(u8::is_ascii_alphabetic)
+        && bytes.get(path_start + 2) == Some(&b':')
+        && bytes
+            .get(path_start + 3)
+            .is_some_and(|byte| is_separator(*byte))
+    {
+        let drive_start = path_start + 1;
+        return home_path_end(bytes, drive_start).map(|end| (drive_start, end));
+    }
+
+    None
 }
 
 fn has_path_boundary(text: &str, position: usize) -> bool {

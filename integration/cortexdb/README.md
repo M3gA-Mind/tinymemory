@@ -38,8 +38,8 @@ The target still runs every assertion against the real server.
 - `cortex`: `cortexdb/cortexdb` pinned to the verified v0.10.4 multi-architecture
   digest `sha256:636e0ed0b8cd4ae2f307e3a90f99050f7879f73c556b1ccbbabf2d3a383398fc`
   (override with `CORTEXDB_IMAGE`, or use `CORTEXDB_VERSION` in the live script),
-  listening on `127.0.0.1:3141` (`CORTEXDB_PORT`) with the
-  static bearer `tinymemory-cortex-test` (`TINYMEMORY_TEST_CORTEX_KEY`).
+  listening on `127.0.0.1:3141` (`CORTEXDB_PORT`) with the static bearer
+  `tinymemory-cortex-test` (`TINYMEMORY_TEST_CORTEX_KEY`).
 - `mock-inference`: a deterministic OpenAI-compatible double
   (`mock_inference.py`) for CortexDB's embeddings, extraction and answer
   models, so the harness needs no credential. Point `CORTEX_INFERENCE_URL` and
